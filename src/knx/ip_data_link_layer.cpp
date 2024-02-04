@@ -232,7 +232,7 @@ void IpDataLinkLayer::loop()
     #ifdef KNX_LOG_TUNNELING
                 print("Closed Tunnel 0x");
                 print(tunnels[i].ChannelId, 16);
-                println(" due to no heartbeat in 30 seconds");
+                println(" due to no heartbeat in 2 minutes");
     #endif
                 KnxIpDisconnectRequest discReq;
                 discReq.channelId(tunnels[i].ChannelId);

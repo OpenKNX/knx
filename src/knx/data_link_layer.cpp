@@ -209,7 +209,9 @@ bool DataLinkLayer::sendTelegram(NPDU & npdu, AckType ack, uint16_t destinationA
     tmpFrame.rfLfn(frame.rfLfn());
 #endif
     tmpFrame.confirm(ConfirmNoError);
-    _cemiServer->dataIndicationToTunnel(tmpFrame);
+
+    if(frame.sourceAddress() == _deviceObject.individualAddress())
+        _cemiServer->dataIndicationToTunnel(tmpFrame);
 #endif
 
     return success;
