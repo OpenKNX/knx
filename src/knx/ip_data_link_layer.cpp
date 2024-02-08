@@ -164,7 +164,7 @@ void IpDataLinkLayer::dataIndicationToTunnel(CemiFrame& frame)
     KnxIpTunnelConnection *tun = nullptr;
     for(int i = 0; i < KNX_TUNNELING; i++)
     {
-        if(tunnels[i].ChannelId != 0 || tunnels[i].IndividualAddress == frame.sourceAddress())
+        if(tunnels[i].ChannelId == 0 || tunnels[i].IndividualAddress == frame.sourceAddress())
             continue;
             
         if(tunnels[i].IndividualAddress == frame.destinationAddress())
