@@ -87,6 +87,80 @@ bool NetworkLayerCoupler::isGroupAddressInFilterTable(uint16_t groupAddress)
     }
 }
 
+bool NetworkLayerCoupler::isRoutedGroupAddress(uint16_t groupAddress, uint8_t sourceInterfaceIndex)
+{
+    uint8_t interfaceIndex = (sourceInterfaceIndex == kSecondaryIfIndex) ? kPrimaryIfIndex : kSecondaryIfIndex;
+
+    uint8_t lcconfig = LCCONFIG::PHYS_FRAME_ROUT | LCCONFIG::PHYS_REPEAT | LCCONFIG::BROADCAST_REPEAT | LCCONFIG::GROUP_IACK_ROUT | LCCONFIG::PHYS_IACK_NORMAL; // default value from spec. in case prop is not availible.
+    uint8_t lcgrpconfig = LCGRPCONFIG::GROUP_6FFFROUTE | LCGRPCONFIG::GROUP_7000UNLOCK | LCGRPCONFIG::GROUP_REPEAT; // default value from spec. in case prop is not availible.
+    Property* prop_lcgrpconfig;
+    Property* prop_lcconfig;
+
+    if(sourceInterfaceIndex == kPrimaryIfIndex) // direction Prim -> Sec ( e.g. IP -> TP)
+    {
+        prop_lcgrpconfig = _rtObjPrimary->property(PID_MAIN_LCGRPCONFIG);
+        prop_lcconfig = _rtObjPrimary->property(PID_MAIN_LCCONFIG);
+    }
+    else // direction Sec -> Prim ( e.g. TP -> IP)
+    {
+        prop_lcgrpconfig = _rtObjPrimary->property(PID_SUB_LCGRPCONFIG);
+        prop_lcconfig = _rtObjPrimary->property(PID_SUB_LCCONFIG);
+    }
+    if(prop_lcgrpconfig)
+        prop_lcgrpconfig->read(lcgrpconfig);
+
+    if(prop_lcconfig)
+        prop_lcconfig->read(lcconfig);
+
+
+    if(groupAddress < 0x7000) // Main group 0-13
+    {
+        // PID_SUB_LCGRPCONFIG Bit 0-1
+        switch(lcgrpconfig & LCGRPCONFIG::GROUP_6FFF)
+        {
+            case LCGRPCONFIG::GROUP_6FFFLOCK:
+                //printHex("1drop frame to 0x", (uint8_t*)destination, 2);
+                return false;//drop
+            break;
+            case LCGRPCONFIG::GROUP_6FFFROUTE:
+                if(isGroupAddressInFilterTable(groupAddress))
+                    ;//send
+                else
+                {
+                    //printHex("2drop frame to 0x", (uint8_t*)destination, 2);
+                    return false;//drop
+                }
+            break;
+            default: // LCGRPCONFIG::GROUP_6FFFUNLOCK
+                ;//send
+        }
+    }
+    else    // Main group 14-31
+    {
+        // PID_SUB_LCGRPCONFIG Bit 2-3 LCGRPCONFIG::GROUP_7000
+        switch(lcgrpconfig & LCGRPCONFIG::GROUP_7000)
+        {
+            case LCGRPCONFIG::GROUP_7000LOCK:
+                //printHex("3drop frame to 0x", (uint8_t*)destination, 2);
+                return false;//drop
+            break;
+            case LCGRPCONFIG::GROUP_7000ROUTE:
+                if(isGroupAddressInFilterTable(groupAddress))
+                    ;//send
+                else
+                {
+                    //printHex("4drop frame to 0x", (uint8_t*)destination, 2);
+                    return false;//drop
+                }
+            break;
+            default: // LCGRPCONFIG::GROUP_7000UNLOCK
+                ;//send
+        }
+    }
+
+    return true;
+}
+
 bool NetworkLayerCoupler::isRoutedIndividualAddress(uint16_t individualAddress, uint8_t srcIfIndex)
 {
     // TODO: improve: we have to be notified about anything that might affect routing decision
@@ -204,53 +278,10 @@ void NetworkLayerCoupler::sendMsgHopCount(AckType ack, AddressType addrType, uin
         prop_lcconfig->read(lcconfig);
     
     
-
     if(addrType == AddressType::GroupAddress && destination != 0) // destination == 0 means broadcast and must not be filtered with the GroupAddresses
     {
-        if(destination < 0x7000) // Main group 0-13
-        {
-            // PID_SUB_LCGRPCONFIG Bit 0-1
-            switch(lcgrpconfig & LCGRPCONFIG::GROUP_6FFF)
-            {
-                case LCGRPCONFIG::GROUP_6FFFLOCK:
-                    //printHex("1drop frame to 0x", (uint8_t*)destination, 2);
-                    return;//drop
-                break;
-                case LCGRPCONFIG::GROUP_6FFFROUTE:
-                    if(isGroupAddressInFilterTable(destination))
-                        ;//send
-                    else
-                    {
-                        //printHex("2drop frame to 0x", (uint8_t*)destination, 2);
-                        return;//drop
-                    }
-                break;
-                default: // LCGRPCONFIG::GROUP_6FFFUNLOCK
-                    ;//send
-            }
-        }
-        else    // Main group 14-31
-        {
-            // PID_SUB_LCGRPCONFIG Bit 2-3 LCGRPCONFIG::GROUP_7000
-            switch(lcgrpconfig & LCGRPCONFIG::GROUP_7000)
-            {
-                case LCGRPCONFIG::GROUP_7000LOCK:
-                    //printHex("3drop frame to 0x", (uint8_t*)destination, 2);
-                    return;//drop
-                break;
-                case LCGRPCONFIG::GROUP_7000ROUTE:
-                    if(isGroupAddressInFilterTable(destination))
-                        ;//send
-                    else
-                    {
-                        //printHex("4drop frame to 0x", (uint8_t*)destination, 2);
-                        return;//drop
-                    }
-                break;
-                default: // LCGRPCONFIG::GROUP_7000UNLOCK
-                    ;//send
-            }
-        }
+        if(!isRoutedGroupAddress(destination, sourceInterfaceIndex))
+            return; // drop;
     }
 
 

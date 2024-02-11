@@ -22,6 +22,8 @@ class NetworkLayerCoupler : public NetworkLayer
 
     bool isRoutedIndividualAddress(uint16_t individualAddress, uint8_t srcIfIndex);
 
+    bool isRoutedGroupAddress(uint16_t groupAddress, uint8_t sourceInterfaceIndex);
+
     void rtObjPrimary(RouterObject& rtObjPrimary); // Coupler model 2.0
     void rtObjSecondary(RouterObject& rtObjSecondary); // Coupler model 2.0
     void rtObj(RouterObject& rtObj); // Coupler model 1.x

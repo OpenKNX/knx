@@ -176,7 +176,7 @@ TPAckType Bau091A::isAckRequired(uint16_t address, bool isGrpAddr)
 
         if(lcconfig & LCCONFIG::GROUP_IACK_ROUT)
             // is group address in filter table? ACK if yes, No if not
-            if(_routerObj.isGroupAddressInFilterTable(address))
+            if(_netLayer.isRoutedGroupAddress(address, 1))
                 ack = TPAckType::AckReqAck;
             else
                 ack = TPAckType::AckReqNone;
