@@ -18,6 +18,11 @@ DataLinkLayer& NetworkLayerEntity::dataLinkLayer()
     return *_dataLinkLayer;
 }
 
+NetworkLayer& NetworkLayerEntity::networkLayer()
+{
+    return _netLayer;
+}
+
 DptMedium NetworkLayerEntity::mediumType() const
 {
     return _dataLinkLayer->mediumType();

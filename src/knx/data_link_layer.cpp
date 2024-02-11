@@ -48,6 +48,12 @@ void DataLinkLayer::dataIndicationToTunnel(CemiFrame& frame)
 {
     println("default dataIndicationToTunnel");
 }
+
+bool DataLinkLayer::isTunnelAddress(uint16_t addr)
+{
+    println("default IsTunnelAddress");
+    return false;
+}
 #endif
 
 void DataLinkLayer::dataRequestFromTunnel(CemiFrame& frame)
@@ -210,7 +216,7 @@ bool DataLinkLayer::sendTelegram(NPDU & npdu, AckType ack, uint16_t destinationA
 #endif
     tmpFrame.confirm(ConfirmNoError);
 
-    if(frame.sourceAddress() == _deviceObject.individualAddress())
+    if(frame.sourceAddress() == _deviceObject.individualAddress() && _networkLayerEntity.getEntityIndex() == 1)    // only send to tunnel if we are the secondary interface
         _cemiServer->dataIndicationToTunnel(tmpFrame);
 #endif
 

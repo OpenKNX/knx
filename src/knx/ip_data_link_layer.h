@@ -24,6 +24,7 @@ class IpDataLinkLayer : public DataLinkLayer
     void dataRequestToTunnel(CemiFrame& frame) override;
     void dataConfirmationToTunnel(CemiFrame& frame) override;
     void dataIndicationToTunnel(CemiFrame& frame) override;
+    bool isTunnelAddress(uint16_t addr) override;
 #endif
 
   private:

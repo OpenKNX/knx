@@ -17,6 +17,7 @@ class NetworkLayerEntity
 
     void dataLinkLayer(DataLinkLayer& layer);
     DataLinkLayer& dataLinkLayer();
+    NetworkLayer& networkLayer();
 
     DptMedium mediumType() const;
     uint8_t getEntityIndex();

@@ -36,6 +36,7 @@ class DataLinkLayer
     virtual void dataRequestToTunnel(CemiFrame& frame);
     virtual void dataConfirmationToTunnel(CemiFrame& frame);
     virtual void dataIndicationToTunnel(CemiFrame& frame);
+    virtual bool isTunnelAddress(uint16_t addr);
 #endif
 #endif
 

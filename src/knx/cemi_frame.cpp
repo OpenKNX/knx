@@ -6,11 +6,17 @@
 /*
 cEMI Frame Format
 
-+---------+--------+--------+--------+--------+---------+---------+--------+---------+
-    | Header  |  Msg   |Add.Info| Ctrl 1 | Ctrl 2 | Source  | Dest.   |  Data  |   APDU  |
-    |         | Code   | Length |        |        | Address | Address | Length |         |
+              +--------+--------+--------+--------+---------+---------+--------+---------+
+	          |                               _data                                      |
+              +--------+--------+--------+--------+---------+---------+--------+---------+
+	          |                               LPDU                                       |
+			  +--------+--------+--------+--------+---------+---------+--------+---------+
+	                                                                  |           NPDU   |
     +---------+--------+--------+--------+--------+---------+---------+--------+---------+
-      6 bytes   1 byte   1 byte   1 byte   1 byte   2 bytes   2 bytes   1 byte   2 bytes
+    | Header  |  Msg   |Add.Info| Ctrl 1 | Ctrl 2 | Source  | Dest.   |  Data  |   TPDU  |
+    |         | Code   | Length |        |        | Address | Address | Length |   APDU  |
+    +---------+--------+--------+--------+--------+---------+---------+--------+---------+
+      6 bytes   1 byte   1 byte   1 byte   1 byte   2 bytes   2 bytes   1 byte   n bytes
  
         Header          = See below the structure of a cEMI header
         Message Code    = See below. On Appendix A is the list of all existing EMI and cEMI codes
@@ -85,11 +91,11 @@ CemiFrame::CemiFrame(uint8_t apduLength)
       _apdu(_data + APDU_LPDU_DIFF, *this)
 {
     _ctrl1 = _data + CEMI_HEADER_SIZE;
-    _length = 0;
 
     memset(_data, 0, apduLength + APDU_LPDU_DIFF);
     _ctrl1[0] |= Broadcast;
     _npdu.octetCount(apduLength);
+    _length = _npdu.length() + NPDU_LPDU_DIFF;
 }
 
 CemiFrame::CemiFrame(const CemiFrame & other)
@@ -116,6 +122,7 @@ CemiFrame& CemiFrame::operator=(CemiFrame other)
     return *this;
 }
 
+
 MessageCode CemiFrame::messageCode() const
 {
     return (MessageCode)_data[0];
@@ -128,12 +135,7 @@ void CemiFrame::messageCode(MessageCode msgCode)
 
 uint16_t CemiFrame::totalLenght() const
 {
-    if(messageCode() != L_data_con && messageCode() != L_data_ind && messageCode() != L_data_req)
-        return _length; // we dont have an npu on any other messagecode
-
-    uint16_t tmp = 
-    _npdu.length() + NPDU_LPDU_DIFF;
-    return tmp;
+    return _length;
 }
 
 uint16_t CemiFrame::telegramLengthtTP() const
@@ -375,8 +377,13 @@ bool CemiFrame::valid() const
     {
         print("length issue, length: ");
         print(_length);
+        print(" addInfoLen: ");
+        print(addInfoLen);
+        print(" apduLen: ");
+        print(apduLen);
         print(" expected length: ");
         println(addInfoLen + apduLen + NPDU_LPDU_DIFF + 2);
+        printHex("Frame: ", _data, _length, true);
 
         return false;
     }

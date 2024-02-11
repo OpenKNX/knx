@@ -63,6 +63,9 @@ class NetworkLayerCoupler : public NetworkLayer
 
     void evaluateCouplerType();
     bool isGroupAddressInFilterTable(uint16_t groupAddress);
+#ifdef KNX_TUNNELING
+    bool isTunnelAddress(uint16_t destination);
+#endif
 
     // Support a maximum of two physical interfaces for couplers
     NetworkLayerEntity _netLayerEntities[2];

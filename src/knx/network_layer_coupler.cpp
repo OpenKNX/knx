@@ -1,4 +1,5 @@
 #include "network_layer_coupler.h"
+#include "data_link_layer.h"
 #include "device_object.h"
 #include "router_object.h"
 #include "tpdu.h"
@@ -347,6 +348,11 @@ void NetworkLayerCoupler::routeDataIndividual(AckType ack, uint16_t destination,
 
         // if destination is not within our scope then send via primary interface, else via secondary interface
         uint8_t destIfidx = (Z != netaddr) ? kPrimaryIfIndex : kSecondaryIfIndex;
+#ifdef KNX_TUNNELING
+        if(destIfidx == kPrimaryIfIndex)
+            if(isTunnelAddress(destination))
+                destIfidx = kSecondaryIfIndex;
+#endif
         //print("NetworkLayerCoupler::routeDataIndividual local to s or p: ");
         //println(destIfidx);
         _netLayerEntities[destIfidx].sendDataRequest(npdu, ack, destination, source, priority, AddressType::IndividualAddress, Broadcast);
@@ -580,3 +586,11 @@ void NetworkLayerCoupler::dataSystemBroadcastRequest(AckType ack, HopCountType h
     println(broadcastType);
     _netLayerEntities[kSecondaryIfIndex].sendDataRequest(tmpFrame.npdu(), ack, 0, _deviceObj.individualAddress(), priority, GroupAddress, broadcastType);
 }
+
+#ifdef KNX_TUNNELING
+bool NetworkLayerCoupler::isTunnelAddress(uint16_t destination)
+{
+    // tunnels are managed within the IpDataLinkLayer - kPrimaryIfIndex
+    return _netLayerEntities[kPrimaryIfIndex].dataLinkLayer().isTunnelAddress(destination);
+}
+#endif
