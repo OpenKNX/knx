@@ -337,6 +337,8 @@ int RP2040ArduinoPlatform::readBytesMultiCast(uint8_t* buffer, uint16_t maxLen)
     }
 
     _udp.read(buffer, len);
+    _remoteIP = _udp.remoteIP();
+    _remotePort = _udp.remotePort();
 
     // print("Remote IP: ");
     // print(_udp.remoteIP().toString().c_str());
@@ -349,7 +351,12 @@ int RP2040ArduinoPlatform::readBytesMultiCast(uint8_t* buffer, uint16_t maxLen)
 bool RP2040ArduinoPlatform::sendBytesUniCast(uint32_t addr, uint16_t port, uint8_t* buffer, uint16_t len)
 {
     IPAddress ucastaddr(htonl(addr));
+
+    if(!addr)
+        ucastaddr = _remoteIP;
     
+    if(!port)
+        port = _remotePort;
     // print("sendBytesUniCast to:");
     // println(ucastaddr.toString().c_str());
 
