@@ -634,8 +634,7 @@ void IpDataLinkLayer::loopHandleDeviceConfigurationRequest(uint8_t* buffer, uint
         print("Channel ID nicht gefunden: ");
         println(confReq.connectionHeader().channelId());
         KnxIpStateResponse stateRes(0x00, E_CONNECTION_ID);
-        //TODO where to send?
-        //_platform.sendBytesUniCast(tun->IpAddress, tun->PortCtrl, stateRes.data(), stateRes.totalLength());
+        _platform.sendBytesUniCast(0, 0, stateRes.data(), stateRes.totalLength());
         return;
     }
 
@@ -672,8 +671,7 @@ void IpDataLinkLayer::loopHandleTunnelingRequest(uint8_t* buffer, uint16_t lengt
         println(tunnReq.connectionHeader().channelId());
 #endif
         KnxIpStateResponse stateRes(0x00, E_CONNECTION_ID);
-        //TODO where to send?
-        //_platform.sendBytesUniCast(stateRequest.hpaiCtrl().ipAddress(), stateRequest.hpaiCtrl().ipPortNumber(), stateRes.data(), stateRes.totalLength());
+        _platform.sendBytesUniCast(0, 0, stateRes.data(), stateRes.totalLength());
         return;
     }
 
