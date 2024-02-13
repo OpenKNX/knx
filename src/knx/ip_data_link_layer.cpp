@@ -227,6 +227,22 @@ bool IpDataLinkLayer::isTunnelAddress(uint16_t addr)
 
     return false;
 }
+
+bool IpDataLinkLayer::isSentToTunnel(uint16_t address, bool isGrpAddr)
+{
+    if(isGrpAddr)
+    {
+        for(int i = 0; i < KNX_TUNNELING; i++)
+            if(tunnels[i].ChannelId != 0)
+                return true;
+        return false;
+    } else {
+        for(int i = 0; i < KNX_TUNNELING; i++)
+            if(tunnels[i].ChannelId != 0 && tunnels[i].IndividualAddress == address)
+                return true;
+        return false;
+    }
+}
 #endif
 
 void IpDataLinkLayer::loop()

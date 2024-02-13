@@ -183,6 +183,10 @@ TPAckType Bau091A::isAckRequired(uint16_t address, bool isGrpAddr)
         else
             // all are ACKED
             ack = TPAckType::AckReqAck;
+#ifdef KNX_TUNNELING
+        if(_dlLayerPrimary.isSentToTunnel(address, isGrpAddr))
+            ack = TPAckType::AckReqAck;
+#endif
     }
     else
     {
@@ -197,18 +201,8 @@ TPAckType Bau091A::isAckRequired(uint16_t address, bool isGrpAddr)
                 ack = TPAckType::AckReqNone;
 
 #ifdef KNX_TUNNELING
-        const uint8_t *addresses = _ipParameters.propertyData(PID_ADDITIONAL_INDIVIDUAL_ADDRESSES);
-        for(int i = 0; i < KNX_TUNNELING; i++)
-        {
-            uint16_t pa = 0;
-            popWord(pa, addresses + (i*2));
-
-            if(address == pa)
-            {
-                ack = TPAckType::AckReqAck;
-                break;
-            }
-        }
+        if(_dlLayerPrimary.isSentToTunnel(address, isGrpAddr))
+            ack = TPAckType::AckReqAck;
 #endif
 
     }
