@@ -43,6 +43,7 @@ class IpDataLinkLayer : public DataLinkLayer
     void loopHandleDeviceConfigurationRequest(uint8_t* buffer, uint16_t length);
     void loopHandleTunnelingRequest(uint8_t* buffer, uint16_t length);
 #endif
+    void loopHandleSearchRequestExtended(uint8_t* buffer, uint16_t length);
     bool sendBytes(uint8_t* buffer, uint16_t length);
     bool isSendLimitReached();
 

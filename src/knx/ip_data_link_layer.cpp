@@ -9,6 +9,8 @@
 #include "knx_ip_routing_indication.h"
 #include "knx_ip_search_request.h"
 #include "knx_ip_search_response.h"
+#include "knx_ip_search_request_extended.h"
+#include "knx_ip_search_response_extended.h"
 #include "knx_facade.h"
 #ifdef KNX_TUNNELING
 #include "knx_ip_connect_request.h"
@@ -320,7 +322,7 @@ void IpDataLinkLayer::loop()
         }
         case SearchRequestExt:
         {
-            // FIXME, implement (not needed atm)
+            loopHandleSearchRequestExtended(buffer, len);
             break;
         }
 #ifdef KNX_TUNNELING
@@ -379,6 +381,68 @@ void IpDataLinkLayer::loop()
             println(code, HEX);
             break;
     }
+}
+
+void IpDataLinkLayer::loopHandleSearchRequestExtended(uint8_t* buffer, uint16_t length)
+{
+    KnxIpSearchRequestExtended searchRequest(buffer, length);
+
+    if(searchRequest.srpByProgMode)
+        if(!knx.progMode()) return;
+
+    if(searchRequest.srpByMacAddr)
+    {
+        const uint8_t *x = _ipParameters.propertyData(PID_MAC_ADDRESS);
+        for(int i = 0; i<6;i++)
+            if(searchRequest.srpMacAddr[i] != x[i])
+                return;
+    }
+
+    #define LEN_SERVICE_FAMILIES 2
+    #if MASK_VERSION == 0x091A
+    #ifdef KNX_TUNNELING
+    #define LEN_SERVICE_DIB (2 + 4 * LEN_SERVICE_FAMILIES)
+    #else
+    #define LEN_SERVICE_DIB (2 + 3 * LEN_SERVICE_FAMILIES)
+    #endif
+    #else
+    #ifdef KNX_TUNNELING
+    #define LEN_SERVICE_DIB (2 + 3 * LEN_SERVICE_FAMILIES)
+    #else
+    #define LEN_SERVICE_DIB (2 + 2 * LEN_SERVICE_FAMILIES)
+    #endif
+    #endif
+
+    //defaults: “Device Information DIB”, “Extended Device Information DIB” and “Supported Services DIB”.
+    int dipLength = LEN_DEVICE_INFORMATION_DIB + LEN_SERVICE_DIB + LEN_EXTENDED_DEVICE_INFORMATION_DIB;
+
+    if(searchRequest.srpByService)
+    {
+        //FIXME not implemented
+        return;
+    }
+
+    if(searchRequest.srpRequestDIBs)
+    {
+        //FIXME not implemented
+        //dipLength += XX
+        return;
+    }
+
+    KnxIpSearchResponseExtended searchResponse(_ipParameters, _deviceObject, dipLength);
+
+    searchResponse.setDeviceInfo(_ipParameters, _deviceObject);
+    searchResponse.setSupportedServices();
+    searchResponse.setExtendedDeviceInfo();
+
+    if(searchRequest.srpRequestDIBs)
+    {
+        //FIXME not implemented
+        //searchResponse.setXXXX
+        return;
+    }
+
+    _platform.sendBytesUniCast(searchRequest.hpai().ipAddress(), searchRequest.hpai().ipPortNumber(), searchResponse.data(), searchResponse.totalLength());
 }
 
 #ifdef KNX_TUNNELING
