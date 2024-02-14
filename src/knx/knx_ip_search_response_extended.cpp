@@ -20,7 +20,7 @@ KnxIpSearchResponseExtended::KnxIpSearchResponseExtended(IpParameterObject& para
     : KnxIpFrame(LEN_KNXIP_HEADER + LEN_IPHPAI + dibLength),
       _controlEndpoint(_data + LEN_KNXIP_HEADER)
 {
-    serviceTypeIdentifier(SearchResponse);
+    serviceTypeIdentifier(SearchResponseExt);
 
     _controlEndpoint.length(LEN_IPHPAI);
     _controlEndpoint.code(IPV4_UDP);
@@ -65,7 +65,7 @@ void KnxIpSearchResponseExtended::setSupportedServices()
     KnxIpSupportedServiceDIB _supportedServices(_data + currentPos);
     _supportedServices.length(LEN_SERVICE_DIB);
     _supportedServices.code(SUPP_SVC_FAMILIES);
-    _supportedServices.serviceVersion(Core, 1);
+    _supportedServices.serviceVersion(Core, 2);
     _supportedServices.serviceVersion(DeviceManagement, 1);
 #ifdef KNX_TUNNELING
     _supportedServices.serviceVersion(Tunnelling, 1);

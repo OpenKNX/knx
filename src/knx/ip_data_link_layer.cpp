@@ -416,17 +416,23 @@ void IpDataLinkLayer::loopHandleSearchRequestExtended(uint8_t* buffer, uint16_t 
     //defaults: “Device Information DIB”, “Extended Device Information DIB” and “Supported Services DIB”.
     int dipLength = LEN_DEVICE_INFORMATION_DIB + LEN_SERVICE_DIB + LEN_EXTENDED_DEVICE_INFORMATION_DIB;
 
+    if(searchRequest.srpByProgMode)
+        println("srpByProgMode");
+
+    if(searchRequest.srpByMacAddr)
+        println("srpByMacAddr");
+
     if(searchRequest.srpByService)
     {
         //FIXME not implemented
-        return;
+        println("srpByService");
     }
 
     if(searchRequest.srpRequestDIBs)
     {
         //FIXME not implemented
         //dipLength += XX
-        return;
+        println("srpRequestDIBs");
     }
 
     KnxIpSearchResponseExtended searchResponse(_ipParameters, _deviceObject, dipLength);
@@ -439,7 +445,6 @@ void IpDataLinkLayer::loopHandleSearchRequestExtended(uint8_t* buffer, uint16_t 
     {
         //FIXME not implemented
         //searchResponse.setXXXX
-        return;
     }
 
     _platform.sendBytesUniCast(searchRequest.hpai().ipAddress(), searchRequest.hpai().ipPortNumber(), searchResponse.data(), searchResponse.totalLength());

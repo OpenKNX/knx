@@ -54,7 +54,7 @@ KnxIpSearchResponse::KnxIpSearchResponse(IpParameterObject& parameters, DeviceOb
 
     _supportedServices.length(LEN_SERVICE_DIB);
     _supportedServices.code(SUPP_SVC_FAMILIES);
-    _supportedServices.serviceVersion(Core, 1);
+    _supportedServices.serviceVersion(Core, 2);
     _supportedServices.serviceVersion(DeviceManagement, 1);
 #ifdef KNX_TUNNELING
     _supportedServices.serviceVersion(Tunnelling, 1);
