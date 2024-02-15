@@ -1,4 +1,6 @@
 #include "knx_ip_search_response_extended.h"
+#include "service_families.h"
+#if KNX_SERVICE_FAMILY_CORE >= 2
 #ifdef USE_IP
 
 #define LEN_SERVICE_FAMILIES 2
@@ -65,15 +67,110 @@ void KnxIpSearchResponseExtended::setSupportedServices()
     KnxIpSupportedServiceDIB _supportedServices(_data + currentPos);
     _supportedServices.length(LEN_SERVICE_DIB);
     _supportedServices.code(SUPP_SVC_FAMILIES);
-    _supportedServices.serviceVersion(Core, 2);
-    _supportedServices.serviceVersion(DeviceManagement, 1);
+    _supportedServices.serviceVersion(Core, KNX_SERVICE_FAMILY_CORE);
+    _supportedServices.serviceVersion(DeviceManagement, KNX_SERVICE_FAMILY_DEVICE_MANAGEMENT);
 #ifdef KNX_TUNNELING
-    _supportedServices.serviceVersion(Tunnelling, 1);
+    _supportedServices.serviceVersion(Tunnelling, KNX_SERVICE_FAMILY_TUNNELING);
 #endif
 #if MASK_VERSION == 0x091A
-    _supportedServices.serviceVersion(Routing, 1);
+    _supportedServices.serviceVersion(Routing, KNX_SERVICE_FAMILY_ROUTING);
 #endif
     currentPos += LEN_SERVICE_DIB;
+}
+
+void KnxIpSearchResponseExtended::setIpConfig(IpParameterObject& parameters)
+{
+    KnxIpConfigDIB _ipConfig(_data + currentPos);
+    _ipConfig.length(LEN_IP_CONFIG_DIB);
+    _ipConfig.code(IP_CONFIG);
+    _ipConfig.address(parameters.propertyValue<uint32_t>(PID_IP_ADDRESS));
+    _ipConfig.subnet(parameters.propertyValue<uint32_t>(PID_SUBNET_MASK));
+    _ipConfig.gateway(parameters.propertyValue<uint32_t>(PID_DEFAULT_GATEWAY));
+    _ipConfig.info1(parameters.propertyValue<uint8_t>(PID_IP_CAPABILITIES));
+    _ipConfig.info2(parameters.propertyValue<uint8_t>(PID_IP_ASSIGNMENT_METHOD));
+
+    currentPos += LEN_EXTENDED_DEVICE_INFORMATION_DIB;
+}
+
+void KnxIpSearchResponseExtended::setIpCurrentConfig(IpParameterObject& parameters)
+{
+    KnxIpConfigDIB _ipCurConfig(_data + currentPos, true);
+    _ipCurConfig.length(LEN_IP_CURRENT_CONFIG_DIB);
+    _ipCurConfig.code(IP_CUR_CONFIG);
+    _ipCurConfig.address(parameters.propertyValue<uint32_t>(PID_CURRENT_IP_ADDRESS));
+    _ipCurConfig.subnet(parameters.propertyValue<uint32_t>(PID_CURRENT_SUBNET_MASK));
+    _ipCurConfig.gateway(parameters.propertyValue<uint32_t>(PID_CURRENT_DEFAULT_GATEWAY));
+    _ipCurConfig.dhcp(parameters.propertyValue<uint32_t>(PID_DHCP_BOOTP_SERVER));
+    _ipCurConfig.info1(parameters.propertyValue<uint8_t>(PID_CURRENT_IP_ASSIGNMENT_METHOD));
+    _ipCurConfig.info2(0x00); //Reserved
+
+    currentPos += LEN_EXTENDED_DEVICE_INFORMATION_DIB;
+}
+
+void KnxIpSearchResponseExtended::setKnxAddresses(IpParameterObject& parameters, DeviceObject& deviceObject)
+{
+    KnxIpKnxAddressesDIB _knxAddresses(_data + currentPos);
+
+    _knxAddresses.individualAddress(deviceObject.individualAddress());
+
+    uint8_t count = 1;
+    uint16_t propval = 0;
+    parameters.readProperty(PID_ADDITIONAL_INDIVIDUAL_ADDRESSES, 0, count, (uint8_t*)&propval);
+
+    const uint8_t *addresses = parameters.propertyData(PID_ADDITIONAL_INDIVIDUAL_ADDRESSES);
+
+    for(int i = 0; i < propval; i++)
+    {
+        uint16_t additional = 0;
+        popWord(additional, addresses + i*2);
+        _knxAddresses.additional(additional);
+    }
+
+    currentPos += _knxAddresses.length();
+}
+
+void KnxIpSearchResponseExtended::setTunnelingInfo(IpParameterObject& parameters, KnxIpTunnelConnection tunnels[])
+{
+    KnxIpTunnelingInfoDIB _tunnelInfo(_data + currentPos);
+
+    _tunnelInfo.apduLength(254); //FIXME where to get from
+
+    uint8_t count = 1;
+    uint16_t propval = 0;
+    parameters.readProperty(PID_ADDITIONAL_INDIVIDUAL_ADDRESSES, 0, count, (uint8_t*)&propval);
+
+    const uint8_t *addresses = parameters.propertyData(PID_ADDITIONAL_INDIVIDUAL_ADDRESSES);
+
+    for(int i = 0; i < propval; i++)
+    {
+        uint16_t additional = 0;
+        popWord(additional, addresses + i*2);
+        uint16_t flags = 0;
+
+        uint8_t doubleCounter = 0;
+        bool used = false;
+        for(int i = 0; i < KNX_TUNNELING; i++)
+        {
+            if(tunnels[i].IndividualAddress == additional)
+            {
+                doubleCounter += 1;
+                if(tunnels[i].ChannelId != 0)
+                    used = true;
+            }
+        }
+
+        if(doubleCounter > 1 && used)
+            flags |= 1 << 1; //Slot is not usable; duoble PA is already used
+
+        if(used)
+            flags |= 1; //Slot is not free
+
+        flags = ~flags;
+
+        _tunnelInfo.tunnelingSlot(additional, flags);
+    }
+
+    currentPos += _tunnelInfo.length();
 }
 
 void KnxIpSearchResponseExtended::setExtendedDeviceInfo()
@@ -98,4 +195,5 @@ uint8_t *KnxIpSearchResponseExtended::DIBs()
 {
     return _data + LEN_KNXIP_HEADER + LEN_IPHPAI;
 }
+#endif
 #endif

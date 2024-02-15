@@ -54,13 +54,13 @@ KnxIpSearchResponse::KnxIpSearchResponse(IpParameterObject& parameters, DeviceOb
 
     _supportedServices.length(LEN_SERVICE_DIB);
     _supportedServices.code(SUPP_SVC_FAMILIES);
-    _supportedServices.serviceVersion(Core, 2);
-    _supportedServices.serviceVersion(DeviceManagement, 1);
+    _supportedServices.serviceVersion(Core, KNX_SERVICE_FAMILY_CORE);
+    _supportedServices.serviceVersion(DeviceManagement, KNX_SERVICE_FAMILY_DEVICE_MANAGEMENT);
 #ifdef KNX_TUNNELING
-    _supportedServices.serviceVersion(Tunnelling, 1);
+    _supportedServices.serviceVersion(Tunnelling, KNX_SERVICE_FAMILY_TUNNELING);
 #endif
 #if MASK_VERSION == 0x091A
-    _supportedServices.serviceVersion(Routing, 1);
+    _supportedServices.serviceVersion(Routing, KNX_SERVICE_FAMILY_ROUTING);
 #endif
 }
 

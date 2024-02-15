@@ -322,7 +322,9 @@ void IpDataLinkLayer::loop()
         }
         case SearchRequestExt:
         {
+            #if KNX_SERVICE_FAMILY_CORE >= 2
             loopHandleSearchRequestExtended(buffer, len);
+            #endif
             break;
         }
 #ifdef KNX_TUNNELING
@@ -383,15 +385,20 @@ void IpDataLinkLayer::loop()
     }
 }
 
+#if KNX_SERVICE_FAMILY_CORE >= 2
 void IpDataLinkLayer::loopHandleSearchRequestExtended(uint8_t* buffer, uint16_t length)
 {
     KnxIpSearchRequestExtended searchRequest(buffer, length);
 
     if(searchRequest.srpByProgMode)
+    {
+        println("srpByProgMode");
         if(!knx.progMode()) return;
+    }
 
     if(searchRequest.srpByMacAddr)
     {
+        println("srpByMacAddr");
         const uint8_t *x = _ipParameters.propertyData(PID_MAC_ADDRESS);
         for(int i = 0; i<6;i++)
             if(searchRequest.srpMacAddr[i] != x[i])
@@ -416,23 +423,60 @@ void IpDataLinkLayer::loopHandleSearchRequestExtended(uint8_t* buffer, uint16_t 
     //defaults: “Device Information DIB”, “Extended Device Information DIB” and “Supported Services DIB”.
     int dipLength = LEN_DEVICE_INFORMATION_DIB + LEN_SERVICE_DIB + LEN_EXTENDED_DEVICE_INFORMATION_DIB;
 
-    if(searchRequest.srpByProgMode)
-        println("srpByProgMode");
-
-    if(searchRequest.srpByMacAddr)
-        println("srpByMacAddr");
-
     if(searchRequest.srpByService)
     {
-        //FIXME not implemented
         println("srpByService");
+        uint8_t length = searchRequest.srpServiceFamilies[0];
+        uint8_t *currentPos = searchRequest.srpServiceFamilies + 2;
+        for(int i = 0; i < (length-2)/2; i++)
+        {
+            uint8_t serviceFamily = (currentPos + i*2)[0];
+            uint8_t version = (currentPos + i*2)[1];
+            switch(serviceFamily)
+            {
+                case Core:
+                    if(version > KNX_SERVICE_FAMILY_CORE) return;
+                    break;
+                case DeviceManagement:
+                    if(version > KNX_SERVICE_FAMILY_DEVICE_MANAGEMENT) return;
+                    break;
+                case Tunnelling:
+                    if(version > KNX_SERVICE_FAMILY_TUNNELING) return;
+                    break;
+                case Routing:
+                    if(version > KNX_SERVICE_FAMILY_ROUTING) return;
+                    break;
+            }
+        }
     }
 
     if(searchRequest.srpRequestDIBs)
     {
-        //FIXME not implemented
-        //dipLength += XX
         println("srpRequestDIBs");
+        if(searchRequest.requestedDIB(IP_CONFIG))
+            dipLength += LEN_IP_CONFIG_DIB; //16
+
+        if(searchRequest.requestedDIB(IP_CUR_CONFIG))
+            dipLength += LEN_IP_CURRENT_CONFIG_DIB; //20
+
+        if(searchRequest.requestedDIB(KNX_ADDRESSES))
+        {
+            uint8_t count = 1;
+            uint16_t propval = 0;
+            _ipParameters.readProperty(PID_ADDITIONAL_INDIVIDUAL_ADDRESSES, 0, count, (uint8_t*)&propval);
+            dipLength += 4 + propval*2;
+        }
+
+        if(searchRequest.requestedDIB(MANUFACTURER_DATA))
+            dipLength += 0; //4 + n
+
+        if(searchRequest.requestedDIB(TUNNELING_INFO))
+        {
+            uint8_t count = 1;
+            uint16_t propval = 0;
+            _ipParameters.readProperty(PID_ADDITIONAL_INDIVIDUAL_ADDRESSES, 0, count, (uint8_t*)&propval);
+            dipLength += 4 + propval*4;
+        }
     }
 
     KnxIpSearchResponseExtended searchResponse(_ipParameters, _deviceObject, dipLength);
@@ -443,12 +487,27 @@ void IpDataLinkLayer::loopHandleSearchRequestExtended(uint8_t* buffer, uint16_t 
 
     if(searchRequest.srpRequestDIBs)
     {
-        //FIXME not implemented
-        //searchResponse.setXXXX
+        if(searchRequest.requestedDIB(IP_CONFIG))
+            searchResponse.setIpConfig(_ipParameters);
+
+        if(searchRequest.requestedDIB(IP_CUR_CONFIG))
+            searchResponse.setIpCurrentConfig(_ipParameters);
+
+        if(searchRequest.requestedDIB(KNX_ADDRESSES))
+            searchResponse.setKnxAddresses(_ipParameters, _deviceObject);
+
+        if(searchRequest.requestedDIB(MANUFACTURER_DATA))
+        {
+            println("requested MANUFACTURER_DATA but not implemented");
+        }
+
+        if(searchRequest.requestedDIB(TUNNELING_INFO))
+            searchResponse.setTunnelingInfo(_ipParameters, tunnels);
     }
 
     _platform.sendBytesUniCast(searchRequest.hpai().ipAddress(), searchRequest.hpai().ipPortNumber(), searchResponse.data(), searchResponse.totalLength());
 }
+#endif
 
 #ifdef KNX_TUNNELING
 void IpDataLinkLayer::loopHandleConnectRequest(uint8_t* buffer, uint16_t length)

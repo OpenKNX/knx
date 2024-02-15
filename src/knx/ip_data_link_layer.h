@@ -7,6 +7,7 @@
 #include "data_link_layer.h"
 #include "ip_parameter_object.h"
 #include "knx_ip_tunnel_connection.h"
+#include "service_families.h"
 
 class IpDataLinkLayer : public DataLinkLayer
 {
@@ -43,7 +44,9 @@ class IpDataLinkLayer : public DataLinkLayer
     void loopHandleDeviceConfigurationRequest(uint8_t* buffer, uint16_t length);
     void loopHandleTunnelingRequest(uint8_t* buffer, uint16_t length);
 #endif
+#if KNX_SERVICE_FAMILY_CORE >= 2
     void loopHandleSearchRequestExtended(uint8_t* buffer, uint16_t length);
+#endif
     bool sendBytes(uint8_t* buffer, uint16_t length);
     bool isSendLimitReached();
 
