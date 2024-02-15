@@ -462,62 +462,73 @@ void IpDataLinkLayer::loopHandleConnectRequest(uint8_t* buffer, uint16_t length)
         }
     }
 
-    bool hasDoublePA = false;
 
-    // read current elements in PID_ADDITIONAL_INDIVIDUAL_ADDRESSES 
-    uint8_t count = 1;
-    uint16_t propval = 0;
-    _ipParameters.readProperty(PID_ADDITIONAL_INDIVIDUAL_ADDRESSES, 0, count, (uint8_t*)&propval);
-    const uint8_t *addresses;
-    if(propval == KNX_TUNNELING)
+#if KNX_SERVICE_FAMILY_TUNNELING >= 2
+    if(connRequest.cri().isExtended())
     {
-        addresses = _ipParameters.propertyData(PID_ADDITIONAL_INDIVIDUAL_ADDRESSES);
-    }
-    else    // no tunnel PA configured, that means device is unconfigured and has 15.15.0
-    {
-        uint8_t addrbuffer[KNX_TUNNELING*2];
-        addresses = (uint8_t*)addrbuffer;
+        tun->IndividualAddress = connRequest.cri().individualAddress();
+    } else {
+#endif
+        bool hasDoublePA = false;
+        // read current elements in PID_ADDITIONAL_INDIVIDUAL_ADDRESSES 
+        uint8_t count = 1;
+        uint16_t propval = 0;
+        _ipParameters.readProperty(PID_ADDITIONAL_INDIVIDUAL_ADDRESSES, 0, count, (uint8_t*)&propval);
+        const uint8_t *addresses;
+        if(propval == KNX_TUNNELING)
+        {
+            addresses = _ipParameters.propertyData(PID_ADDITIONAL_INDIVIDUAL_ADDRESSES);
+        }
+        else    // no tunnel PA configured, that means device is unconfigured and has 15.15.0
+        {
+            uint8_t addrbuffer[KNX_TUNNELING*2];
+            addresses = (uint8_t*)addrbuffer;
+            for(int i = 0; i < KNX_TUNNELING; i++)
+            {
+                addrbuffer[i*2+1] = i+1;
+                addrbuffer[i*2] = _deviceObject.individualAddress() / 0x0100;
+            }
+    #ifdef KNX_LOG_TUNNELING
+            println("no Tunnel-PAs configured, using own subnet");
+    #endif
+        }
+
         for(int i = 0; i < KNX_TUNNELING; i++)
         {
-            addrbuffer[i*2+1] = i+1;
-            addrbuffer[i*2] = _deviceObject.individualAddress() / 0x0100;
-        }
-#ifdef KNX_LOG_TUNNELING
-    	println("no Tunnel-PAs configured, using own subnet");
-#endif
-    }
+            uint16_t pa = 0;
+            popWord(pa, addresses + (i*2));
 
-    for(int i = 0; i < KNX_TUNNELING; i++)
-    {
-        uint16_t pa = 0;
-        popWord(pa, addresses + (i*2));
-
-        for(int x = 0; x < KNX_TUNNELING; x++)
-        {
-            uint16_t pa2 = 0;
-            popWord(pa2, addresses + (x*2));
-            if(i != x && pa == pa2)
+            for(int x = 0; x < KNX_TUNNELING; x++)
             {
-                hasDoublePA = true;
-                break;
+                uint16_t pa2 = 0;
+                popWord(pa2, addresses + (x*2));
+                if(i != x && pa == pa2)
+                {
+                    hasDoublePA = true;
+                    break;
+                }
             }
+
+            bool isInUse = false;
+            for(int x = 0; x < KNX_TUNNELING; x++)
+            {
+                if(tunnels[x].IndividualAddress == pa)
+                    isInUse = true;
+            }
+
+            if(isInUse)
+                continue;
+
+            if(hasDoublePA)
+                println("Not Unique ");
+            tun->IndividualAddress = pa;
+            break;
         }
 
-        bool isInUse = false;
-        for(int x = 0; x < KNX_TUNNELING; x++)
-        {
-            if(tunnels[x].IndividualAddress == pa)
-                isInUse = true;
-        }
-
-        if(isInUse)
-            continue;
-
-        if(hasDoublePA)
-            println("Not Unique ");
-        tun->IndividualAddress = pa;
-        break;
+#if KNX_SERVICE_FAMILY_TUNNELING >= 2
     }
+#endif
+
 
     if(tun == nullptr)
     {

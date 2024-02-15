@@ -17,6 +17,8 @@ class KnxIpTunnelConnection
     unsigned long lastHeartbeat = 0;
     bool IsConfig = false;
 
+    uint8_t Version = 1;
+
     void Reset();
 
   private:

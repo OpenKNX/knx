@@ -35,4 +35,16 @@ void KnxIpCRI::layer(uint8_t value)
 {
     _data[2] = value;
 }
+
+bool KnxIpCRI::isExtended()
+{
+    return length() == 6;
+}
+
+uint16_t KnxIpCRI::individualAddress()
+{
+    uint16_t addr = 0;
+    popWord(addr, _data + 4);
+    return addr;
+}
 #endif

@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include "config.h"
+#include "bits.h"
 
 #ifdef USE_IP
 
@@ -29,6 +30,8 @@ class KnxIpCRI
     uint8_t layer() const;
     uint8_t length() const;
     void length(uint8_t value);
+    bool isExtended();
+    uint16_t individualAddress()
 
   protected:
     uint8_t* _data = 0;
