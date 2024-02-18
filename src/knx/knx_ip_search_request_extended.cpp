@@ -29,16 +29,17 @@ KnxIpSearchRequestExtended::KnxIpSearchRequestExtended(uint8_t* data, uint16_t l
 
             case 0x04:
                 srpRequestDIBs = true;
-                for(int i = 0; i < data[0]-2; i++)
+                println(data[currentPos]);
+                for(int i = 0; i < data[currentPos]-2; i++)
                 {
-                    if(data[i+2] == 0) continue;
-                    if(data[i+2] > REQUESTED_DIBS_MAX)
+                    println(data[currentPos+i+2]);
+                    if(data[currentPos+i+2] == 0) continue;
+                    if(data[currentPos+i+2] > REQUESTED_DIBS_MAX)
                     {
-                        print("Requested DIBs to high ");
-                        println(data[i+2]);
+                        print("Requested DIBs too high ");
                         continue;
                     }
-                    requestedDIBs[data[i+2]] = true;
+                    requestedDIBs[data[currentPos+i+2]] = true;
                 }
                 break;
         }

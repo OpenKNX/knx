@@ -421,7 +421,7 @@ void IpDataLinkLayer::loopHandleSearchRequestExtended(uint8_t* buffer, uint16_t 
     #endif
 
     //defaults: “Device Information DIB”, “Extended Device Information DIB” and “Supported Services DIB”.
-    int dipLength = LEN_DEVICE_INFORMATION_DIB + LEN_SERVICE_DIB + LEN_EXTENDED_DEVICE_INFORMATION_DIB;
+    int dibLength = LEN_DEVICE_INFORMATION_DIB + LEN_SERVICE_DIB + LEN_EXTENDED_DEVICE_INFORMATION_DIB;
 
     if(searchRequest.srpByService)
     {
@@ -454,36 +454,41 @@ void IpDataLinkLayer::loopHandleSearchRequestExtended(uint8_t* buffer, uint16_t 
     {
         println("srpRequestDIBs");
         if(searchRequest.requestedDIB(IP_CONFIG))
-            dipLength += LEN_IP_CONFIG_DIB; //16
+            dibLength += LEN_IP_CONFIG_DIB; //16
 
         if(searchRequest.requestedDIB(IP_CUR_CONFIG))
-            dipLength += LEN_IP_CURRENT_CONFIG_DIB; //20
+            dibLength += LEN_IP_CURRENT_CONFIG_DIB; //20
 
         if(searchRequest.requestedDIB(KNX_ADDRESSES))
         {
             uint8_t count = 1;
             uint16_t propval = 0;
             _ipParameters.readProperty(PID_ADDITIONAL_INDIVIDUAL_ADDRESSES, 0, count, (uint8_t*)&propval);
-            dipLength += 4 + propval*2;
+            dibLength += 4 + propval*2;
         }
 
         if(searchRequest.requestedDIB(MANUFACTURER_DATA))
-            dipLength += 0; //4 + n
+            dibLength += 0; //4 + n
 
         if(searchRequest.requestedDIB(TUNNELING_INFO))
         {
             uint8_t count = 1;
             uint16_t propval = 0;
             _ipParameters.readProperty(PID_ADDITIONAL_INDIVIDUAL_ADDRESSES, 0, count, (uint8_t*)&propval);
-            dipLength += 4 + propval*4;
+            print("tunnelingInfo: ");
+            println(propval);
+            propval=4;
+            dibLength += 4 + propval*4;
         }
     }
 
-    KnxIpSearchResponseExtended searchResponse(_ipParameters, _deviceObject, dipLength);
+    
 
-    searchResponse.setDeviceInfo(_ipParameters, _deviceObject);
-    searchResponse.setSupportedServices();
-    searchResponse.setExtendedDeviceInfo();
+    KnxIpSearchResponseExtended searchResponse(_ipParameters, _deviceObject, dibLength);
+
+    searchResponse.setDeviceInfo(_ipParameters, _deviceObject); //DescriptionTypeCode::DeviceInfo 1
+    searchResponse.setSupportedServices(); //DescriptionTypeCode::SUPP_SVC_FAMILIES 2
+    searchResponse.setExtendedDeviceInfo(); //DescriptionTypeCode::EXTENDED_DEVICE_INFO 8
 
     if(searchRequest.srpRequestDIBs)
     {
@@ -498,7 +503,7 @@ void IpDataLinkLayer::loopHandleSearchRequestExtended(uint8_t* buffer, uint16_t 
 
         if(searchRequest.requestedDIB(MANUFACTURER_DATA))
         {
-            println("requested MANUFACTURER_DATA but not implemented");
+            //println("requested MANUFACTURER_DATA but not implemented");
         }
 
         if(searchRequest.requestedDIB(TUNNELING_INFO))

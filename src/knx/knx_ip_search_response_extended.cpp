@@ -22,6 +22,8 @@ KnxIpSearchResponseExtended::KnxIpSearchResponseExtended(IpParameterObject& para
     : KnxIpFrame(LEN_KNXIP_HEADER + LEN_IPHPAI + dibLength),
       _controlEndpoint(_data + LEN_KNXIP_HEADER)
 {
+    print("dibLength: ");
+    println(dibLength);
     serviceTypeIdentifier(SearchResponseExt);
 
     _controlEndpoint.length(LEN_IPHPAI);
@@ -34,6 +36,7 @@ KnxIpSearchResponseExtended::KnxIpSearchResponseExtended(IpParameterObject& para
 
 void KnxIpSearchResponseExtended::setDeviceInfo(IpParameterObject& parameters, DeviceObject& deviceObject)
 {
+    println("setDeviceInfo");
     KnxIpDeviceInformationDIB _deviceInfo(_data + currentPos);
     _deviceInfo.length(LEN_DEVICE_INFORMATION_DIB);
     _deviceInfo.code(DEVICE_INFO);
@@ -64,6 +67,7 @@ void KnxIpSearchResponseExtended::setDeviceInfo(IpParameterObject& parameters, D
 
 void KnxIpSearchResponseExtended::setSupportedServices()
 {
+    println("setSupportedServices");
     KnxIpSupportedServiceDIB _supportedServices(_data + currentPos);
     _supportedServices.length(LEN_SERVICE_DIB);
     _supportedServices.code(SUPP_SVC_FAMILIES);
@@ -80,6 +84,7 @@ void KnxIpSearchResponseExtended::setSupportedServices()
 
 void KnxIpSearchResponseExtended::setIpConfig(IpParameterObject& parameters)
 {
+    println("setIpConfig");
     KnxIpConfigDIB _ipConfig(_data + currentPos);
     _ipConfig.length(LEN_IP_CONFIG_DIB);
     _ipConfig.code(IP_CONFIG);
@@ -89,11 +94,12 @@ void KnxIpSearchResponseExtended::setIpConfig(IpParameterObject& parameters)
     _ipConfig.info1(parameters.propertyValue<uint8_t>(PID_IP_CAPABILITIES));
     _ipConfig.info2(parameters.propertyValue<uint8_t>(PID_IP_ASSIGNMENT_METHOD));
 
-    currentPos += LEN_EXTENDED_DEVICE_INFORMATION_DIB;
+    currentPos += LEN_IP_CONFIG_DIB;
 }
 
 void KnxIpSearchResponseExtended::setIpCurrentConfig(IpParameterObject& parameters)
 {
+    println("setIpCurrentConfig");
     KnxIpConfigDIB _ipCurConfig(_data + currentPos, true);
     _ipCurConfig.length(LEN_IP_CURRENT_CONFIG_DIB);
     _ipCurConfig.code(IP_CUR_CONFIG);
@@ -104,13 +110,15 @@ void KnxIpSearchResponseExtended::setIpCurrentConfig(IpParameterObject& paramete
     _ipCurConfig.info1(parameters.propertyValue<uint8_t>(PID_CURRENT_IP_ASSIGNMENT_METHOD));
     _ipCurConfig.info2(0x00); //Reserved
 
-    currentPos += LEN_EXTENDED_DEVICE_INFORMATION_DIB;
+    currentPos += LEN_IP_CURRENT_CONFIG_DIB;
 }
 
 void KnxIpSearchResponseExtended::setKnxAddresses(IpParameterObject& parameters, DeviceObject& deviceObject)
 {
+    println("setKnxAddresses");
     KnxIpKnxAddressesDIB _knxAddresses(_data + currentPos);
-
+    _knxAddresses.length(4); //minimum
+    _knxAddresses.code(KNX_ADDRESSES);
     _knxAddresses.individualAddress(deviceObject.individualAddress());
 
     uint8_t count = 1;
@@ -131,8 +139,10 @@ void KnxIpSearchResponseExtended::setKnxAddresses(IpParameterObject& parameters,
 
 void KnxIpSearchResponseExtended::setTunnelingInfo(IpParameterObject& parameters, KnxIpTunnelConnection tunnels[])
 {
+    println("setTunnelingInfo");
     KnxIpTunnelingInfoDIB _tunnelInfo(_data + currentPos);
-
+    _tunnelInfo.length(4); //minlength
+    _tunnelInfo.code(TUNNELING_INFO);
     _tunnelInfo.apduLength(254); //FIXME where to get from
 
     uint8_t count = 1;
@@ -141,6 +151,7 @@ void KnxIpSearchResponseExtended::setTunnelingInfo(IpParameterObject& parameters
 
     const uint8_t *addresses = parameters.propertyData(PID_ADDITIONAL_INDIVIDUAL_ADDRESSES);
 
+    propval = 4;
     for(int i = 0; i < propval; i++)
     {
         uint16_t additional = 0;
@@ -160,10 +171,13 @@ void KnxIpSearchResponseExtended::setTunnelingInfo(IpParameterObject& parameters
         }
 
         if(doubleCounter > 1 && used)
-            flags |= 1 << 1; //Slot is not usable; duoble PA is already used
+            flags |= 1 << 2; //Slot is not usable; double PA is already used
 
         if(used)
+        {
+            flags |= 1 << 2; //Slot is not usable; PA is already used
             flags |= 1; //Slot is not free
+        }
 
         flags = ~flags;
 
@@ -175,6 +189,7 @@ void KnxIpSearchResponseExtended::setTunnelingInfo(IpParameterObject& parameters
 
 void KnxIpSearchResponseExtended::setExtendedDeviceInfo()
 {
+    println("setExtendedDeviceInfo");
     KnxIpExtendedDeviceInformationDIB _extended(_data + currentPos);
     _extended.length(LEN_EXTENDED_DEVICE_INFORMATION_DIB);
     _extended.code(EXTENDED_DEVICE_INFO);
