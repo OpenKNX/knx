@@ -460,11 +460,9 @@ void IpDataLinkLayer::loopHandleSearchRequestExtended(uint8_t* buffer, uint16_t 
             dibLength += LEN_IP_CURRENT_CONFIG_DIB; //20
 
         if(searchRequest.requestedDIB(KNX_ADDRESSES))
-        {
-            uint8_t count = 1;
-            uint16_t propval = 0;
-            _ipParameters.readProperty(PID_ADDITIONAL_INDIVIDUAL_ADDRESSES, 0, count, (uint8_t*)&propval);
-            dibLength += 4 + propval*2;
+        {uint16_t length = 0;
+            _ipParameters.readPropertyLength(PID_ADDITIONAL_INDIVIDUAL_ADDRESSES, length);
+            dibLength += 4 + length*2;
         }
 
         if(searchRequest.requestedDIB(MANUFACTURER_DATA))
@@ -472,17 +470,11 @@ void IpDataLinkLayer::loopHandleSearchRequestExtended(uint8_t* buffer, uint16_t 
 
         if(searchRequest.requestedDIB(TUNNELING_INFO))
         {
-            uint8_t count = 1;
-            uint16_t propval = 0;
-            _ipParameters.readProperty(PID_ADDITIONAL_INDIVIDUAL_ADDRESSES, 0, count, (uint8_t*)&propval);
-            print("tunnelingInfo: ");
-            println(propval);
-            propval=4;
-            dibLength += 4 + propval*4;
+            uint16_t length = 0;
+            _ipParameters.readPropertyLength(PID_ADDITIONAL_INDIVIDUAL_ADDRESSES, length);
+            dibLength += 4 + length*4;
         }
     }
-
-    
 
     KnxIpSearchResponseExtended searchResponse(_ipParameters, _deviceObject, dibLength);
 
@@ -507,7 +499,13 @@ void IpDataLinkLayer::loopHandleSearchRequestExtended(uint8_t* buffer, uint16_t 
         }
 
         if(searchRequest.requestedDIB(TUNNELING_INFO))
-            searchResponse.setTunnelingInfo(_ipParameters, tunnels);
+            searchResponse.setTunnelingInfo(_ipParameters, _deviceObject, tunnels);
+    }
+
+    if(searchResponse.totalLength() > 150)
+    {
+        println("skipped response cause length is not plausible");
+        return;
     }
 
     _platform.sendBytesUniCast(searchRequest.hpai().ipAddress(), searchRequest.hpai().ipPortNumber(), searchResponse.data(), searchResponse.totalLength());
@@ -598,11 +596,10 @@ void IpDataLinkLayer::loopHandleConnectRequest(uint8_t* buffer, uint16_t length)
     bool hasDoublePA = false;
 
     // read current elements in PID_ADDITIONAL_INDIVIDUAL_ADDRESSES 
-    uint8_t count = 1;
-    uint16_t propval = 0;
-    _ipParameters.readProperty(PID_ADDITIONAL_INDIVIDUAL_ADDRESSES, 0, count, (uint8_t*)&propval);
+    uint16_t addrCount = 0;
+    _ipParameters.readPropertyLength(PID_ADDITIONAL_INDIVIDUAL_ADDRESSES, addrCount);
     const uint8_t *addresses;
-    if(propval == KNX_TUNNELING)
+    if(addrCount == KNX_TUNNELING)
     {
         addresses = _ipParameters.propertyData(PID_ADDITIONAL_INDIVIDUAL_ADDRESSES);
     }

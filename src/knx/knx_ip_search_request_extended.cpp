@@ -29,10 +29,8 @@ KnxIpSearchRequestExtended::KnxIpSearchRequestExtended(uint8_t* data, uint16_t l
 
             case 0x04:
                 srpRequestDIBs = true;
-                println(data[currentPos]);
                 for(int i = 0; i < data[currentPos]-2; i++)
                 {
-                    println(data[currentPos+i+2]);
                     if(data[currentPos+i+2] == 0) continue;
                     if(data[currentPos+i+2] > REQUESTED_DIBS_MAX)
                     {

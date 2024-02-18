@@ -22,8 +22,6 @@ KnxIpSearchResponseExtended::KnxIpSearchResponseExtended(IpParameterObject& para
     : KnxIpFrame(LEN_KNXIP_HEADER + LEN_IPHPAI + dibLength),
       _controlEndpoint(_data + LEN_KNXIP_HEADER)
 {
-    print("dibLength: ");
-    println(dibLength);
     serviceTypeIdentifier(SearchResponseExt);
 
     _controlEndpoint.length(LEN_IPHPAI);
@@ -121,13 +119,12 @@ void KnxIpSearchResponseExtended::setKnxAddresses(IpParameterObject& parameters,
     _knxAddresses.code(KNX_ADDRESSES);
     _knxAddresses.individualAddress(deviceObject.individualAddress());
 
-    uint8_t count = 1;
-    uint16_t propval = 0;
-    parameters.readProperty(PID_ADDITIONAL_INDIVIDUAL_ADDRESSES, 0, count, (uint8_t*)&propval);
+    uint16_t length = 0;
+    parameters.readPropertyLength(PID_ADDITIONAL_INDIVIDUAL_ADDRESSES, length);
 
     const uint8_t *addresses = parameters.propertyData(PID_ADDITIONAL_INDIVIDUAL_ADDRESSES);
 
-    for(int i = 0; i < propval; i++)
+    for(int i = 0; i < length; i++)
     {
         uint16_t additional = 0;
         popWord(additional, addresses + i*2);
@@ -137,7 +134,7 @@ void KnxIpSearchResponseExtended::setKnxAddresses(IpParameterObject& parameters,
     currentPos += _knxAddresses.length();
 }
 
-void KnxIpSearchResponseExtended::setTunnelingInfo(IpParameterObject& parameters, KnxIpTunnelConnection tunnels[])
+void KnxIpSearchResponseExtended::setTunnelingInfo(IpParameterObject& parameters, DeviceObject& deviceObject, KnxIpTunnelConnection tunnels[])
 {
     println("setTunnelingInfo");
     KnxIpTunnelingInfoDIB _tunnelInfo(_data + currentPos);
@@ -145,14 +142,24 @@ void KnxIpSearchResponseExtended::setTunnelingInfo(IpParameterObject& parameters
     _tunnelInfo.code(TUNNELING_INFO);
     _tunnelInfo.apduLength(254); //FIXME where to get from
 
-    uint8_t count = 1;
-    uint16_t propval = 0;
-    parameters.readProperty(PID_ADDITIONAL_INDIVIDUAL_ADDRESSES, 0, count, (uint8_t*)&propval);
+    uint16_t length = 0;
+    parameters.readPropertyLength(PID_ADDITIONAL_INDIVIDUAL_ADDRESSES, length);
+    
+    const uint8_t *addresses;
+    if(length == KNX_TUNNELING)
+    {
+        addresses = parameters.propertyData(PID_ADDITIONAL_INDIVIDUAL_ADDRESSES);
+    } else {
+        uint8_t addrbuffer[KNX_TUNNELING*2];
+        addresses = (uint8_t*)addrbuffer;
+        for(int i = 0; i < KNX_TUNNELING; i++)
+        {
+            addrbuffer[i*2+1] = i+1;
+            addrbuffer[i*2] = deviceObject.individualAddress() / 0x0100;
+        }
+    }
 
-    const uint8_t *addresses = parameters.propertyData(PID_ADDITIONAL_INDIVIDUAL_ADDRESSES);
-
-    propval = 4;
-    for(int i = 0; i < propval; i++)
+    for(int i = 0; i < length; i++)
     {
         uint16_t additional = 0;
         popWord(additional, addresses + i*2);

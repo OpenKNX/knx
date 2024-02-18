@@ -26,7 +26,7 @@ class KnxIpSearchResponseExtended : public KnxIpFrame
     void setIpCurrentConfig(IpParameterObject& parameters);
     void setKnxAddresses(IpParameterObject& parameters, DeviceObject& deviceObject);
     //setManuData
-    void setTunnelingInfo(IpParameterObject& parameters, KnxIpTunnelConnection tunnels[]);
+    void setTunnelingInfo(IpParameterObject& parameters, DeviceObject& deviceObject, KnxIpTunnelConnection tunnels[]);
     void setExtendedDeviceInfo();
     uint8_t *DIBs();
   private:
