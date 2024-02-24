@@ -469,6 +469,7 @@ void IpDataLinkLayer::loopHandleConnectRequest(uint8_t* buffer, uint16_t length)
     uint16_t propval = 0;
     _ipParameters.readProperty(PID_ADDITIONAL_INDIVIDUAL_ADDRESSES, 0, count, (uint8_t*)&propval);
     const uint8_t *addresses;
+    propval = htons(propval);
     if(propval == KNX_TUNNELING)
     {
         addresses = _ipParameters.propertyData(PID_ADDITIONAL_INDIVIDUAL_ADDRESSES);
@@ -482,6 +483,8 @@ void IpDataLinkLayer::loopHandleConnectRequest(uint8_t* buffer, uint16_t length)
             addrbuffer[i*2+1] = i+1;
             addrbuffer[i*2] = _deviceObject.individualAddress() / 0x0100;
         }
+        count = KNX_TUNNELING;
+        _ipParameters.writeProperty(PID_ADDITIONAL_INDIVIDUAL_ADDRESSES, 1, addrbuffer, count);
 #ifdef KNX_LOG_TUNNELING
     	println("no Tunnel-PAs configured, using own subnet");
 #endif
