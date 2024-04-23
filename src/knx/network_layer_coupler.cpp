@@ -89,8 +89,6 @@ bool NetworkLayerCoupler::isGroupAddressInFilterTable(uint16_t groupAddress)
 
 bool NetworkLayerCoupler::isRoutedGroupAddress(uint16_t groupAddress, uint8_t sourceInterfaceIndex)
 {
-    uint8_t interfaceIndex = (sourceInterfaceIndex == kSecondaryIfIndex) ? kPrimaryIfIndex : kSecondaryIfIndex;
-
     uint8_t lcconfig = LCCONFIG::PHYS_FRAME_ROUT | LCCONFIG::PHYS_REPEAT | LCCONFIG::BROADCAST_REPEAT | LCCONFIG::GROUP_IACK_ROUT | LCCONFIG::PHYS_IACK_NORMAL; // default value from spec. in case prop is not availible.
     uint8_t lcgrpconfig = LCGRPCONFIG::GROUP_6FFFROUTE | LCGRPCONFIG::GROUP_7000UNLOCK | LCGRPCONFIG::GROUP_REPEAT; // default value from spec. in case prop is not availible.
     Property* prop_lcgrpconfig;
