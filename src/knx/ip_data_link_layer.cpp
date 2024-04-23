@@ -420,7 +420,7 @@ void IpDataLinkLayer::loopHandleSearchRequestExtended(uint8_t* buffer, uint16_t 
     #endif
     #endif
 
-    //defaults: ‚ÄúDevice Information DIB‚Äù, ‚ÄúExtended Device Information DIB‚Äù and ‚ÄúSupported Services DIB‚Äù.
+    //defaults: ìDevice Information DIBî, ìExtended Device Information DIBî and ìSupported Services DIBî.
     int dibLength = LEN_DEVICE_INFORMATION_DIB + LEN_SERVICE_DIB + LEN_EXTENDED_DEVICE_INFORMATION_DIB;
 
     if(searchRequest.srpByService)
@@ -612,6 +612,8 @@ void IpDataLinkLayer::loopHandleConnectRequest(uint8_t* buffer, uint16_t length)
             addrbuffer[i*2+1] = i+1;
             addrbuffer[i*2] = _deviceObject.individualAddress() / 0x0100;
         }
+        count = KNX_TUNNELING;
+        _ipParameters.writeProperty(PID_ADDITIONAL_INDIVIDUAL_ADDRESSES, 1, addrbuffer, count);
 #ifdef KNX_LOG_TUNNELING
     	println("no Tunnel-PAs configured, using own subnet");
 #endif
