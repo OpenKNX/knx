@@ -619,6 +619,7 @@ void IpDataLinkLayer::loopHandleConnectRequest(uint8_t* buffer, uint16_t length)
 #endif
     }
 
+    // this check for double PA has no effect besides a print output
     for(int i = 0; i < KNX_TUNNELING; i++)
     {
         uint16_t pa = 0;
