@@ -84,12 +84,15 @@ int KNX_Decode_Value(uint8_t* payload, size_t payload_length, const Dpt& datatyp
         // DPT 19.* - Date and Time
         if (datatype.mainGroup == 19 && datatype.subGroup == 1 && (datatype.index <= 3 || datatype.index == 9 || datatype.index == 10))
             return busValueToDateTime(payload, payload_length, datatype, value);
+        // DPT 24.* - ISO 8859-1 Variable String
+        if (datatype.mainGroup == 24 && datatype.subGroup <= 1 && !datatype.index)
+            return busValueToStringVariable(payload, payload_length, datatype, value);
         // DPT 26.* - Scene Info
         if (datatype.mainGroup == 26 && datatype.subGroup == 1 && datatype.index <= 1)
             return busValueToSceneInfo(payload, payload_length, datatype, value);
-        // DPT 28.* - Unicode String
+        // DPT 28.* - Unicode UTF-8 Variable String
         if (datatype.mainGroup == 28 && datatype.subGroup == 1 && !datatype.index)
-            return busValueToUnicode(payload, payload_length, datatype, value);
+            return busValueToStringVariable(payload, payload_length, datatype, value);
         // DPT 29.* - Signed 64 Bit Integer
         if (datatype.mainGroup == 29 && datatype.subGroup >= 10 && datatype.subGroup <= 12 && !datatype.index)
             return busValueToSigned64(payload, payload_length, datatype, value);
@@ -203,12 +206,15 @@ int KNX_Encode_Value(const KNXValue& value, uint8_t* payload, size_t payload_len
     // DPT 19.* - Date and Time
     if (datatype.mainGroup == 19 && datatype.subGroup == 1 && (datatype.index <= 3 || datatype.index == 9 || datatype.index == 10))
         return valueToBusValueDateTime(value, payload, payload_length, datatype);
+    // DPT 24.* - ISO 8859-1 Variable String
+    if (datatype.mainGroup == 24 && datatype.subGroup == 1 && !datatype.index)
+        return valueToBusValueStringVariable(value, payload, payload_length, datatype);
     // DPT 26.* - Scene Info
     if (datatype.mainGroup == 26 && datatype.subGroup == 1 && datatype.index <= 1)
         return valueToBusValueSceneInfo(value, payload, payload_length, datatype);
-    // DPT 28.* - Unicode String
+    // DPT 28.* - Unicode UTF-8 Variable String
     if (datatype.mainGroup == 28 && datatype.subGroup == 1 && !datatype.index)
-        return valueToBusValueUnicode(value, payload, payload_length, datatype);
+        return valueToBusValueStringVariable(value, payload, payload_length, datatype);
     // DPT 29.* - Signed 64 Bit Integer
     if (datatype.mainGroup == 29 && datatype.subGroup >= 10 && datatype.subGroup <= 12 && !datatype.index)
         return valueToBusValueSigned64(value, payload, payload_length, datatype);
@@ -529,6 +535,18 @@ int busValueToString(const uint8_t* payload, size_t payload_length, const Dpt& d
     return true;
 }
 
+int busValueToStringVariable(const uint8_t* payload, size_t payload_length, const Dpt& datatype, KNXValue& value)
+{
+    char strValue[payload_length];
+    for (int n = 0; n < payload_length; ++n)
+    {
+        strValue[n] = unsigned8FromPayload(payload, n);
+        if (!strValue[n]) break; // stop on terminator 0x00
+    }
+    value = strValue;
+    return true;
+}
+
 int busValueToScene(const uint8_t* payload, size_t payload_length, const Dpt& datatype, KNXValue& value)
 {
     ASSERT_PAYLOAD(1);
@@ -666,12 +684,6 @@ int busValueToDateTime(const uint8_t* payload, size_t payload_length, const Dpt&
         }
     }
 
-    return false;
-}
-
-int busValueToUnicode(const uint8_t* payload, size_t payload_length, const Dpt& datatype, KNXValue& value)
-{
-    //TODO
     return false;
 }
 
@@ -1198,6 +1210,17 @@ int valueToBusValueString(const KNXValue& value, uint8_t* payload, size_t payloa
     return true;
 }
 
+int valueToBusValueStringVariable(const KNXValue& value, uint8_t* payload, size_t payload_length, const Dpt& datatype)
+{
+    const char* strValue = value;
+    uint8_t val = strValue[0];
+    for (int n = 0; n < 254; n++) { // max. possible length APDU 254
+        unsigned8ToPayload(payload, payload_length, n, val, 0xff);
+        if (!strValue[n]) break; // stop on terminator 0x00
+    }
+    return true;
+}
+
 int valueToBusValueScene(const KNXValue& value, uint8_t* payload, size_t payload_length, const Dpt& datatype)
 {
     if ((int64_t)value < INT64_C(0) || (int64_t)value > INT64_C(63))
@@ -1338,12 +1361,6 @@ int valueToBusValueDateTime(const KNXValue& value, uint8_t* payload, size_t payl
     }
 
     return true;
-}
-
-int valueToBusValueUnicode(const KNXValue& value, uint8_t* payload, size_t payload_length, const Dpt& datatype)
-{
-    //TODO
-    return false;
 }
 
 int valueToBusValueSigned64(const KNXValue& value, uint8_t* payload, size_t payload_length, const Dpt& datatype)
