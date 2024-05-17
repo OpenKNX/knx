@@ -583,6 +583,7 @@ void IpDataLinkLayer::loopHandleConnectRequest(uint8_t* buffer, uint16_t length)
         return;
     }
 
+    //assign the first free tunnel (ChannelID = 0) to tun
     KnxIpTunnelConnection *tun = nullptr;
     for(int i = 0; i < KNX_TUNNELING; i++)
     {
@@ -619,12 +620,13 @@ void IpDataLinkLayer::loopHandleConnectRequest(uint8_t* buffer, uint16_t length)
 #endif
     }
 
-    // this check for double PA has no effect besides a print output
+    // loop through all availible Tunnel PAs, check if they are not in use and assign the first free one to the tunnel
     for(int i = 0; i < KNX_TUNNELING; i++)
     {
         uint16_t pa = 0;
         popWord(pa, addresses + (i*2));
 
+        // this check for double PA has no effect besides a print output
         for(int x = 0; x < KNX_TUNNELING; x++)
         {
             uint16_t pa2 = 0;
