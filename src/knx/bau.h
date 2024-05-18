@@ -73,8 +73,12 @@ class BusAccessUnit
                                               uint8_t propertyId, uint8_t numberOfElements, uint16_t startIndex, uint8_t* data, uint8_t length, bool confirmed);
     virtual void propertyDescriptionReadLocalConfirm(AckType ack, Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl,
                                                      uint8_t objectIndex, uint8_t propertyId, uint8_t propertyIndex, bool status);
+    virtual void propertyExtDescriptionReadLocalConfirm(AckType ack, Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl,
+                                                     uint16_t objectIndex, uint8_t propertyId, uint16_t propertyIndex, bool status);
     virtual void propertyDescriptionReadIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl,
                                                    uint8_t objectIndex, uint8_t propertyId, uint8_t propertyIndex);
+    virtual void propertyExtDescriptionReadIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl,
+                                                   uint16_t objectType, uint16_t objectInstance, uint16_t propertyId, uint8_t descriptionType, uint16_t propertyIndex);
     virtual void propertyDescriptionReadResponse(AckType ack, Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl,
                                                  uint8_t objectIndex, uint8_t propertyId, uint8_t propertyIndex, bool writeEnable, uint8_t type,
                                                  uint16_t maxNumberOfElements, uint8_t access);

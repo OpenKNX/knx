@@ -78,7 +78,7 @@ InterfaceObject* Bau07B0::getInterfaceObject(uint8_t idx)
     }
 }
 
-InterfaceObject* Bau07B0::getInterfaceObject(ObjectType objectType, uint8_t objectInstance)
+InterfaceObject* Bau07B0::getInterfaceObject(ObjectType objectType, uint16_t objectInstance)
 {
     // We do not use it right now. 
     // Required for coupler mode as there are multiple router objects for example

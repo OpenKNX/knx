@@ -125,6 +125,9 @@ class ApplicationLayer
     void propertyDescriptionReadResponse(AckType ack, Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl& secCtrl,
                                          uint8_t objectIndex, uint8_t propertyId, uint8_t propertyIndex, bool writeEnable, uint8_t type,
                                          uint16_t maxNumberOfElements, uint8_t access);
+    void propertyExtDescriptionReadResponse(AckType ack, Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl& secCtrl,
+                                         uint16_t objectType, uint16_t objectInstance, uint16_t propertyId, uint16_t propertyIndex, uint8_t descriptionType, bool writeEnable, uint8_t type,
+                                         uint16_t maxNumberOfElements, uint8_t access);
     void memoryReadRequest(AckType ack, Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl& secCtrl, uint8_t number,
                            uint16_t memoryAddress);
     void memoryReadResponse(AckType ack, Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl& secCtrl, uint8_t number,

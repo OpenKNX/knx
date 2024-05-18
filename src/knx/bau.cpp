@@ -151,7 +151,16 @@ void BusAccessUnit::propertyDescriptionReadLocalConfirm(AckType ack, Priority pr
 {
 }
 
+void BusAccessUnit::propertyExtDescriptionReadLocalConfirm(AckType ack, Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, uint16_t objectIndex, uint8_t propertyId, uint16_t propertyIndex, bool status)
+{
+}
+
 void BusAccessUnit::propertyDescriptionReadIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, uint8_t objectIndex, uint8_t propertyId, uint8_t propertyIndex)
+{
+}
+
+void BusAccessUnit::propertyExtDescriptionReadIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl,
+uint16_t objectType, uint16_t objectInstance, uint16_t propertyId, uint8_t descriptionType, uint16_t propertyIndex)
 {
 }
 

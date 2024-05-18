@@ -259,6 +259,33 @@ void BauSystemB::propertyDescriptionReadIndication(Priority priority, HopCountTy
         writeEnable, type, numberOfElements, access);
 }
 
+void BauSystemB::propertyExtDescriptionReadIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl,
+    uint16_t objectType, uint16_t objectInstance, uint16_t propertyId, uint8_t descriptionType, uint16_t propertyIndex)
+{
+    uint8_t pid = propertyId;
+    uint8_t pidx = propertyIndex;
+    if(propertyId > 0xFF || propertyIndex > 0xFF)
+    {
+        println("BauSystemB::propertyExtDescriptionReadIndication: propertyId or Idx > 256 are not supported");
+        return;
+    }
+    if(descriptionType != 0)
+    {
+        println("BauSystemB::propertyExtDescriptionReadIndication: only descriptionType 0 supported");
+        return;
+    }
+    bool writeEnable = false;
+    uint8_t type = 0;
+    uint16_t numberOfElements = 0;
+    uint8_t access = 0;
+    InterfaceObject* obj = getInterfaceObject((ObjectType)objectType, objectInstance);
+    if (obj)
+        obj->readPropertyDescription(pid, pidx, writeEnable, type, numberOfElements, access);
+
+    applicationLayer().propertyExtDescriptionReadResponse(AckRequested, priority, hopType, asap, secCtrl, objectType, objectInstance, propertyId, propertyIndex,
+        descriptionType, writeEnable, type, numberOfElements, access);
+}
+
 void BauSystemB::propertyValueWriteIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, uint8_t objectIndex,
     uint8_t propertyId, uint8_t numberOfElements, uint16_t startIndex, uint8_t* data, uint8_t length)
 {

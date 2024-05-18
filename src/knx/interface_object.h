@@ -55,7 +55,10 @@ enum ObjectType
     OT_SECURITY = 17,
 
     /** RF Medium Object */
-    OT_RF_MEDIUM = 19
+    OT_RF_MEDIUM = 19,
+
+    /** Dummy so this enum is 16bit */
+    OT_DUMMY = 0xFFFF
 };
 
 /**
