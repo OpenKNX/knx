@@ -561,7 +561,7 @@ void IpDataLinkLayer::loopHandleConnectRequest(uint8_t* buffer, uint16_t length)
     println(connRequest.hpaiCtrl().ipPortNumber());
 #endif
 
-    //We only support 0x04!
+    //We only support 0x03 and 0x04!
     if(connRequest.cri().type() != TUNNEL_CONNECTION && connRequest.cri().type() != DEVICE_MGMT_CONNECTION)
     {
 #ifdef KNX_LOG_TUNNELING
@@ -583,24 +583,15 @@ void IpDataLinkLayer::loopHandleConnectRequest(uint8_t* buffer, uint16_t length)
         return;
     }
 
-    //assign the first free tunnel (ChannelID = 0) to tun
-    KnxIpTunnelConnection *tun = nullptr;
-    for(int i = 0; i < KNX_TUNNELING; i++)
-    {
-        if(tunnels[i].ChannelId == 0)
-        {
-            tun = &tunnels[i];
-            break;
-        }
-    }
+    // data preparation
 
-    bool hasDoublePA = false;
+    uint32_t srcIP = connRequest.hpaiCtrl().ipAddress();
 
     // read current elements in PID_ADDITIONAL_INDIVIDUAL_ADDRESSES 
-    uint16_t addrCount = 0;
-    _ipParameters.readPropertyLength(PID_ADDITIONAL_INDIVIDUAL_ADDRESSES, addrCount);
+    uint16_t propCount = 0;
+    _ipParameters.readPropertyLength(PID_ADDITIONAL_INDIVIDUAL_ADDRESSES, propCount);
     const uint8_t *addresses;
-    if(addrCount == KNX_TUNNELING)
+    if(propCount == KNX_TUNNELING)
     {
         addresses = _ipParameters.propertyData(PID_ADDITIONAL_INDIVIDUAL_ADDRESSES);
     }
@@ -620,43 +611,160 @@ void IpDataLinkLayer::loopHandleConnectRequest(uint8_t* buffer, uint16_t length)
 #endif
     }
 
-    // loop through all availible Tunnel PAs, check if they are not in use and assign the first free one to the tunnel
+    _ipParameters.readPropertyLength(PID_CUSTOM_RESERVED_TUNNELS_CTRL, propCount);
+    const uint8_t *tunCtrlBytes = nullptr;
+    if(propCount == KNX_TUNNELING)
+        tunCtrlBytes = _ipParameters.propertyData(PID_CUSTOM_RESERVED_TUNNELS_CTRL);
+
+    _ipParameters.readPropertyLength(PID_CUSTOM_RESERVED_TUNNELS_IP, propCount);
+    const uint8_t *tunCtrlIp = nullptr;
+    if(propCount == KNX_TUNNELING)
+        tunCtrlIp = _ipParameters.propertyData(PID_CUSTOM_RESERVED_TUNNELS_IP);
+    
+    bool resTunActive = (tunCtrlBytes && tunCtrlIp);
+#ifdef KNX_LOG_TUNNELING
+    	if(resTunActive) println("Reserved Tunnel Feature active");
+
+        if(tunCtrlBytes)
+            printHex("tunCtrlBytes", tunCtrlBytes, 4);
+        if(tunCtrlIp)
+            printHex("tunCtrlIp", tunCtrlIp, 16);
+#endif
+
+    // check if there is a reserved tunnel for the source
+    int firstFreeTunnel = -1;
+    int firstResAndFreeTunnel = -1;
+    int firstResAndOccTunnel = -1;
+    bool tunnelResActive[KNX_TUNNELING];
+    uint8_t tunnelResOptions[KNX_TUNNELING];
     for(int i = 0; i < KNX_TUNNELING; i++)
     {
-        uint16_t pa = 0;
-        popWord(pa, addresses + (i*2));
-
-        // this check for double PA has no effect besides a print output
-        for(int x = 0; x < KNX_TUNNELING; x++)
+        if(resTunActive)
         {
-            uint16_t pa2 = 0;
-            popWord(pa2, addresses + (x*2));
-            if(i != x && pa == pa2)
+            tunnelResActive[i] = *(tunCtrlBytes+i) & 0x80;
+            tunnelResOptions[i] = (*(tunCtrlBytes+i) & 0x60) >> 5;
+        }
+
+
+        if(tunnelResActive[i])   // tunnel reserve feature active for this tunnel
+        {
+            #ifdef KNX_LOG_TUNNELING
+            print("tunnel reserve feature active for this tunnel: ");
+            print(tunnelResActive[i]);
+            print("  options: ");
+            println(tunnelResOptions[i]);
+            #endif
+            
+            uint32_t rIP = 0;
+            popInt(rIP, tunCtrlIp+4*i);
+            if(srcIP == rIP && connRequest.cri().type() == TUNNEL_CONNECTION)
             {
-                hasDoublePA = true;
-                break;
+                // reserved tunnel for this ip found
+                if(tunnels[i].ChannelId == 0) // check if it is free
+                {
+                    if(firstResAndFreeTunnel < 0)
+                        firstResAndFreeTunnel = i;
+                }
+                else
+                {
+                    if(firstResAndOccTunnel < 0)
+                        firstResAndOccTunnel = i;
+                }
             }
         }
-
-        bool isInUse = false;
-        for(int x = 0; x < KNX_TUNNELING; x++)
+        else
         {
-            if(tunnels[x].IndividualAddress == pa)
-                isInUse = true;
+            if(tunnels[i].ChannelId == 0 && firstFreeTunnel < 0)
+                firstFreeTunnel = i;
         }
+    }
+#ifdef KNX_LOG_TUNNELING
+    	print("firstFreeTunnel: ");
+        print(firstFreeTunnel);
+        print(" firstResAndFreeTunnel: ");
+        print(firstResAndFreeTunnel);
+        print(" firstResAndOccTunnel: ");
+        println(firstResAndOccTunnel);
+#endif
+    
+    
+    uint8_t tunIdx = 0xff;
+    if(resTunActive & (firstResAndFreeTunnel >= 0 || firstResAndOccTunnel >= 0))   // tunnel reserve feature active (for this src)
+    {
+        if(firstResAndFreeTunnel >= 0)
+        {
+            tunIdx = firstResAndFreeTunnel;
+        }
+        else if(firstResAndOccTunnel >= 0)
+        {
+            if(tunnelResOptions[firstResAndOccTunnel] == 1) // decline req
+            {
+                ; // do nothing => decline
+            }
+            else if(tunnelResOptions[firstResAndOccTunnel] == 2)  // close current tunnel connection on this tunnel and assign to this request
+            {
+                KnxIpDisconnectRequest discReq;
+                discReq.channelId(tunnels[firstResAndOccTunnel].ChannelId);
+                discReq.hpaiCtrl().length(LEN_IPHPAI);
+                discReq.hpaiCtrl().code(IPV4_UDP);
+                discReq.hpaiCtrl().ipAddress(tunnels[firstResAndOccTunnel].IpAddress);
+                discReq.hpaiCtrl().ipPortNumber(tunnels[firstResAndOccTunnel].PortCtrl);
+                _platform.sendBytesUniCast(tunnels[firstResAndOccTunnel].IpAddress, tunnels[firstResAndOccTunnel].PortCtrl, discReq.data(), discReq.totalLength());
+                tunnels[firstResAndOccTunnel].Reset();
 
-        if(isInUse)
-            continue;
 
-        if(hasDoublePA)
-            println("Not Unique ");
-        tun->IndividualAddress = pa;
-        break;
+                tunIdx = firstResAndOccTunnel;
+            }
+            else if(tunnelResOptions[firstResAndOccTunnel] == 3)  // use the first unreserved tunnel (if one)
+            {
+                if(firstFreeTunnel >= 0)
+                    tunIdx = firstFreeTunnel;
+                else
+                    ; // do nothing => decline
+            }
+            //else
+                // should not happen
+                // do nothing => decline
+        }
+        //else
+            // should not happen
+            // do nothing => decline
+    }
+    else
+    {
+        if(firstFreeTunnel >= 0)
+            tunIdx = firstFreeTunnel;
+        //else
+        // do nothing => decline
+    }
+
+    KnxIpTunnelConnection *tun = nullptr;
+    if(tunIdx != 0xFF)
+    {
+        tun = &tunnels[tunIdx];
+
+        uint16_t tunPa = 0;
+        popWord(tunPa, addresses + (tunIdx*2));
+
+        //check if this PA is in use (should not happen, only when there is one pa wrongly assigned to more then one tunnel)
+        for(int x = 0; x < KNX_TUNNELING; x++)
+            if(tunnels[x].IndividualAddress == tunPa)
+            {
+#ifdef KNX_LOG_TUNNELING
+    	        println("cannot use tunnel because PA is already in use");
+#endif
+                tunIdx = 0xFF;
+                tun = nullptr;
+                break;
+            }
+        
+        tun->IndividualAddress = tunPa;
+
     }
 
     if(tun == nullptr)
     {
-        println("Kein freier Tunnel verfuegbar");
+        println("no free tunnel availible");
         KnxIpConnectResponse connRes(0x00, E_NO_MORE_CONNECTIONS);
         _platform.sendBytesUniCast(connRequest.hpaiCtrl().ipAddress(), connRequest.hpaiCtrl().ipPortNumber(), connRes.data(), connRes.totalLength());
         return;
@@ -664,13 +772,28 @@ void IpDataLinkLayer::loopHandleConnectRequest(uint8_t* buffer, uint16_t length)
 
     if(connRequest.cri().type() == DEVICE_MGMT_CONNECTION)
         tun->IsConfig = true;
+
+    // the channel ID shall be unique on this tunnel server. catch the rare case of a double channel ID
+    bool channelIdInUse;
+    do
+    {
+        _lastChannelId++;
+        channelIdInUse = false;
+        for(int x = 0; x < KNX_TUNNELING; x++)
+            if(tunnels[x].ChannelId == _lastChannelId)
+                channelIdInUse = true;
+    }
+    while(channelIdInUse);
+
     tun->ChannelId = _lastChannelId++;
     tun->lastHeartbeat = millis();
-    if(_lastChannelId == 0)
-        _lastChannelId++;
+    if(_lastChannelId == 255)
+        _lastChannelId = 0;
 
 #ifdef KNX_LOG_TUNNELING
-    print("Neuer Tunnel: 0x");
+    print(">>> new tunnel[");
+    print(tunIdx);
+    print("]: 0x");
     print(tun->ChannelId, 16);
     print("/");
     print(tun->IndividualAddress >> 12);
@@ -728,7 +851,7 @@ void IpDataLinkLayer::loopHandleDisconnectRequest(uint8_t* buffer, uint16_t leng
     KnxIpDisconnectRequest discReq(buffer, length);
             
 #ifdef KNX_LOG_TUNNELING
-    print("Disconnect Channel ID: ");
+    print(">>> Disconnect Channel ID: ");
     println(discReq.channelId());
 #endif
     
