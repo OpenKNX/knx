@@ -43,6 +43,9 @@ Bau091A::Bau091A(Platform& platform)
     _dlLayerPrimary.cemiServer(_cemiServer);
     _dlLayerSecondary.cemiServer(_cemiServer);
     _memory.addSaveRestore(&_cemiServerObject);
+    uint8_t count = 1;
+    uint16_t suppCommModes = 0x0100;
+    _cemiServerObject.writeProperty(PID_COMM_MODES_SUPPORTED, 1, (uint8_t*)&suppCommModes, count); // set the properties Bit 0 to 1 meaning "LinkLayer supported"
 #endif
 
     _memory.addSaveRestore(&_routerObj);
