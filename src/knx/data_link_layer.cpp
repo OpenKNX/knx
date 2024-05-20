@@ -33,6 +33,29 @@ void DataLinkLayer::cemiServer(CemiServer& cemiServer)
     _cemiServer = &cemiServer;
 }
 
+#ifdef KNX_TUNNELING
+void DataLinkLayer::dataRequestToTunnel(CemiFrame& frame)
+{
+    println("default dataRequestToTunnel");
+}
+
+void DataLinkLayer::dataConfirmationToTunnel(CemiFrame& frame)
+{
+    println("default dataConfirmationToTunnel");
+}
+
+void DataLinkLayer::dataIndicationToTunnel(CemiFrame& frame)
+{
+    println("default dataIndicationToTunnel");
+}
+
+bool DataLinkLayer::isTunnelAddress(uint16_t addr)
+{
+    println("default IsTunnelAddress");
+    return false;
+}
+#endif
+
 void DataLinkLayer::dataRequestFromTunnel(CemiFrame& frame)
 {
     _cemiServer->dataConfirmationToTunnel(frame);
@@ -111,12 +134,22 @@ void DataLinkLayer::frameReceived(CemiFrame& frame)
 
 #ifdef USE_CEMI_SERVER
     // Do not send our own message back to the tunnel
+#ifdef KNX_TUNNELING
+    //we dont need to check it here
+    _cemiServer->dataIndicationToTunnel(frame);
+#else
     if (frame.sourceAddress() != _cemiServer->clientAddress())
     {
         _cemiServer->dataIndicationToTunnel(frame);
     }
 #endif
+#endif
 
+    // print("Frame received destination: ");
+    // print(destination, 16);
+    // println();
+    // print("frameReceived: frame valid? :");
+    // println(npdu.frame().valid() ? "true" : "false");
     if (source == ownAddr)
         _deviceObject.individualAddressDuplication(true);
 
@@ -133,15 +166,17 @@ void DataLinkLayer::frameReceived(CemiFrame& frame)
     }
 }
 
-bool DataLinkLayer::sendTelegram(NPDU & npdu, AckType ack, uint16_t destinationAddr, AddressType addrType, uint16_t sourceAddr, FrameFormat format, Priority priority, SystemBroadcast systemBroadcast)
+bool DataLinkLayer::sendTelegram(NPDU & npdu, AckType ack, uint16_t destinationAddr, AddressType addrType, uint16_t sourceAddr, FrameFormat format, Priority priority, SystemBroadcast systemBroadcast, bool doNotRepeat)
 {
     CemiFrame& frame = npdu.frame();
+    // print("Send telegram frame valid ?: ");
+    // println(frame.valid()?"true":"false");
     frame.messageCode(L_data_ind);
     frame.destinationAddress(destinationAddr);
     frame.sourceAddress(sourceAddr);
     frame.addressType(addrType);
     frame.priority(priority);
-    frame.repetition(RepetitionAllowed);
+    frame.repetition(doNotRepeat?NoRepitiion:RepetitionAllowed);
     frame.systemBroadcast(systemBroadcast);
 
     if (npdu.octetCount() <= 15)
@@ -173,11 +208,16 @@ bool DataLinkLayer::sendTelegram(NPDU & npdu, AckType ack, uint16_t destinationA
     // We can just copy the pointer for rfSerialOrDoA as sendFrame() sets
     // a pointer to const uint8_t data in either device object (serial) or
     // RF medium object (domain address)
+
+#ifdef USE_RF
     tmpFrame.rfSerialOrDoA(frame.rfSerialOrDoA()); 
     tmpFrame.rfInfo(frame.rfInfo());
     tmpFrame.rfLfn(frame.rfLfn());
+#endif
     tmpFrame.confirm(ConfirmNoError);
-    _cemiServer->dataIndicationToTunnel(tmpFrame);
+
+    if(frame.sourceAddress() == _deviceObject.individualAddress() && _networkLayerEntity.getEntityIndex() == 1)    // only send to tunnel if we are the secondary interface
+        _cemiServer->dataIndicationToTunnel(tmpFrame);
 #endif
 
     return success;

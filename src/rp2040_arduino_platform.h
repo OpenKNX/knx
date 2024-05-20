@@ -131,6 +131,9 @@ public:
     #endif
     protected: pin_size_t _rxPin = UART_PIN_NOT_DEFINED; 
     protected: pin_size_t _txPin = UART_PIN_NOT_DEFINED;
+
+    protected: IPAddress _remoteIP = 0;
+    protected: uint16_t _remotePort = 0;
 };
 
 #endif
