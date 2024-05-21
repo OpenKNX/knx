@@ -280,7 +280,9 @@ void IpDataLinkLayer::loop()
 
 
     uint8_t buffer[512];
-    int len = _platform.readBytesMultiCast(buffer, 512);
+    uint16_t remotePort = 0;
+    uint32_t remoteAddr = 0;
+    int len = _platform.readBytesMultiCast(buffer, 512, remoteAddr, remotePort);
     if (len <= 0)
         return;
 
@@ -330,7 +332,7 @@ void IpDataLinkLayer::loop()
 #ifdef KNX_TUNNELING
         case ConnectRequest:
         {
-            loopHandleConnectRequest(buffer, len);
+            loopHandleConnectRequest(buffer, len, remoteAddr, remotePort);
             break;
         }
 
@@ -343,7 +345,7 @@ void IpDataLinkLayer::loop()
         case DisconnectRequest:
         {
             loopHandleDisconnectRequest(buffer, len);
-            break;;
+            break;
         }
 
         case DescriptionRequest:
@@ -513,7 +515,7 @@ void IpDataLinkLayer::loopHandleSearchRequestExtended(uint8_t* buffer, uint16_t 
 #endif
 
 #ifdef KNX_TUNNELING
-void IpDataLinkLayer::loopHandleConnectRequest(uint8_t* buffer, uint16_t length)
+void IpDataLinkLayer::loopHandleConnectRequest(uint8_t* buffer, uint16_t length, uint32_t& src_addr, uint16_t& src_port)
 {
     KnxIpConnectRequest connRequest(buffer, length);
 #ifdef KNX_LOG_TUNNELING
@@ -585,7 +587,8 @@ void IpDataLinkLayer::loopHandleConnectRequest(uint8_t* buffer, uint16_t length)
 
     // data preparation
 
-    uint32_t srcIP = connRequest.hpaiCtrl().ipAddress();
+    uint32_t srcIP = connRequest.hpaiCtrl().ipAddress()? connRequest.hpaiCtrl().ipAddress() : src_addr;
+    uint16_t srcPort = connRequest.hpaiCtrl().ipPortNumber()? connRequest.hpaiCtrl().ipPortNumber() : src_port;
 
     // read current elements in PID_ADDITIONAL_INDIVIDUAL_ADDRESSES 
     uint16_t propCount = 0;
@@ -803,9 +806,9 @@ void IpDataLinkLayer::loopHandleConnectRequest(uint8_t* buffer, uint16_t length)
     println(tun->IndividualAddress & 0xFF);
 #endif
 
-    tun->IpAddress = connRequest.hpaiData().ipAddress();
-    tun->PortData = connRequest.hpaiData().ipPortNumber();
-    tun->PortCtrl = connRequest.hpaiCtrl().ipPortNumber();
+    tun->IpAddress = srcIP;
+    tun->PortData = srcPort;
+    tun->PortCtrl = connRequest.hpaiCtrl().ipPortNumber()?connRequest.hpaiCtrl().ipPortNumber():srcPort;
 
     KnxIpConnectResponse connRes(_ipParameters, tun->IndividualAddress, 3671, tun->ChannelId, connRequest.cri().type());
     _platform.sendBytesUniCast(tun->IpAddress, tun->PortCtrl, connRes.data(), connRes.totalLength());

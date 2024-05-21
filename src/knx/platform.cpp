@@ -101,6 +101,11 @@ int Platform::readBytesMultiCast(uint8_t *buffer, uint16_t maxLen)
     return 0;
 }
 
+int Platform::readBytesMultiCast(uint8_t* buffer, uint16_t maxLen, uint32_t& src_addr, uint16_t& src_port)
+{
+    return readBytesMultiCast(buffer, maxLen);
+}
+
 size_t Platform::flashEraseBlockSize()
 {
     return 0;
