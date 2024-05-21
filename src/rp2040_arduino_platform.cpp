@@ -339,7 +339,7 @@ int RP2040ArduinoPlatform::readBytesMultiCast(uint8_t* buffer, uint16_t maxLen, 
     _udp.read(buffer, len);
     _remoteIP = _udp.remoteIP();
     _remotePort = _udp.remotePort();
-    src_addr = _remoteIP;
+    src_addr = htonl(_remoteIP);
     src_port = _remotePort;
 
     // print("Remote IP: ");

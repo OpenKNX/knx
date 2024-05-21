@@ -793,6 +793,10 @@ void IpDataLinkLayer::loopHandleConnectRequest(uint8_t* buffer, uint16_t length,
     if(_lastChannelId == 255)
         _lastChannelId = 0;
 
+    tun->IpAddress = srcIP;
+    tun->PortData = srcPort;
+    tun->PortCtrl = connRequest.hpaiCtrl().ipPortNumber()?connRequest.hpaiCtrl().ipPortNumber():srcPort;
+
 #ifdef KNX_LOG_TUNNELING
     print(">>> new tunnel[");
     print(tunIdx);
@@ -804,11 +808,30 @@ void IpDataLinkLayer::loopHandleConnectRequest(uint8_t* buffer, uint16_t length,
     print((tun->IndividualAddress >> 8) & 0xF);
     print(".");
     println(tun->IndividualAddress & 0xFF);
-#endif
 
-    tun->IpAddress = srcIP;
-    tun->PortData = srcPort;
-    tun->PortCtrl = connRequest.hpaiCtrl().ipPortNumber()?connRequest.hpaiCtrl().ipPortNumber():srcPort;
+        print(">>> Data Endpoint: ");
+    ip = tun->IpAddress;
+    print(ip >> 24);
+    print(".");
+    print((ip >> 16) & 0xFF);
+    print(".");
+    print((ip >> 8) & 0xFF);
+    print(".");
+    print(ip & 0xFF);
+    print(":");
+    println(tun->PortData);
+    print(">>> Ctrl Endpoint: ");
+    ip = tun->IpAddress;
+    print(ip >> 24);
+    print(".");
+    print((ip >> 16) & 0xFF);
+    print(".");
+    print((ip >> 8) & 0xFF);
+    print(".");
+    print(ip & 0xFF);
+    print(":");
+    println(tun->PortCtrl);
+#endif
 
     KnxIpConnectResponse connRes(_ipParameters, tun->IndividualAddress, 3671, tun->ChannelId, connRequest.cri().type());
     _platform.sendBytesUniCast(tun->IpAddress, tun->PortCtrl, connRes.data(), connRes.totalLength());

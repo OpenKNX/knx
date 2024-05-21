@@ -102,7 +102,7 @@ bool Esp32Platform::sendBytesMultiCast(uint8_t * buffer, uint16_t len)
 int Esp32Platform::readBytesMultiCast(uint8_t * buffer, uint16_t maxLen, uint32_t& src_addr, uint16_t& src_port)
 {
     int len = _udp.parsePacket();
-    src_addr = _udp.remoteIP();
+    src_addr = htonl(_udp.remoteIP());
     src_port = _udp.remotePort();
     if (len == 0)
         return 0;
