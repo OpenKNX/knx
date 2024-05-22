@@ -228,4 +228,11 @@ bool Bau091A::configured()
     return _configured;
 }
 
+IpDataLinkLayer* Bau091A::getPrimaryDataLinkLayer() {
+    return (IpDataLinkLayer*)&_dlLayerPrimary;
+}
+
+TpUartDataLinkLayer* Bau091A::getSecondaryDataLinkLayer() {
+    return (TpUartDataLinkLayer*)&_dlLayerSecondary;
+}
 #endif
