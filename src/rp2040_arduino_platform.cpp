@@ -54,6 +54,7 @@ extern Wiznet5500lwIP KNX_NETIF;
 #elif defined(KNX_IP_WIFI)
 #elif defined(KNX_IP_GENERIC)
 
+
 #endif
 
 RP2040ArduinoPlatform::RP2040ArduinoPlatform()
@@ -312,15 +313,15 @@ void RP2040ArduinoPlatform::closeMultiCast()
 bool RP2040ArduinoPlatform::sendBytesMultiCast(uint8_t* buffer, uint16_t len)
 {
     // printHex("<- ",buffer, len);
-
     //ToDo: check if Ethernet is able to receive, return false if not
+
     _udp.beginPacket(mcastaddr, _port);
     _udp.write(buffer, len);
     _udp.endPacket();
     return true;
 }
 
-int RP2040ArduinoPlatform::readBytesMultiCast(uint8_t* buffer, uint16_t maxLen)
+int RP2040ArduinoPlatform::readBytesMultiCast(uint8_t* buffer, uint16_t maxLen, uint32_t& src_addr, uint16_t& src_port)
 {
     int len = _udp.parsePacket();
     if (len == 0)
@@ -336,6 +337,10 @@ int RP2040ArduinoPlatform::readBytesMultiCast(uint8_t* buffer, uint16_t maxLen)
     }
 
     _udp.read(buffer, len);
+    _remoteIP = _udp.remoteIP();
+    _remotePort = _udp.remotePort();
+    src_addr = htonl(_remoteIP);
+    src_port = _remotePort;
 
     // print("Remote IP: ");
     // print(_udp.remoteIP().toString().c_str());
@@ -348,7 +353,12 @@ int RP2040ArduinoPlatform::readBytesMultiCast(uint8_t* buffer, uint16_t maxLen)
 bool RP2040ArduinoPlatform::sendBytesUniCast(uint32_t addr, uint16_t port, uint8_t* buffer, uint16_t len)
 {
     IPAddress ucastaddr(htonl(addr));
+
+    if(!addr)
+        ucastaddr = _remoteIP;
     
+    if(!port)
+        port = _remotePort;
     // print("sendBytesUniCast to:");
     // println(ucastaddr.toString().c_str());
 
