@@ -788,7 +788,7 @@ void IpDataLinkLayer::loopHandleConnectRequest(uint8_t* buffer, uint16_t length,
     }
     while(channelIdInUse);
 
-    tun->ChannelId = _lastChannelId++;
+    tun->ChannelId = _lastChannelId;
     tun->lastHeartbeat = millis();
     if(_lastChannelId == 255)
         _lastChannelId = 0;
