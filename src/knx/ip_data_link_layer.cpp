@@ -629,9 +629,9 @@ void IpDataLinkLayer::loopHandleConnectRequest(uint8_t* buffer, uint16_t length,
     	if(resTunActive) println("Reserved Tunnel Feature active");
 
         if(tunCtrlBytes)
-            printHex("tunCtrlBytes", tunCtrlBytes, 4);
+            printHex("tunCtrlBytes", tunCtrlBytes, KNX_TUNNELING);
         if(tunCtrlIp)
-            printHex("tunCtrlIp", tunCtrlIp, 16);
+            printHex("tunCtrlIp", tunCtrlIp, KNX_TUNNELING*4);
 #endif
 
     // check if there is a reserved tunnel for the source
