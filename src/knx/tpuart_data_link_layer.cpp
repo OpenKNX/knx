@@ -61,6 +61,8 @@
 // acknowledge services (device is transparent in bus monitor mode)
 #define L_ACKN_IND 0x00
 #define L_ACKN_MASK 0x33
+#define L_ACKN_BUSY_MASK 0x0C
+#define L_ACKN_NACK_MASK 0xC0
 #define L_DATA_CON 0x0B
 #define L_DATA_CON_MASK 0x7F
 #define SUCCESS 0x80
@@ -139,11 +141,11 @@ void printFrame(TpFrame *tpframe)
     print((tpframe->flags() & TP_FRAME_FLAG_INVALID) ? 'I' : '_');   // Invalid
     print((tpframe->flags() & TP_FRAME_FLAG_EXTENDED) ? 'E' : '_');  // Extended
     print((tpframe->flags() & TP_FRAME_FLAG_REPEATED) ? 'R' : '_');  // Repeat
-    print((tpframe->flags() & TP_FRAME_FLAG_ECHO) ? 'O' : '_');      // My own
-    print((tpframe->flags() & 0b00001000) ? 'x' : '_');              // Reserve
-    print((tpframe->flags() & TP_FRAME_FLAG_ADDRESSED) ? 'D' : '_'); // For me
-    print((tpframe->flags() & TP_FRAME_FLAG_ACKING) ? 'A' : '_');    // ACK recevied
-    print((tpframe->flags() & TP_FRAME_FLAG_ACKED) ? 'A' : '_');     // ACK sent
+    print((tpframe->flags() & TP_FRAME_FLAG_ECHO) ? 'T' : '_');      // Send by me
+    print((tpframe->flags() & TP_FRAME_FLAG_ADDRESSED) ? 'D' : '_'); // Recv for me
+    print((tpframe->flags() & TP_FRAME_FLAG_ACK_NACK) ? 'N' : '_');  // ACK + NACK
+    print((tpframe->flags() & TP_FRAME_FLAG_ACK_BUSY) ? 'B' : '_');  // ACK + BUSY
+    print((tpframe->flags() & TP_FRAME_FLAG_ACK) ? 'A' : '_');       // ACK
     print("] ");
     printHex("( ", tpframe->data(), tpframe->size(), false);
     print(")");
@@ -295,7 +297,13 @@ void TpUartDataLinkLayer::processRxByte()
              */
             if (_rxFrame->size() > 0)
             {
-                _rxFrame->addFlags(TP_FRAME_FLAG_ACKED);
+                if (!(byte & L_ACKN_BUSY_MASK))
+                    _rxFrame->addFlags(TP_FRAME_FLAG_ACK_BUSY);
+
+                if (!(byte & L_ACKN_NACK_MASK))
+                    _rxFrame->addFlags(TP_FRAME_FLAG_ACK_NACK);
+
+                _rxFrame->addFlags(TP_FRAME_FLAG_ACK);
                 processRxFrameComplete();
             }
             // println("L_ACKN_IND");
@@ -415,7 +423,7 @@ void TpUartDataLinkLayer::processRxFrameByte(uint8_t byte)
                     if (_txState == TX_IDLE)
                     {
                         // Speichere das ein Acking erfolgen soll
-                        _rxFrame->addFlags(TP_FRAME_FLAG_ACKING);
+                        _rxFrame->addFlags(TP_FRAME_FLAG_ACK);
 
                         // und im TPUart damit dieser das ACK schicken kann
                         _platform.writeUart(U_ACK_REQ | ack);
@@ -470,8 +478,8 @@ void TpUartDataLinkLayer::processRxFrameComplete()
         // Wenn ein Frame gesendet wurde
         if (_txState == TX_FRAME)
         {
-            // prüfe ob das Empfangen diesem entspricht
-            if (!memcmp(_rxFrame->data(), _txFrame->data(), _txFrame->size()))
+            // prüfe ob das Empfangen diesem entspricht: Vergleich der Quelladresse und Zieladresse sowie Startbyte ohne Berücksichtigung des Retry-Bits
+            if(!((_rxFrame->data(0) ^ _txFrame->data(0)) & ~0x20) && _rxFrame->destination() == _txFrame->destination() && _rxFrame->source() == _txFrame->source())
             {
                 // und markiere das entsprechend
                 // println("MATCH");
@@ -565,7 +573,6 @@ void TpUartDataLinkLayer::pushTxFrameQueue(TpFrame *tpFrame)
     }
 
     _txQueueCount++;
-    _txFrameCounter++;
 }
 
 void TpUartDataLinkLayer::setRepetitions(uint8_t nack, uint8_t busy)
@@ -581,12 +588,15 @@ void TpUartDataLinkLayer::setFrameRepetition(uint8_t nack, uint8_t busy)
 
 bool TpUartDataLinkLayer::sendFrame(CemiFrame &cemiFrame)
 {
+    _txFrameCounter++;
+
     if (!_connected || _monitoring || _txQueueCount > MAX_TX_QUEUE)
     {
         if (_txQueueCount > MAX_TX_QUEUE)
         {
             println("Ignore frame because transmit queue is full!");
         }
+
         dataConReceived(cemiFrame, false);
         return false;
     }
@@ -693,6 +703,17 @@ void TpUartDataLinkLayer::connected(bool state /* = true */)
     _connected = state;
 }
 
+void TpUartDataLinkLayer::resetStats()
+{
+    _rxProcessdFrameCounter = 0;
+    _rxIgnoredFrameCounter = 0;
+    _rxInvalidFrameCounter = 0;
+    _rxInvalidFrameCounter = 0;
+    _rxUnkownControlCounter = 0;
+    _txFrameCounter = 0;
+    _txProcessdFrameCounter = 0;
+}
+
 bool TpUartDataLinkLayer::reset()
 {
     // println("Reset TP");
@@ -706,11 +727,7 @@ bool TpUartDataLinkLayer::reset()
     isrLock(true);
 
     // Reset
-    _rxIgnoredFrameCounter = 0;
-    _rxInvalidFrameCounter = 0;
-    _rxInvalidFrameCounter = 0;
-    _rxUnkownControlCounter = 0;
-
+    resetStats();
     clearTxFrame();
     clearTxFrameQueue();
 
@@ -793,6 +810,7 @@ void TpUartDataLinkLayer::monitor()
     // println("busmonitor");
     _monitoring = true;
     _platform.writeUart(U_BUSMON_REQ);
+    resetStats();
 }
 
 void TpUartDataLinkLayer::enabled(bool value)
