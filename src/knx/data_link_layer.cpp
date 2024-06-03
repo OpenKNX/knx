@@ -62,9 +62,22 @@ void DataLinkLayer::dataRequestFromTunnel(CemiFrame& frame)
 
     frame.messageCode(L_data_ind);
     
-    // Send to local stack
+    // Send to local stack ( => cemiServer for potential other tunnel and network layer for routing)
     frameReceived(frame);
 
+    // TunnelOpti
+    if(frame.addressType() == AddressType::IndividualAddress && frame.destinationAddress() == _deviceObject.individualAddress())
+    {
+        // don't Send to KNX medium because its only for us (Tunnel-Server)
+        return;
+    }
+
+    //if(frame.addressType() == AddressType::IndividualAddress && frame.destinationAddress() one_of(tunnel-Addresses))
+    //{
+    //    // don't Send to KNX medium because its only for us (Tunnel-Server)
+    //    return;
+    //}
+    
     // Send to KNX medium
     sendFrame(frame);
 }
@@ -196,6 +209,12 @@ bool DataLinkLayer::sendTelegram(NPDU & npdu, AckType ack, uint16_t destinationA
 //        _print("<- DLL ");
 //        frame.apdu().printPDU();
 //    }
+
+    // TunnelOpti
+    //if(_networkLayerEntity.getEntityIndex() == 1 && frame.addressType() == AddressType::IndividualAddress && frame.destinationAddress() one_of(tunnel-Addresses))
+    {
+        // don't Send to KNX medium because its only for the Tunnel-Client)
+    }
 
     // The data link layer might be an open media link layer
     // and will setup rfSerialOrDoA, rfInfo and rfLfn that we also 
