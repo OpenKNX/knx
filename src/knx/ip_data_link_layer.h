@@ -15,7 +15,7 @@ class IpDataLinkLayer : public DataLinkLayer
 
   public:
     IpDataLinkLayer(DeviceObject& devObj, IpParameterObject& ipParam, NetworkLayerEntity& netLayerEntity,
-                    Platform& platform, DataLinkLayerCallbacks* dllcb = nullptr);
+                    Platform& platform, BusAccessUnit& busAccessUnit, DataLinkLayerCallbacks* dllcb = nullptr);
 
     void loop();
     void enabled(bool value);

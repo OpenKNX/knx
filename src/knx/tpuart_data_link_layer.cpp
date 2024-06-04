@@ -1023,9 +1023,10 @@ bool TpUartDataLinkLayer::processTxFrameBytes()
 TpUartDataLinkLayer::TpUartDataLinkLayer(DeviceObject &devObj,
                                          NetworkLayerEntity &netLayerEntity,
                                          Platform &platform,
+                                         BusAccessUnit& busAccessUnit,
                                          ITpUartCallBacks &cb,
                                          DataLinkLayerCallbacks *dllcb)
-    : DataLinkLayer(devObj, netLayerEntity, platform),
+    : DataLinkLayer(devObj, netLayerEntity, platform, busAccessUnit),
       _cb(cb),
       _dllcb(dllcb)
 {
