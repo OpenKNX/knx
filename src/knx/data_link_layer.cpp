@@ -65,18 +65,24 @@ void DataLinkLayer::dataRequestFromTunnel(CemiFrame& frame)
     // Send to local stack ( => cemiServer for potential other tunnel and network layer for routing)
     frameReceived(frame);
 
+#ifdef KNX_TUNNELING
     // TunnelOpti
-    if(frame.addressType() == AddressType::IndividualAddress && frame.destinationAddress() == _deviceObject.individualAddress())
+    // Optimize performance when receiving unicast data over tunnel wich is not meant to be used on the physical TP line
+    // dont send to knx when 
+    // a) frame is individual adressed AND
+
+    // b) destionation == PA of Tunnel-Server  OR
+    // c) destination == PA of a Tunnel OR (TODO)
+    // d) destination is not the TP/secondary line/segment but IP/primary (TODO)
+
+    if(frame.addressType() == AddressType::IndividualAddress && (
+        frame.destinationAddress() == _deviceObject.individualAddress() ||
+        false ||
+        false ))
     {
-        // don't Send to KNX medium because its only for us (Tunnel-Server)
         return;
     }
-
-    //if(frame.addressType() == AddressType::IndividualAddress && frame.destinationAddress() one_of(tunnel-Addresses))
-    //{
-    //    // don't Send to KNX medium because its only for us (Tunnel-Server)
-    //    return;
-    //}
+#endif
     
     // Send to KNX medium
     sendFrame(frame);
@@ -210,17 +216,29 @@ bool DataLinkLayer::sendTelegram(NPDU & npdu, AckType ack, uint16_t destinationA
 //        frame.apdu().printPDU();
 //    }
 
+    bool sendTheFrame = true;
+    bool success = true;
+
+#ifdef KNX_TUNNELING
     // TunnelOpti
-    //if(_networkLayerEntity.getEntityIndex() == 1 && frame.addressType() == AddressType::IndividualAddress && frame.destinationAddress() one_of(tunnel-Addresses))
+    // Optimize performance when sending unicast data over tunnel wich is not meant to be used on the physical TP line
+    // dont send to knx when 
+    // a) we are the secondary interface (e.g. TP) AND
+    // b) destination == PA of a Tunnel (TODO)
+
+    if(frame.sourceAddress() == _deviceObject.individualAddress() && _networkLayerEntity.getEntityIndex() == 1)    // only send to tunnel if we are the secondary interface
     {
-        // don't Send to KNX medium because its only for the Tunnel-Client)
+        if(false)
+            sendTheFrame = false;
     }
+#endif
 
     // The data link layer might be an open media link layer
     // and will setup rfSerialOrDoA, rfInfo and rfLfn that we also 
     // have to send through the cEMI server tunnel
     // Thus, reuse the modified cEMI frame as "frame" is only passed by reference here!
-    bool success = sendFrame(frame);
+    if(sendTheFrame)
+        success = sendFrame(frame);
 
 #ifdef USE_CEMI_SERVER
     CemiFrame tmpFrame(frame.data(), frame.totalLenght());
