@@ -64,4 +64,7 @@ class DataLinkLayer
 #ifdef KNX_ACTIVITYCALLBACK
     uint8_t _netIndex = 0;
 #endif
+#ifdef KNX_TUNNELING
+    bool isTunnelingPA(uint16_t pa);
+#endif
 };

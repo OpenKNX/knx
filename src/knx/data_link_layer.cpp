@@ -228,7 +228,8 @@ bool DataLinkLayer::sendTelegram(NPDU & npdu, AckType ack, uint16_t destinationA
 
     if(frame.sourceAddress() == _deviceObject.individualAddress() && _networkLayerEntity.getEntityIndex() == 1)    // only send to tunnel if we are the secondary interface
     {
-        if(false)
+         // ??? frame.sourceAddress() == _deviceObject.individualAddress() warum nur eigene? wie kommen geroutete telegramme in den tunnel? siehe unten im USE_CEMI_SERVER
+        if(isTunnelingPA(destinationAddr))
             sendTheFrame = false;
     }
 #endif
@@ -265,4 +266,10 @@ uint8_t* DataLinkLayer::frameData(CemiFrame& frame)
     return frame._data;
 }
 
+#ifdef KNX_TUNNELING
+bool isTunnelingPA(uint16_t pa)
+{
+    return false;
+}
+#endif
 
