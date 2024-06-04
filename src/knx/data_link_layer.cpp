@@ -155,7 +155,9 @@ void DataLinkLayer::frameReceived(CemiFrame& frame)
     // Do not send our own message back to the tunnel
 #ifdef KNX_TUNNELING
     //we dont need to check it here
-    _cemiServer->dataIndicationToTunnel(frame);
+    // send inbound frames to the tunnel if we are the secondary (TP) interface
+    if( _networkLayerEntity.getEntityIndex() == 1)
+        _cemiServer->dataIndicationToTunnel(frame);
 #else
     if (frame.sourceAddress() != _cemiServer->clientAddress())
     {
@@ -254,7 +256,7 @@ bool DataLinkLayer::sendTelegram(NPDU & npdu, AckType ack, uint16_t destinationA
 #endif
     tmpFrame.confirm(ConfirmNoError);
 
-    if(frame.sourceAddress() == _deviceObject.individualAddress() && _networkLayerEntity.getEntityIndex() == 1)    // only send to tunnel if we are the secondary interface
+    if(_networkLayerEntity.getEntityIndex() == 1)    // only send to tunnel if we are the secondary (TP) interface
         _cemiServer->dataIndicationToTunnel(tmpFrame);
 #endif
 
