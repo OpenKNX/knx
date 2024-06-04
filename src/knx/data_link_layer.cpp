@@ -69,19 +69,21 @@ void DataLinkLayer::dataRequestFromTunnel(CemiFrame& frame)
     // TunnelOpti
     // Optimize performance when receiving unicast data over tunnel wich is not meant to be used on the physical TP line
     // dont send to knx when 
-    // a) frame is individual adressed AND
+    // frame is individual adressed AND
+    // destionation == PA of Tunnel-Server  OR
+    // destination == PA of a Tunnel OR (TODO)
+    // destination is not the TP/secondary line/segment but IP/primary (TODO)
 
-    // b) destionation == PA of Tunnel-Server  OR
-    // c) destination == PA of a Tunnel OR (TODO)
-    // d) destination is not the TP/secondary line/segment but IP/primary (TODO)
-
-    if(frame.addressType() == AddressType::IndividualAddress && (
-        frame.destinationAddress() == _deviceObject.individualAddress() ||
-        false ||
-        false ))
+    if(frame.addressType() == AddressType::IndividualAddress)
     {
-        return;
+        if(frame.destinationAddress() == _deviceObject.individualAddress())
+            return;
+        if(isRoutedPA(frame.destinationAddress()))
+            return;
+        if(isTunnelingPA(frame.destinationAddress()))
+            return;
     }
+
 #endif
     
     // Send to KNX medium
@@ -270,127 +272,37 @@ uint8_t* DataLinkLayer::frameData(CemiFrame& frame)
 #ifdef KNX_TUNNELING
 bool DataLinkLayer::isTunnelingPA(uint16_t pa)
 {
-    uint8_t num = 0;
+    uint8_t num = KNX_TUNNELING;
     uint32_t len = 0;
     uint8_t** data = nullptr;
     _bau.propertyValueRead(OT_IP_PARAMETER, 0, PID_ADDITIONAL_INDIVIDUAL_ADDRESSES, num, 1, data, len);
-    // ObjectType objectType, uint8_t objectInstance, uint8_t propertyId, uint8_t& numberOfElements, uint16_t startIndex, uint8_t** data, uint32_t& length); PID_ADDITIONAL_INDIVIDUAL_ADDRESSES
+    //printHex("isTunnelingPA, PID_ADDITIONAL_INDIVIDUAL_ADDRESSES: ", *data, len);
+    if(len != KNX_TUNNELING * 2)
+    {
+        println("Tunnel PAs unkwnown");
+        return false;
+    }
+    for(uint8_t i = 0; i < KNX_TUNNELING; i++)
+    {
+        uint16_t tunnelpa;
+        popWord(tunnelpa, (*data)+i*2);
+        if(pa == tunnelpa)
+            return true;
+    }
     return false;
 }
 
 bool DataLinkLayer::isRoutedPA(uint16_t pa)
 {
-    // from network-layer-coupler
-    /*
-    if ((_deviceObj.individualAddress() & 0x00FF) == 0x00)
-    {
-        // Device is a router
-        // Check if line coupler or backbone coupler
-        if ((_deviceObj.individualAddress() & 0x0F00) == 0x0)
-        {
-            // Device is a backbone coupler -> individual address: x.0.0
-            _couplerType = BackboneCoupler;
-        }
-        else
-        {
-            // Device is a line coupler -> individual address: x.y.0
-            _couplerType = LineCoupler;
-        }
-    }
-    */
+    uint16_t ownpa = _deviceObject.individualAddress();
+    uint16_t own_sm;
 
-   /*
-   bool NetworkLayerCoupler::isRoutedIndividualAddress(uint16_t individualAddress, uint8_t srcIfIndex)
-{
-    // TODO: improve: we have to be notified about anything that might affect routing decision
-    // Ugly: we could ALWAYS evaluate coupler type for every received frame
-    if (_currentAddress != _deviceObj.individualAddress())
-    {
-        evaluateCouplerType();
-    }
-
-    // See KNX spec.: Network Layer (03/03/03) and AN161 (Coupler model 2.0)
-    /
-        * C  hop count value contained in the N-protocol header
-        * D  low order octet of the Destination Address, i.e. Device Address part
-        * G  Group Address
-        * SD low nibble of high order octet plus low order octet, i.e. Line Address + Device Address
-        * Z  high nibble of high order octet of the Destination Address, i.e. Area Address
-        * ZS high order octet of the Destination Address, i.e. hierarchy information part: Area Address + Line Address
-    /
-    uint16_t ownSNA = _deviceObj.individualAddress() & 0xFF00; // Own subnetwork address (area + line)
-    uint16_t ownAA = _deviceObj.individualAddress() & 0xF000;  // Own area address
-    uint16_t ZS = individualAddress & 0xFF00;                        // destination subnetwork address (area + line)
-    uint16_t Z = individualAddress & 0xF000;                         // destination area address
-
-
-    if (_couplerType == LineCoupler)
-    {
-        // Main line to sub line routing
-        if (srcIfIndex == kPrimaryIfIndex)
-        {
-            if (ZS != ownSNA)
-            {
-                // IGNORE_TOTALLY
-                return false;
-            }
-            return true;
-        }
-        else if (srcIfIndex == kSecondaryIfIndex) // Sub line to main line routing
-        {
-            if (ZS != ownSNA)
-            {
-                // ROUTE_XXX
-                return true;
-            }
-            else
-            {
-                return false;
-            }
-        }
-        else
-        {
-            //not from primiary not from sec if, should not happen
-            return false;
-        }
-    }
-    else if (_couplerType == BackboneCoupler)
-    {
-        // Backbone line to main line routing
-        if (srcIfIndex == kPrimaryIfIndex)
-        {
-            if (Z != ownAA)
-            {
-                return false;
-            }
-
-            return true;
-        }
-        else  if (srcIfIndex == kSecondaryIfIndex)         // Main line to backbone line routing
-        {
-            if (Z != ownAA)
-            {
-                return true;
-            }
-            else
-            {
-                return false;
-            }
-        }
-        else
-        {
-            //not from primiary not from sec if, should not happen
-            return false;
-        }
-    }
+    if ((ownpa & 0x0F00) == 0x0)
+        own_sm = 0xF000;
     else
-    {
-        //unknown coupler type, should not happen
-        return false;
-    }
-}
-   */
-  return false;
+        own_sm = 0xFF00;
+
+    return (pa & own_sm) != ownpa;
 }
 #endif
 

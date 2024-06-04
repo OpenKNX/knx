@@ -85,7 +85,9 @@ void IpDataLinkLayer::dataRequestToTunnel(CemiFrame& frame)
         {
             if(tunnels[i].IsConfig)
             {
+#ifdef KNX_LOG_TUNNELING
                 println("Found config Channel");
+#endif
                 tun = &tunnels[i];
                 break;
             }
@@ -134,7 +136,9 @@ void IpDataLinkLayer::dataConfirmationToTunnel(CemiFrame& frame)
         {
             if(tunnels[i].IsConfig)
             {
+#ifdef KNX_LOG_TUNNELING
                 println("Found config Channel");
+#endif
                 tun = &tunnels[i];
                 break;
             }
@@ -182,7 +186,9 @@ void IpDataLinkLayer::dataIndicationToTunnel(CemiFrame& frame)
         {
             if(tunnels[i].IsConfig)
             {
+#ifdef KNX_LOG_TUNNELING
                 println("Found config Channel");
+#endif
                 tun = &tunnels[i];
                 break;
             }
