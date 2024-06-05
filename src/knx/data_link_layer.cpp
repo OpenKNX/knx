@@ -230,7 +230,7 @@ bool DataLinkLayer::sendTelegram(NPDU & npdu, AckType ack, uint16_t destinationA
     // a) we are the secondary interface (e.g. TP) AND
     // b) destination == PA of a Tunnel (TODO)
 
-    if(_networkLayerEntity.getEntityIndex() == 1)    // don't send to tp if we are the secondary (TP) interface AND the destination is a tunnel
+    if(_networkLayerEntity.getEntityIndex() == 1 && addrType == AddressType::IndividualAddress)    // don't send to tp if we are the secondary (TP) interface AND the destination is a tunnel-PA
     {
         if(isTunnelingPA(destinationAddr))
             sendTheFrame = false;
@@ -274,21 +274,29 @@ bool DataLinkLayer::isTunnelingPA(uint16_t pa)
 {
     uint8_t num = KNX_TUNNELING;
     uint32_t len = 0;
-    uint8_t** data = nullptr;
-    _bau.propertyValueRead(OT_IP_PARAMETER, 0, PID_ADDITIONAL_INDIVIDUAL_ADDRESSES, num, 1, data, len);
+    uint8_t* data = nullptr;
+    _bau.propertyValueRead(OT_IP_PARAMETER, 0, PID_ADDITIONAL_INDIVIDUAL_ADDRESSES, num, 1, &data, len);
     //printHex("isTunnelingPA, PID_ADDITIONAL_INDIVIDUAL_ADDRESSES: ", *data, len);
     if(len != KNX_TUNNELING * 2)
     {
         println("Tunnel PAs unkwnown");
+        if(data != nullptr)
+            delete[] data;
         return false;
     }
     for(uint8_t i = 0; i < KNX_TUNNELING; i++)
     {
         uint16_t tunnelpa;
-        popWord(tunnelpa, (*data)+i*2);
+        popWord(tunnelpa, (data)+i*2);
         if(pa == tunnelpa)
+        {
+            if(data != nullptr)
+                delete[] data;
             return true;
+        }   
     }
+    if(data != nullptr)
+        delete[] data;
     return false;
 }
 

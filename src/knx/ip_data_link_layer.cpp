@@ -803,41 +803,39 @@ void IpDataLinkLayer::loopHandleConnectRequest(uint8_t* buffer, uint16_t length,
     tun->PortData = srcPort;
     tun->PortCtrl = connRequest.hpaiCtrl().ipPortNumber()?connRequest.hpaiCtrl().ipPortNumber():srcPort;
 
-#ifdef KNX_LOG_TUNNELING
-    print(">>> new tunnel[");
+    print("New Tunnel-Connection[");
     print(tunIdx);
-    print("]: 0x");
+    print("], Channel: 0x");
     print(tun->ChannelId, 16);
-    print("/");
+    print(" PA: ");
     print(tun->IndividualAddress >> 12);
     print(".");
     print((tun->IndividualAddress >> 8) & 0xF);
     print(".");
-    println(tun->IndividualAddress & 0xFF);
+    print(tun->IndividualAddress & 0xFF);
 
-        print(">>> Data Endpoint: ");
-    ip = tun->IpAddress;
-    print(ip >> 24);
+    print(" with ");
+    print(tun->IpAddress >> 24);
     print(".");
-    print((ip >> 16) & 0xFF);
+    print((tun->IpAddress >> 16) & 0xFF);
     print(".");
-    print((ip >> 8) & 0xFF);
+    print((tun->IpAddress >> 8) & 0xFF);
     print(".");
-    print(ip & 0xFF);
+    print(tun->IpAddress & 0xFF);
     print(":");
-    println(tun->PortData);
-    print(">>> Ctrl Endpoint: ");
-    ip = tun->IpAddress;
-    print(ip >> 24);
-    print(".");
-    print((ip >> 16) & 0xFF);
-    print(".");
-    print((ip >> 8) & 0xFF);
-    print(".");
-    print(ip & 0xFF);
-    print(":");
-    println(tun->PortCtrl);
-#endif
+    print(tun->PortData);
+    if(tun->PortData != tun->PortCtrl)
+    {
+        print(" (Ctrlport: ");
+        print(tun->PortCtrl);
+        print(")");
+    }
+    if(tun->IsConfig)
+    {
+        print(" (Config-Channel)");
+    }
+    println();
+
 
     KnxIpConnectResponse connRes(_ipParameters, tun->IndividualAddress, 3671, tun->ChannelId, connRequest.cri().type());
     _platform.sendBytesUniCast(tun->IpAddress, tun->PortCtrl, connRes.data(), connRes.totalLength());
