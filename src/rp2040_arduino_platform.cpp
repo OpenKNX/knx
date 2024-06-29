@@ -312,7 +312,7 @@ uint32_t RP2040ArduinoPlatform::uniqueSerialNumber()
 void RP2040ArduinoPlatform::restart()
 {
     println("restart");
-    watchdog_reboot(0, 0, 0);
+    watchdog_reboot(0, 0, 1000);
 }
 
 #ifdef USE_RP2040_EEPROM_EMULATION
