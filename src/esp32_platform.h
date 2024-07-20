@@ -38,6 +38,10 @@ public:
     //memory
     uint8_t* getEepromBuffer(uint32_t size);
     void commitToEeprom();
+
+    protected: IPAddress _remoteIP;
+    protected: uint16_t _remotePort;
+
 private:
     WiFiUDP _udp;
     int8_t _rxPin = -1; 
