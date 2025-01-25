@@ -3,6 +3,7 @@
 #include "arduino_platform.h"
 
 #include "Arduino.h"
+#include "TPUart/Interface/Abstract.h"
 
 #ifdef ARDUINO_ARCH_RP2040
 
@@ -17,10 +18,10 @@
 #define USE_RP2040_EEPROM_EMULATION
 #endif
 
-#ifndef KNX_SERIAL
-#pragma warn "KNX_SERIAL not defined, using Serial1"
-#define KNX_SERIAL Serial1
-#endif
+// #ifndef KNX_SERIAL
+// #pragma warn "KNX_SERIAL not defined, using Serial1"
+// #define KNX_SERIAL Serial1
+// #endif
 
 #ifdef KNX_IP_LAN
 #if ARDUINO_PICO_MAJOR * 10000 + ARDUINO_PICO_MINOR * 100 + ARDUINO_PICO_REVISION < 30700
@@ -57,23 +58,23 @@ class RP2040ArduinoPlatform : public ArduinoPlatform
 {
 public:
     RP2040ArduinoPlatform();
-    RP2040ArduinoPlatform( HardwareSerial* s);
+    RP2040ArduinoPlatform( TPUart::Interface::Abstract* interface);
 
     // uart
-    void knxUartPins(pin_size_t rxPin, pin_size_t txPin);
-    void setupUart() override;
-    bool overflowUart() override;
-    #ifdef USE_KNX_DMA_UART
-    int uartAvailable() override;
-    void closeUart() override;
-    void knxUart( HardwareSerial* serial) override {};
-    HardwareSerial* knxUart() override { return nullptr; };
-    size_t writeUart(const uint8_t data) override;
-    size_t writeUart(const uint8_t* buffer, size_t size) override { return 0; };
-    int readUart() override;
-    size_t readBytesUart(uint8_t* buffer, size_t length) override { return 0; };
-    void flushUart() override {};
-    #endif
+    // void knxUartPins(pin_size_t rxPin, pin_size_t txPin);
+    // void setupUart() override;
+    // bool overflowUart() override;
+    // #ifdef USE_KNX_DMA_UART
+    // int uartAvailable() override;
+    // void closeUart() override;
+    // void knxUart( HardwareSerial* serial) override {};
+    // HardwareSerial* knxUart() override { return nullptr; };
+    // size_t writeUart(const uint8_t data) override;
+    // size_t writeUart(const uint8_t* buffer, size_t size) override { return 0; };
+    // int readUart() override;
+    // size_t readBytesUart(uint8_t* buffer, size_t length) override { return 0; };
+    // void flushUart() override {};
+    // #endif
    
 
     // unique serial number

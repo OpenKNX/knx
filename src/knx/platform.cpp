@@ -5,6 +5,17 @@
 #include <cstring>
 #include <cstdlib>
 
+
+TPUart::Interface::Abstract* Platform::getInterface()
+{
+    return _interface;
+}
+
+void Platform::setInterface(TPUart::Interface::Abstract* interface)
+{
+    _interface = interface;
+}
+
 NvMemoryType Platform::NonVolatileMemoryType()
 {
     return _memoryType;
@@ -26,44 +37,44 @@ int Platform::readWriteSpi(uint8_t *data, size_t len)
     return 0;
 }
 
-size_t Platform::readBytesUart(uint8_t *buffer, size_t length)
-{
-    return 0;
-}
+// size_t Platform::readBytesUart(uint8_t *buffer, size_t length)
+// {
+//     return 0;
+// }
 
-int Platform::readUart()
-{
-    return -1;
-}
+// int Platform::readUart()
+// {
+//     return -1;
+// }
 
-size_t Platform::writeUart(const uint8_t *buffer, size_t size)
-{
-    return 0;
-}
+// size_t Platform::writeUart(const uint8_t *buffer, size_t size)
+// {
+//     return 0;
+// }
 
-size_t Platform::writeUart(const uint8_t data)
-{
-    return 0;
-}
+// size_t Platform::writeUart(const uint8_t data)
+// {
+//     return 0;
+// }
 
-int Platform::uartAvailable()
-{
-    return 0;
-}
+// int Platform::uartAvailable()
+// {
+//     return 0;
+// }
 
-void Platform::closeUart()
-{}
+// void Platform::closeUart()
+// {}
 
-void Platform::setupUart()
-{}
+// void Platform::setupUart()
+// {}
 
-bool Platform::overflowUart()
-{
-    return false;
-}
+// bool Platform::overflowUart()
+// {
+//     return false;
+// }
 
-void Platform::flushUart()
-{}
+// void Platform::flushUart()
+// {}
 
 uint32_t Platform::currentIpAddress()
 {

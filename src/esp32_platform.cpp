@@ -6,10 +6,10 @@
 
 #include "knx/bits.h"
 
-#ifndef KNX_SERIAL
-    #define KNX_SERIAL Serial1
-    #pragma warn "KNX_SERIAL not defined, using Serial1"
-#endif
+// #ifndef KNX_SERIAL
+//     #define KNX_SERIAL Serial1
+//     #pragma warn "KNX_SERIAL not defined, using Serial1"
+// #endif
  
 #ifdef KNX_IP_LAN
     #include "ETH.h"
@@ -20,35 +20,35 @@
 #endif
 
 Esp32Platform::Esp32Platform()
-#ifndef KNX_NO_DEFAULT_UART
-    : ArduinoPlatform(&KNX_SERIAL)
-#endif
+// #ifndef KNX_NO_DEFAULT_UART
+//     : ArduinoPlatform(&KNX_SERIAL)
+// #endif
 {
-    #ifdef KNX_UART_RX_PIN
-    _rxPin = KNX_UART_RX_PIN;
-    #endif
-    #ifdef KNX_UART_TX_PIN
-    _txPin = KNX_UART_TX_PIN;
-    #endif
+    // #ifdef KNX_UART_RX_PIN
+    // _rxPin = KNX_UART_RX_PIN;
+    // #endif
+    // #ifdef KNX_UART_TX_PIN
+    // _txPin = KNX_UART_TX_PIN;
+    // #endif
 }
 
-Esp32Platform::Esp32Platform(HardwareSerial* s) : ArduinoPlatform(s)
+Esp32Platform::Esp32Platform(TPUart::Interface::Abstract* interface) : ArduinoPlatform(interface)
 {
 }
 
-void Esp32Platform::knxUartPins(int8_t rxPin, int8_t txPin)
-{
-    _rxPin = rxPin;
-    _txPin = txPin;
-}
+// void Esp32Platform::knxUartPins(int8_t rxPin, int8_t txPin)
+// {
+//     _rxPin = rxPin;
+//     _txPin = txPin;
+// }
 
-// ESP specific uart handling with pins
-void Esp32Platform::setupUart()
-{
-    _knxSerial->begin(19200, SERIAL_8E1, _rxPin, _txPin);
-    while (!_knxSerial) 
-        ;
-}
+// // ESP specific uart handling with pins
+// void Esp32Platform::setupUart()
+// {
+//     _knxSerial->begin(19200, SERIAL_8E1, _rxPin, _txPin);
+//     while (!_knxSerial) 
+//         ;
+// }
 
 uint32_t Esp32Platform::currentIpAddress()
 {
