@@ -17,5 +17,8 @@
     "repository": {
         "type": "git",
         "url": "https://github.com/OpenKNX/knx"
+    },
+    "dependencies": {
+        "TPUart": "https://github.com/OpenKNX/tpuart"
     }
 }
