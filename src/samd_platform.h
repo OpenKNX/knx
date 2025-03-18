@@ -10,7 +10,7 @@ class SamdPlatform : public ArduinoPlatform
 {
 public:
     SamdPlatform();
-    SamdPlatform( HardwareSerial* s);
+    SamdPlatform( TPUart::Interface::Abstract* interface);
 
     // unique serial number
     uint32_t uniqueSerialNumber() override;

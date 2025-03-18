@@ -17,17 +17,6 @@ class ArduinoPlatform : public Platform
     // basic stuff
     void fatalError();
 
-    //uart
-    // virtual void knxUart( HardwareSerial* serial);
-    // virtual void setupUart();
-    // virtual void closeUart();
-    // virtual int uartAvailable();
-    // virtual size_t writeUart(const uint8_t data);
-    // virtual size_t writeUart(const uint8_t* buffer, size_t size);
-    // virtual int readUart();
-    // virtual size_t readBytesUart(uint8_t* buffer, size_t length);
-    // virtual void flushUart();
-
     //spi
 #ifndef KNX_NO_SPI
     void setupSpi() override;

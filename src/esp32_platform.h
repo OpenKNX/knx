@@ -11,10 +11,6 @@ public:
     Esp32Platform();
     Esp32Platform(TPUart::Interface::Abstract* interface);
 
-    // uart
-    // void knxUartPins(int8_t rxPin, int8_t txPin);
-    // void setupUart() override;
-
     // ip stuff
     uint32_t currentIpAddress() override;
     uint32_t currentSubnetMask() override;

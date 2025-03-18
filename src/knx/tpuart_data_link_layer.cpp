@@ -825,15 +825,15 @@ void TpUartDataLinkLayer::initialize()
         return;
 
     // After an unusual device restart, perform a reset, as the TPUart may still be in an incorrect state.
-    if (!_initialized && _platform.getInterface() != nullptr)
+    if (!_initialized && _platform.interface() != nullptr)
     {
         _tpuart.registerReceivedFrame(std::bind(&TpUartDataLinkLayer::processRxFrame, this, std::placeholders::_1));
         _tpuart.registerMessage(std::bind(&TpUartDataLinkLayer::printMessage, this, std::placeholders::_1, std::placeholders::_2));
         _tpuart.registerCheckAcknowledge(std::bind(&TpUartDataLinkLayer::checkAcknowledge, this, std::placeholders::_1, std::placeholders::_2));
 #ifdef NCN5120
-        _tpuart.begin(TPUart::BcuType::BCU_NCN5120, _platform.getInterface());
+        _tpuart.begin(TPUart::BcuType::BCU_NCN5120, _platform.interface());
 #else
-        _tpuart.begin(TPUart::BcuType::BCU_TPUART2, _platform.getInterface());
+        _tpuart.begin(TPUart::BcuType::BCU_TPUART2, _platform.interface());
 #endif
         _initialized = true;
     }
@@ -981,7 +981,7 @@ void TpUartDataLinkLayer::processRxFrame(TPUart::Frame &tpFrame)
     if (isMonitoring())
     {
     }
-        printMessage(tpFrame.printFrame().c_str(), false);
+    printMessage(tpFrame.printFrame().c_str(), false);
 
     // CemiFrame cemiFrame = convertTPFrameToCemi(&tpFrame);
     uint8_t *cemiData = (uint8_t *)tpFrame.cemiData();
@@ -1002,9 +1002,12 @@ void TpUartDataLinkLayer::printMessage(const char *message, bool error)
 {
     if (error)
         print("\e[0;31m");
+
     print(message);
+
     if (error)
         print("\e[0m");
+        
     println("");
 }
 

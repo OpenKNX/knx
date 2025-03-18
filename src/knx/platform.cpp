@@ -6,12 +6,12 @@
 #include <cstdlib>
 
 
-TPUart::Interface::Abstract* Platform::getInterface()
+TPUart::Interface::Abstract* Platform::interface()
 {
     return _interface;
 }
 
-void Platform::setInterface(TPUart::Interface::Abstract* interface)
+void Platform::interface(TPUart::Interface::Abstract* interface)
 {
     _interface = interface;
 }
