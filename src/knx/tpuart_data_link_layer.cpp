@@ -73,7 +73,7 @@ void TpUartDataLinkLayer::requestBusy(bool state)
 
 void TpUartDataLinkLayer::monitor()
 {
-    if (_initialized)
+    if (!_initialized)
         return;
 
     _tpuart.startMonitoring();
@@ -181,8 +181,8 @@ void TpUartDataLinkLayer::processRxFrame(TPUart::Frame &tpFrame)
 {
     if (isMonitoring())
     {
+        printMessage(tpFrame.printFrame().c_str(), false);
     }
-    printMessage(tpFrame.printFrame().c_str(), false);
 
     // CemiFrame cemiFrame = convertTPFrameToCemi(&tpFrame);
     uint8_t *cemiData = (uint8_t *)tpFrame.cemiData();
