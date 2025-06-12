@@ -12,22 +12,10 @@ class ArduinoPlatform : public Platform
 {
   public:
     ArduinoPlatform();
-    ArduinoPlatform(HardwareSerial* knxSerial);
+    ArduinoPlatform(TPUart::Interface::Abstract* interface);
 
     // basic stuff
     void fatalError();
-
-    //uart
-    virtual void knxUart( HardwareSerial* serial);
-    virtual HardwareSerial* knxUart();
-    virtual void setupUart();
-    virtual void closeUart();
-    virtual int uartAvailable();
-    virtual size_t writeUart(const uint8_t data);
-    virtual size_t writeUart(const uint8_t* buffer, size_t size);
-    virtual int readUart();
-    virtual size_t readBytesUart(uint8_t* buffer, size_t length);
-    virtual void flushUart();
 
     //spi
 #ifndef KNX_NO_SPI
@@ -39,6 +27,4 @@ class ArduinoPlatform : public Platform
     static Stream* SerialDebug;
 #endif
 
-  protected:
-    HardwareSerial* _knxSerial;
 };

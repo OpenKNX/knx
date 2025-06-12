@@ -1,6 +1,6 @@
 #ifdef ARDUINO_ARCH_ESP32
 #include "arduino_platform.h"
-
+#include "TPUart/Interface/Abstract.h"
 
 
 #include <WiFiUdp.h>
@@ -9,11 +9,7 @@ class Esp32Platform : public ArduinoPlatform
 {
 public:
     Esp32Platform();
-    Esp32Platform(HardwareSerial* s);
-
-    // uart
-    void knxUartPins(int8_t rxPin, int8_t txPin);
-    void setupUart() override;
+    Esp32Platform(TPUart::Interface::Abstract* interface);
 
     // ip stuff
     uint32_t currentIpAddress() override;
@@ -45,8 +41,8 @@ public:
 
 private:
     WiFiUDP _udp;
-    int8_t _rxPin = -1; 
-    int8_t _txPin = -1;
+    // int8_t _rxPin = -1; 
+    // int8_t _txPin = -1;
 };
 
 #endif
