@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <knx.h>
+#include "TPUart/Interface/ArduinoSerial.h"
 
 #if MASK_VERSION != 0x07B0 && (defined ARDUINO_ARCH_ESP8266 || defined ARDUINO_ARCH_ESP32)
 #include <WiFiManager.h>
