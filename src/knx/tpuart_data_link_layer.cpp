@@ -184,13 +184,12 @@ void TpUartDataLinkLayer::processRxFrame(TPUart::Frame &tpFrame)
         printMessage(tpFrame.printFrame().c_str(), false);
     }
 
-    // filter frames that are sent by us
-    if(tpFrame.isFiltered() || tpFrame.isTransmitted())
-    {
-        // printMessage("Filtered frame received, ignoring:", true);
-        // printMessage(tpFrame.printFrame().c_str(), false);
+    if (tpFrame.isTransmitted())
         return;
-    }
+#if MASK_VERSION != 0x091A
+    if (tpFrame.isFiltered())
+        return;
+#endif
 
     // CemiFrame cemiFrame = convertTPFrameToCemi(&tpFrame);
     uint8_t *cemiData = (uint8_t *)tpFrame.cemiData();
