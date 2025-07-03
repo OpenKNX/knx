@@ -43,8 +43,8 @@ class DataLinkLayer
 
     // from network layer
     void dataRequest(AckType ack, AddressType addrType, uint16_t destinationAddr, uint16_t sourceAddr, FrameFormat format,
-                     Priority priority, NPDU& npdu);
-    void systemBroadcastRequest(AckType ack, FrameFormat format, Priority priority, NPDU& npdu, uint16_t sourceAddr);
+                     Priority priority, NPDU& npdu, bool doNotRepeat);
+    void systemBroadcastRequest(AckType ack, FrameFormat format, Priority priority, NPDU& npdu, uint16_t sourceAddr,  bool doNotRepeat);
     virtual void loop() = 0;
     virtual void enabled(bool value) = 0;
     virtual bool enabled() const = 0;

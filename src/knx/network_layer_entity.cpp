@@ -68,7 +68,7 @@ void NetworkLayerEntity::sendDataRequest(NPDU &npdu, AckType ack, uint16_t desti
     FrameFormat frameFormat = npdu.octetCount() > 15 ? ExtendedFrame : StandardFrame;
 
     if (systemBroadcast == Broadcast)
-        _dataLinkLayer->dataRequest(ack, addrType, destination, source, frameFormat, priority, npdu);
+        _dataLinkLayer->dataRequest(ack, addrType, destination, source, frameFormat, priority, npdu, doNotRepeat);
     else
-        _dataLinkLayer->systemBroadcastRequest(ack, frameFormat, priority, npdu, source);
+        _dataLinkLayer->systemBroadcastRequest(ack, frameFormat, priority, npdu, source, doNotRepeat);
 }

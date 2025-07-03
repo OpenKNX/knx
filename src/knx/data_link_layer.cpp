@@ -91,19 +91,19 @@ void DataLinkLayer::dataRequestFromTunnel(CemiFrame& frame)
 }
 #endif
 
-void DataLinkLayer::dataRequest(AckType ack, AddressType addrType, uint16_t destinationAddr, uint16_t sourceAddr, FrameFormat format, Priority priority, NPDU& npdu)
+void DataLinkLayer::dataRequest(AckType ack, AddressType addrType, uint16_t destinationAddr, uint16_t sourceAddr, FrameFormat format, Priority priority, NPDU& npdu, bool doNotRepeat)
 {
     // Normal data requests and broadcasts will always be transmitted as (domain) broadcast with domain address for open media (e.g. RF medium) 
     // The domain address "simulates" a closed medium (such as TP) on an open medium (such as RF or PL)
     // See 3.2.5 p.22
-    sendTelegram(npdu, ack, destinationAddr, addrType, sourceAddr, format, priority, Broadcast);
+    sendTelegram(npdu, ack, destinationAddr, addrType, sourceAddr, format, priority, Broadcast, doNotRepeat);
 }
 
-void DataLinkLayer::systemBroadcastRequest(AckType ack, FrameFormat format, Priority priority, NPDU& npdu, uint16_t sourceAddr)
+void DataLinkLayer::systemBroadcastRequest(AckType ack, FrameFormat format, Priority priority, NPDU& npdu, uint16_t sourceAddr, bool doNotRepeat)
 {
     // System Broadcast requests will always be transmitted as broadcast with KNX serial number for open media (e.g. RF medium) 
     // See 3.2.5 p.22
-    sendTelegram(npdu, ack, 0, GroupAddress, sourceAddr, format, priority, SysBroadcast);
+    sendTelegram(npdu, ack, 0, GroupAddress, sourceAddr, format, priority, SysBroadcast, doNotRepeat);
 }
 
 void DataLinkLayer::dataConReceived(CemiFrame& frame, bool success)
