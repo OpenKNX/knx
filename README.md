@@ -31,6 +31,7 @@ See the examples for basic usage options
 - add #pragma once to Arduino plattform to allow derived plattforms
 - change esp32 plattform to use KNX_NETIF
 - fix out-of-boundary write and dereferenced nullpointer access in tunneling support
+- use tpuart library (https://github.com/OpenKNX/tpuart)
 
 ### V2.1.2 - 2024-12-09
 - adds unicast auto ack
