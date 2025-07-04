@@ -5,6 +5,17 @@
 #include <cstring>
 #include <cstdlib>
 
+
+TPUart::Interface::Abstract* Platform::interface()
+{
+    return _interface;
+}
+
+void Platform::interface(TPUart::Interface::Abstract* interface)
+{
+    _interface = interface;
+}
+
 NvMemoryType Platform::NonVolatileMemoryType()
 {
     return _memoryType;
@@ -26,44 +37,44 @@ int Platform::readWriteSpi(uint8_t *data, size_t len)
     return 0;
 }
 
-size_t Platform::readBytesUart(uint8_t *buffer, size_t length)
-{
-    return 0;
-}
+// size_t Platform::readBytesUart(uint8_t *buffer, size_t length)
+// {
+//     return 0;
+// }
 
-int Platform::readUart()
-{
-    return -1;
-}
+// int Platform::readUart()
+// {
+//     return -1;
+// }
 
-size_t Platform::writeUart(const uint8_t *buffer, size_t size)
-{
-    return 0;
-}
+// size_t Platform::writeUart(const uint8_t *buffer, size_t size)
+// {
+//     return 0;
+// }
 
-size_t Platform::writeUart(const uint8_t data)
-{
-    return 0;
-}
+// size_t Platform::writeUart(const uint8_t data)
+// {
+//     return 0;
+// }
 
-int Platform::uartAvailable()
-{
-    return 0;
-}
+// int Platform::uartAvailable()
+// {
+//     return 0;
+// }
 
-void Platform::closeUart()
-{}
+// void Platform::closeUart()
+// {}
 
-void Platform::setupUart()
-{}
+// void Platform::setupUart()
+// {}
 
-bool Platform::overflowUart()
-{
-    return false;
-}
+// bool Platform::overflowUart()
+// {
+//     return false;
+// }
 
-void Platform::flushUart()
-{}
+// void Platform::flushUart()
+// {}
 
 uint32_t Platform::currentIpAddress()
 {
@@ -107,6 +118,11 @@ bool Platform::sendBytesUniCast(uint32_t addr, uint16_t port, uint8_t* buffer, u
 int Platform::readBytesMultiCast(uint8_t *buffer, uint16_t maxLen)
 {
     return 0;
+}
+
+int Platform::readBytesMultiCast(uint8_t* buffer, uint16_t maxLen, uint32_t& src_addr, uint16_t& src_port)
+{
+    return readBytesMultiCast(buffer, maxLen);
 }
 
 size_t Platform::flashEraseBlockSize()
@@ -193,6 +209,13 @@ void Platform::commitNonVolatileMemory()
 
 uint32_t Platform::writeNonVolatileMemory(uint32_t relativeAddress, uint8_t* buffer, size_t size)
 {
+#ifdef KNX_LOG_MEM
+    print("Platform::writeNonVolatileMemory relativeAddress ");
+    print(relativeAddress);
+    print(" size ");
+    println(size);
+#endif
+
     if(_memoryType == Flash)
     {
         while (size > 0)
@@ -221,6 +244,79 @@ uint32_t Platform::writeNonVolatileMemory(uint32_t relativeAddress, uint8_t* buf
     else
     {
         memcpy(getEepromBuffer(KNX_FLASH_SIZE)+relativeAddress, buffer, size);
+        return relativeAddress+size;
+    }
+}
+
+uint32_t Platform::readNonVolatileMemory(uint32_t relativeAddress, uint8_t* buffer, size_t size)
+{
+#ifdef KNX_LOG_MEM
+    print("Platform::readNonVolatileMemory relativeAddress ");
+    print(relativeAddress);
+    print(" size ");
+    println(size);
+#endif
+
+    if(_memoryType == Flash)
+    {
+        uint32_t offset = 0;
+        while (size > 0)
+        {
+            // bufferd block is "left" of requested memory, read until the end and return
+            if(_bufferedEraseblockNumber < getEraseBlockNumberOf(relativeAddress))
+            {
+                memcpy(buffer+offset, userFlashStart()+relativeAddress, size);
+                return relativeAddress + size;
+            }
+            // bufferd block is "right" of requested memory, and may interfere
+            else if(_bufferedEraseblockNumber > getEraseBlockNumberOf(relativeAddress))
+            {
+                // if the end of the requested memory is before the buffered block, read until the end and return
+                int32_t eraseblockNumberEnd = getEraseBlockNumberOf(relativeAddress+size-1);
+                if(_bufferedEraseblockNumber > eraseblockNumberEnd)
+                {
+                    memcpy(buffer+offset, userFlashStart()+relativeAddress, size);
+                    return relativeAddress + size;
+                }
+                // if not, read until the buffered block starts and loop through while again
+                else
+                {
+                    uint32_t sizeToRead = (eraseblockNumberEnd * flashEraseBlockSize()) - relativeAddress;
+                    memcpy(buffer+offset, userFlashStart()+relativeAddress, sizeToRead);
+                    relativeAddress += sizeToRead;
+                    size -= sizeToRead;
+                    offset += sizeToRead;
+                }
+            }
+            // start of requested memory is within the buffered erase block
+            else
+            {
+                // if the end of the requested memory is also in the buffered block, read until the end and return
+                int32_t eraseblockNumberEnd = getEraseBlockNumberOf(relativeAddress+size-1);
+                if(_bufferedEraseblockNumber == eraseblockNumberEnd)
+                {
+                    uint8_t* start = _eraseblockBuffer + (relativeAddress - _bufferedEraseblockNumber * flashEraseBlockSize());
+                    memcpy(buffer+offset, start, size);
+                    return relativeAddress + size;
+                }
+                // if not, read until the end of the buffered block and loop through while again
+                else
+                {
+                    uint32_t offsetInBufferedBlock = relativeAddress - _bufferedEraseblockNumber * flashEraseBlockSize();
+                    uint8_t* start = _eraseblockBuffer + offsetInBufferedBlock;
+                    uint32_t sizeToRead = flashEraseBlockSize() - offsetInBufferedBlock;
+                    memcpy(buffer+offset, start, sizeToRead);
+                    relativeAddress += sizeToRead;
+                    size -= sizeToRead;
+                    offset += sizeToRead;
+                }
+            }
+        }
+        return relativeAddress;
+    }
+    else
+    {
+        memcpy(buffer, getEepromBuffer(KNX_FLASH_SIZE)+relativeAddress, size);
         return relativeAddress+size;
     }
 }

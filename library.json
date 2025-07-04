@@ -1,8 +1,6 @@
 {
     "name": "knx",
-    "version": "2.1.2",
-    "dependencies": {
-    },
+    "version": "2.2.0",
     "description": "knx stack",
     "homepage": "https://openknx.de",
     "authors": [
@@ -19,5 +17,8 @@
     "repository": {
         "type": "git",
         "url": "https://github.com/OpenKNX/knx"
+    },
+    "dependencies": {
+        "TPUart": "https://github.com/OpenKNX/tpuart#1.0.1"
     }
 }

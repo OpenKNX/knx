@@ -20,18 +20,6 @@ GroupObject::GroupObject()
 #endif
 }
 
-GroupObject::GroupObject(const GroupObject& other)
-{
-    _data = new uint8_t[other._dataLength];
-    _commFlagEx = other._commFlagEx;
-    _dataLength = other._dataLength;
-    _asap = other._asap;
-#ifndef SMALL_GROUPOBJECT
-    _updateHandler = other._updateHandler;
-#endif
-    memcpy(_data, other._data, _dataLength);
-}
-
 GroupObject::~GroupObject()
 {
     if (_data)
@@ -114,12 +102,12 @@ size_t GroupObject::goSize()
     size_t size = sizeInTelegram();
     if (size == 0)
         return 1;
-
+ 
     return size;
 }
 
 // see knxspec 3.5.1 p. 178
-size_t GroupObject::asapValueSize(uint8_t code)
+size_t GroupObject::asapValueSize(uint8_t code) const
 {
     if (code < 7)
         return 0;
@@ -194,6 +182,17 @@ size_t GroupObject::sizeInTelegram()
     return asapValueSize(code);
 }
 
+size_t GroupObject::sizeInMemory() const
+{
+    uint8_t code = lowByte(ntohs(_table->_tableData[_asap]));
+    size_t result = asapValueSize(code);
+    if (code == 0)
+        return 1;
+    if (code == 14)
+        return 14 + 1;
+    return result;
+}
+
 #ifdef SMALL_GROUPOBJECT
 GroupObjectUpdatedHandler GroupObject::classCallback()
 {
@@ -224,10 +223,15 @@ GroupObjectUpdatedHandler GroupObject::callback()
 }
 #endif
 
-void GroupObject::value(const KNXValue& value, const Dpt& type)
+bool GroupObject::value(const KNXValue& value, const Dpt& type)
 {
-    valueNoSend(value, type);
-    objectWritten();
+    if (valueNoSend(value, type))
+    {
+        // write on successful conversion/setting value only
+        objectWritten();
+        return true;
+    }
+    return false;
 }
 
 
@@ -262,9 +266,9 @@ bool GroupObject::tryValue(KNXValue& value)
 }
 
 
-void GroupObject::value(const KNXValue& value)
+bool GroupObject::value(const KNXValue& value)
 {
-    this->value(value, _datapointType);
+    return this->value(value, _datapointType);
 }
 
 
@@ -274,18 +278,21 @@ KNXValue GroupObject::value()
 }
 
 
-void GroupObject::valueNoSend(const KNXValue& value)
+bool GroupObject::valueNoSend(const KNXValue& value)
 {
-    valueNoSend(value, _datapointType);
+    return valueNoSend(value, _datapointType);
 }
 #endif
 
-void GroupObject::valueNoSend(const KNXValue& value, const Dpt& type)
+bool GroupObject::valueNoSend(const KNXValue& value, const Dpt& type)
 {
-    if (_commFlagEx.uninitialized)
+    const bool encodingDone = KNX_Encode_Value(value, _data, _dataLength, type);
+
+    // initialize on succesful conversion only
+    if (encodingDone && _commFlagEx.uninitialized)
         commFlag(Ok);
 
-    KNX_Encode_Value(value, _data, _dataLength, type);
+    return encodingDone;
 }
 
 bool GroupObject::valueNoSendCompare(const KNXValue& value, const Dpt& type)
@@ -293,15 +300,20 @@ bool GroupObject::valueNoSendCompare(const KNXValue& value, const Dpt& type)
     if (_commFlagEx.uninitialized)
     {
         // always set first value
-        this->valueNoSend(value, type);
-        return true;
+        return valueNoSend(value, type);
     }
     else
     {
-        // convert new value to given dtp
+        // convert new value to given DPT
         uint8_t newData[_dataLength];
         memset(newData, 0, _dataLength);
-        KNX_Encode_Value(value, newData, _dataLength, type);
+        const bool encodingDone = KNX_Encode_Value(value, newData, _dataLength, type);
+        if (!encodingDone)
+        {
+            // value conversion to DPT failed
+            // do NOT update the value of the KO!
+            return false;
+        }
 
         // check for change in converted value / update value on change only
         const bool dataChanged = memcmp(_data, newData, _dataLength);
@@ -316,8 +328,8 @@ bool GroupObject::valueCompare(const KNXValue& value, const Dpt& type)
 {
     if (valueNoSendCompare(value, type))
     {
-         objectWritten();
-         return true;
+        objectWritten();
+        return true;
     }
     return false;
 }

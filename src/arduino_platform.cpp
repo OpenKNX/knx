@@ -10,13 +10,10 @@
 Stream* ArduinoPlatform::SerialDebug = &KNX_DEBUG_SERIAL;
 #endif
 
-ArduinoPlatform::ArduinoPlatform() : _knxSerial(nullptr)
+ArduinoPlatform::ArduinoPlatform()
 {
 }
 
-ArduinoPlatform::ArduinoPlatform(HardwareSerial* knxSerial) : _knxSerial(knxSerial)
-{
-}
 
 void ArduinoPlatform::fatalError()
 {
@@ -33,81 +30,6 @@ void ArduinoPlatform::fatalError()
     }
 }
 
-void ArduinoPlatform::knxUart( HardwareSerial* serial )
-{
-    if (_knxSerial)
-        closeUart();
-    _knxSerial = serial;
-    setupUart();
-}
-
-HardwareSerial* ArduinoPlatform::knxUart()
-{
-    return _knxSerial;
-}
-
-void ArduinoPlatform::setupUart()
-{
-    _knxSerial->begin(19200, SERIAL_8E1);
-    while (!_knxSerial) 
-        ;
-}
-
-
-void ArduinoPlatform::closeUart()
-{
-    _knxSerial->end();
-}
-
-
-int ArduinoPlatform::uartAvailable()
-{
-    return _knxSerial->available();
-}
-
-
-size_t ArduinoPlatform::writeUart(const uint8_t data)
-{
-    //printHex("<p", &data, 1);
-    return _knxSerial->write(data);
-}
-
-
-size_t ArduinoPlatform::writeUart(const uint8_t *buffer, size_t size)
-{
-    //printHex("<p", buffer, size);
-    return _knxSerial->write(buffer, size);
-}
-
-
-int ArduinoPlatform::readUart()
-{
-    int val = _knxSerial->read();
-    //if(val > 0)
-    //    printHex("p>", (uint8_t*)&val, 1);
-    return val;
-}
-
-
-size_t ArduinoPlatform::readBytesUart(uint8_t *buffer, size_t length)
-{
-    size_t toRead = length;
-    uint8_t* pos = buffer;
-    while (toRead > 0)
-    {
-        size_t val = _knxSerial->readBytes(pos, toRead);
-        pos += val;
-        toRead -= val;
-    }
-    //printHex("p>", buffer, length);
-    return length;
-}
-
-void ArduinoPlatform::flushUart()
-{
-    return _knxSerial->flush();
-}
-
 #ifndef KNX_NO_SPI
 void ArduinoPlatform::setupSpi()
 {
@@ -121,7 +43,7 @@ void ArduinoPlatform::closeSpi()
     SPI.end();
 }
 
-int ArduinoPlatform::readWriteSpi(uint8_t *data, size_t len)
+int ArduinoPlatform::readWriteSpi(uint8_t* data, size_t len)
 {
     SPI.transfer(data, len);
     return 0;
@@ -130,20 +52,21 @@ int ArduinoPlatform::readWriteSpi(uint8_t *data, size_t len)
 
 #ifndef KNX_NO_PRINT
 void printUint64(uint64_t value, int base = DEC)
-  {
+{
     char buf[8 * sizeof(uint64_t) + 1];
     char* str = &buf[sizeof(buf) - 1];
     *str = '\0';
 
     uint64_t n = value;
-    do {
-      char c = n % base;
-      n /= base;
+    do
+    {
+        char c = n % base;
+        n /= base;
 
-      *--str = c < 10 ? c + '0' : c + 'A' - 10;
+        *--str = c < 10 ? c + '0' : c + 'A' - 10;
     } while (n > 0);
 
-     print(str);
+    print(str);
 }
 
 void print(const char* s)

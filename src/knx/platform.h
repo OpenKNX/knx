@@ -4,6 +4,8 @@
 #include <stddef.h>
 #include "save_restore.h"
 
+#include "TPUart/Interface/Abstract.h"
+
 #ifndef KNX_FLASH_CALLBACK
 #ifndef KNX_FLASH_SIZE
 #define KNX_FLASH_SIZE 1024
@@ -32,6 +34,10 @@ class Platform
 {
   public:
     virtual ~Platform() {}
+
+    TPUart::Interface::Abstract* interface();
+    void interface(TPUart::Interface::Abstract* interface);
+
     // ip config
     virtual uint32_t currentIpAddress();
     virtual uint32_t currentSubnetMask();
@@ -50,20 +56,10 @@ class Platform
     virtual void closeMultiCast();
     virtual bool sendBytesMultiCast(uint8_t* buffer, uint16_t len);
     virtual int readBytesMultiCast(uint8_t* buffer, uint16_t maxLen);
+    virtual int readBytesMultiCast(uint8_t* buffer, uint16_t maxLen, uint32_t& src_addr, uint16_t& src_port);
 
     //unicast socket
     virtual bool sendBytesUniCast(uint32_t addr, uint16_t port, uint8_t* buffer, uint16_t len);
-
-    //UART
-    virtual void setupUart();
-    virtual void closeUart();
-    virtual int uartAvailable();
-    virtual size_t writeUart(const uint8_t data);
-    virtual size_t writeUart(const uint8_t* buffer, size_t size);
-    virtual int readUart();
-    virtual size_t readBytesUart(uint8_t* buffer, size_t length);
-    virtual bool overflowUart();
-    virtual void flushUart();
 
     // SPI
     virtual void setupSpi();
@@ -85,6 +81,7 @@ class Platform
     virtual void commitNonVolatileMemory();
     // address is relative to start of nonvolatile memory
     virtual uint32_t writeNonVolatileMemory(uint32_t relativeAddress, uint8_t* buffer, size_t size);
+    virtual uint32_t readNonVolatileMemory(uint32_t relativeAddress, uint8_t* buffer, size_t size);
     virtual uint32_t writeNonVolatileMemory(uint32_t relativeAddress, uint8_t value, size_t repeat);
 
     NvMemoryType NonVolatileMemoryType();
@@ -122,6 +119,7 @@ class Platform
     //write a single page to flash (pageNumber relative to userFashStart
     virtual void flashWritePage(uint16_t pageNumber, uint8_t* data);
 
+    TPUart::Interface::Abstract* _interface;
 
     // -------------------------------------------------------------------------------------------------------
 

@@ -1,9 +1,12 @@
+#include <Arduino.h>
 #include <knx.h>
+#include "TPUart/Interface/ArduinoSerial.h"
 
 void setup()
 {
     Serial.begin(115200);
     ArduinoPlatform::SerialDebug = &Serial;
+    knx.platform().interface(new TPUart::Interface::ArduinoSerial(Serial1));
 
     randomSeed(millis());
 

@@ -18,6 +18,11 @@ DataLinkLayer& NetworkLayerEntity::dataLinkLayer()
     return *_dataLinkLayer;
 }
 
+NetworkLayer& NetworkLayerEntity::networkLayer()
+{
+    return _netLayer;
+}
+
 DptMedium NetworkLayerEntity::mediumType() const
 {
     return _dataLinkLayer->mediumType();
@@ -58,12 +63,12 @@ void NetworkLayerEntity::systemBroadcastConfirm(AckType ack, FrameFormat format,
     _netLayer.systemBroadcastConfirm(ack, format, priority, source, npdu, status, _entityIndex);
 }
 
-void NetworkLayerEntity::sendDataRequest(NPDU &npdu, AckType ack, uint16_t destination, uint16_t source, Priority priority, AddressType addrType, SystemBroadcast systemBroadcast)
+void NetworkLayerEntity::sendDataRequest(NPDU &npdu, AckType ack, uint16_t destination, uint16_t source, Priority priority, AddressType addrType, SystemBroadcast systemBroadcast, bool doNotRepeat)
 {
     FrameFormat frameFormat = npdu.octetCount() > 15 ? ExtendedFrame : StandardFrame;
 
     if (systemBroadcast == Broadcast)
-        _dataLinkLayer->dataRequest(ack, addrType, destination, source, frameFormat, priority, npdu);
+        _dataLinkLayer->dataRequest(ack, addrType, destination, source, frameFormat, priority, npdu, doNotRepeat);
     else
-        _dataLinkLayer->systemBroadcastRequest(ack, frameFormat, priority, npdu, source);
+        _dataLinkLayer->systemBroadcastRequest(ack, frameFormat, priority, npdu, source, doNotRepeat);
 }

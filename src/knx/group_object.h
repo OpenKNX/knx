@@ -51,16 +51,12 @@ typedef void (*GroupObjectUpdatedHandler)(GroupObject& go);
 class GroupObject
 {
     friend class GroupObjectTableObject;
-
+    GroupObject(const GroupObject& other) = delete;
   public:
     /**
      * The constructor.
      */
     GroupObject();
-    /**
-     * The copy constructor.
-     */
-    GroupObject(const GroupObject& other);
     /**
      * The destructor.
      */
@@ -140,6 +136,11 @@ class GroupObject
      */
     size_t sizeInTelegram();
     /**
+     * returns the size of the group object in the heap memory of the group object. The function returns the same value as goSize(), 
+     * exept fot the 14 byte string type to reserve one byte of a \0 terminator character.
+     */
+    size_t sizeInMemory() const;
+    /**
      * returns the pointer to the value of the group object. This can be used if a datapoint type is not supported or if you want do 
      * your own conversion.
      */
@@ -171,8 +172,10 @@ class GroupObject
      * @param type the datapoint type used for the conversion.
      * 
      * The parameters must fit the group object. Otherwise it will stay unchanged.
+     * 
+     * @returns true if the value was converted successfully to the datapoint type and the group object was updated.
      */
-    void value(const KNXValue& value, const Dpt& type);
+    bool value(const KNXValue& value, const Dpt& type);
     
     /**
      * Check if the value (after conversion to dpt) will differ from current value of the group object and changes the state of the group object to ::WriteRequest if different.
@@ -182,18 +185,20 @@ class GroupObject
      * 
      * The parameters must fit the group object. Otherwise it will stay unchanged.
      * 
-     * @returns true if the value of the group object has changed
+     * @returns true if the value of the group object has changed, false if conversion results in same value as stored in group object or failed.
      */
     bool valueCompare(const KNXValue& value, const Dpt& type);
 
     /**
-     * set the current value of the group object.
+     * set the current value of the group object and show success.
      * @param value the value the group object is set to
      * @param type the datapoint type used for the conversion.
      * 
      * The parameters must fit the group object. Otherwise it will stay unchanged.
+     * 
+     * @returns true if value was converted successfully to the datapoint type and the group object was updated.
      */
-    void valueNoSend(const KNXValue& value, const Dpt& type);
+    bool valueNoSend(const KNXValue& value, const Dpt& type);
 
     /**
      * Check if the value (after conversion to dpt) will differ from current value of the group object and update if necessary.
@@ -203,7 +208,7 @@ class GroupObject
      * 
      * The parameters must fit the group object. Otherwise it will stay unchanged.
      * 
-     * @returns true if the value of the group object has changed
+     * @returns true if the value of the group object has changed, false if conversion results in same value as stored in group object or failed.
      */
     bool valueNoSendCompare(const KNXValue& value, const Dpt& type);
 
@@ -229,15 +234,19 @@ class GroupObject
      * @param value the value the group object is set to
      * 
      * The parameters must fit the group object and dhe datapoint type must be set with dataPointType(). Otherwise it will stay unchanged.
+     * 
+     * @returns true if the value was converted successfully to the datapoint type and the group object was updated.
      */
-    void value(const KNXValue& value);
+    bool value(const KNXValue& value);
     /**
      * set the current value of the group object.
      * @param value the value the group object is set to
      * 
-     * The parameters must fit the group object and dhe datapoint type must be set with dataPointType(). Otherwise it will stay unchanged.
+     * The parameters must fit the group object and the datapoint type must be set with dataPointType(). Otherwise it will stay unchanged.
+     * 
+     * @returns true if the value was converted successfully to the datapoint type and the group object was updated.
      */
-    void valueNoSend(const KNXValue& value);
+    bool valueNoSend(const KNXValue& value);
     /**
      * set the current value of the group object.
      * @param value the value the group object is set to
@@ -274,7 +283,7 @@ class GroupObject
     static GroupObjectUpdatedHandler _updateHandlerStatic;
 #endif
 
-    size_t asapValueSize(uint8_t code);
+    size_t asapValueSize(uint8_t code) const;
     size_t goSize();
     uint16_t _asap = 0;
     ComFlagEx _commFlagEx;

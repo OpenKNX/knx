@@ -2,9 +2,7 @@
 
 This is a fork of the thelsing/knx stack from Thomas Kunze for and by the OpenKNX Team.
 
-While we did not remove support for any plattform, the testing focus is on RP2040 (main), ESP32 (experimental) and SAMD21(deprecated).
-
-This projects provides a knx-device stack for arduino (ESP8266, ESP32, SAMD21, RP2040, STM32), CC1310 and linux. (more are quite easy to add)
+This projects provides a knx-device stack for arduino (ESP32 and RP2040).
 It implements most of System-B specification and can be configured with ETS.
 The necessary knxprod-files can be generated with the [Kaenx-Creator](https://github.com/OpenKNX/Kaenx-Creator) tool.
 
@@ -14,6 +12,23 @@ See the examples for basic usage options
 
 
 ## Changelog
+
+### V2.2.0 - 2025-07-04
+- Fix [#30](https://github.com/OpenKNX/knx/pull/30): Unexpected behaviour of `GroupObject` on failed conversion to DPT
+  - `GroupObject::value[No]SendCompare(..)` resulted in value 0 (and returned change based on this value)
+  - `GroupObject::valueNoSend(..)` updated state from unitialized to OK, without updating the value
+  - `GroupObject::value(..)` wrote to GA without setting the KO value
+- Extension [#30](https://github.com/OpenKNX/knx/pull/30): Return successful conversion to DPT on values update operations in `GroupObject` (changed result-type of some methods from `void` to `bool`) 
+- only set pinMode of Prog button pin if valid (PROG_BUTTON_PIN >= 0)
+- Strings are now \0 terminated in group objects (#25)
+- change defines in the rp2040 plattform for LAN / WLAN usage to KNX_IP_LAN or KNX_IP_WIFI, remove KNX_IP_GENERIC
+- better Routing and Tunneling support
+- add DPT 27.001
+- increase device object api version to 2 (invalidation of knx flash data stored by older versions)
+- add #pragma once to Arduino plattform to allow derived plattforms
+- change esp32 plattform to use KNX_NETIF
+- remove examples to deprecated plattforms, update remaining examples
+- use tpuart library (https://github.com/OpenKNX/tpuart)
 
 ### V2.1.2 - 2024-12-09
 - adds unicast auto ack
