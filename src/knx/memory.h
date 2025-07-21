@@ -43,8 +43,10 @@ class Memory
     void readMemory();
     void writeMemory();
     void saveMemory();
+    void clearMemory();
     void addSaveRestore(SaveRestore* obj);
     void addSaveRestore(TableObject* obj);
+    void loop();
 
     uint8_t* allocMemory(size_t size);
     void freeMemory(uint8_t* ptr);
@@ -71,6 +73,7 @@ class Memory
     uint8_t* eraseBlockEnd(uint32_t blockNum);
     void saveBufferdEraseBlock();
 
+<<<<<<< HEAD
     VersionCheckCallback _versionCheckCallback = 0;
     Platform& _platform;
     DeviceObject& _deviceObject;
@@ -81,4 +84,17 @@ class Memory
     MemoryBlock* _freeList = nullptr;
     MemoryBlock* _usedList = nullptr;
     uint16_t _metadataSize = 6 + LEN_HARDWARE_TYPE; // accounting for 3x pushWord and pushByteArray of length LEN_HARDWARE_TYPE
+=======
+        VersionCheckCallback _versionCheckCallback = 0;
+        Platform& _platform;
+        DeviceObject& _deviceObject;
+        SaveRestore* _saveRestores[MAXSAVE] = {0};
+        TableObject* _tableObjects[MAXTABLEOBJ] = {0};
+        uint8_t _saveCount = 0;
+        uint8_t _tableObjCount = 0;
+        MemoryBlock* _freeList = nullptr;
+        MemoryBlock* _usedList = nullptr;
+        uint16_t _metadataSize = 6 + LEN_HARDWARE_TYPE; // accounting for 3x pushWord and pushByteArray of length LEN_HARDWARE_TYPE
+        unsigned long _saveTimeout = 0;
+>>>>>>> e2642b6 (Merge pull request #316 from thewhobox/fix/unloading)
 };
