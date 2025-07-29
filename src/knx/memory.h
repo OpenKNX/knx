@@ -73,6 +73,7 @@ class Memory
     uint8_t* eraseBlockEnd(uint32_t blockNum);
     void saveBufferdEraseBlock();
 
+    unsigned long _saveTimeout = 0; // timeout for saving memory
     VersionCheckCallback _versionCheckCallback = 0;
     Platform& _platform;
     DeviceObject& _deviceObject;
