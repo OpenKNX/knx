@@ -116,6 +116,13 @@ void TpUartDataLinkLayer::loop()
     if (!_initialized)
         return;
 
+    const uint16_t individualAddress = _deviceObject.individualAddress();
+    if (individualAddress > 0 && _individualAddress != individualAddress)
+    {
+        _individualAddress = individualAddress;
+        _tpuart.setOwnAddress(_individualAddress);
+    }
+
     _tpuart.process();
 }
 

@@ -70,6 +70,7 @@ class TpUartDataLinkLayer : public DataLinkLayer
     volatile bool _monitoring = false;
     volatile bool _busy = false;
     volatile bool _initialized = false;
+    uint16_t _individualAddress = 0;
 
     bool sendFrame(CemiFrame& frame);
     inline void connected(bool state = true);
