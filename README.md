@@ -13,8 +13,13 @@ See the examples for basic usage options
 
 ## Changelog
 
-### v1dev changes
-- fix reading PID_ADDITIONAL_INDIVIDUAL_ADDRESSES to distinguish Tunnel and TP PAs. This lead to failed PA assignment of for 0x091A devices with KNX_TUNNELING
+### v2.2.1 - 2025-08-12
+- Fix: Read PID_ADDITIONAL_INDIVIDUAL_ADDRESSES to distinguish Tunnel and TP PAs. This lead to failed PA assignment of for 0x091A devices with KNX_TUNNELING
+- Fix: `dataConReceived` is not suppressed anymore. This prevented sending device reset telegrams.
+- Fix: Update TPUart lib to 1.0.2
+- Fix: Add individual address handling in TpUartDataLinkLayer
+- Fix: [Unload application was not permanent](https://github.com/thelsing/knx/issues/144)
+- Extend documentation for KO-state
 
 ### V2.2.0 - 2025-07-04
 - Fix [#30](https://github.com/OpenKNX/knx/pull/30): Unexpected behaviour of `GroupObject` on failed conversion to DPT
