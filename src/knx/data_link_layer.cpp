@@ -276,8 +276,8 @@ bool DataLinkLayer::isTunnelingPA(uint16_t pa)
     uint32_t len = 0;
     uint8_t* data = nullptr;
     _bau.propertyValueRead(OT_IP_PARAMETER, 0, PID_ADDITIONAL_INDIVIDUAL_ADDRESSES, num, 1, &data, len);
-    //printHex("isTunnelingPA, PID_ADDITIONAL_INDIVIDUAL_ADDRESSES: ", *data, len);
-    if(len != KNX_TUNNELING * 2)
+    //printHex("isTunnelingPA, PID_ADDITIONAL_INDIVIDUAL_ADDRESSES: ", data, len);
+    if(num != KNX_TUNNELING)
     {
         println("Tunnel PAs unkwnown");
         if(data != nullptr)

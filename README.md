@@ -13,6 +13,9 @@ See the examples for basic usage options
 
 ## Changelog
 
+### v1dev changes
+- fix reading PID_ADDITIONAL_INDIVIDUAL_ADDRESSES to distinguish Tunnel and TP PAs. This lead to failed PA assignment of for 0x091A devices with KNX_TUNNELING
+
 ### V2.2.0 - 2025-07-04
 - Fix [#30](https://github.com/OpenKNX/knx/pull/30): Unexpected behaviour of `GroupObject` on failed conversion to DPT
   - `GroupObject::value[No]SendCompare(..)` resulted in value 0 (and returned change based on this value)
