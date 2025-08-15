@@ -199,7 +199,12 @@ bool DataLinkLayer::sendTelegram(NPDU & npdu, AckType ack, uint16_t destinationA
     frame.sourceAddress(sourceAddr);
     frame.addressType(addrType);
     frame.priority(priority);
-    frame.repetition(doNotRepeat?NoRepitiion:RepetitionAllowed);
+    
+    if(mediumType() == DptMedium::KNX_TP1)
+        frame.repetition(doNotRepeat?NoRepitiion:RepetitionAllowed);
+    else
+        frame.repetition(RepetitionAllowed);
+
     frame.systemBroadcast(systemBroadcast);
 
     if (npdu.octetCount() <= 15)

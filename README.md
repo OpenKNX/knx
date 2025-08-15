@@ -15,6 +15,7 @@ See the examples for basic usage options
 
 ### v2.2.1 - 2025-08-12
 - Fix: Distinguish between tunnel and TP PAs when reading PID_ADDITIONAL_INDIVIDUAL_ADDRESSES. This resulted in a failed PA assignment for 0x091A devices with KNX_TUNNELING
+- Fix: set repeat correctly in DataLinkLayer when sending to other mediums as TP (https://github.com/OpenKNX/knx/issues/40)
 - Fix: `dataConReceived` is not suppressed anymore. This prevented sending device reset telegrams.
 - Fix: Update TPUart lib to 1.0.2
 - Fix: Add individual address handling in TpUartDataLinkLayer
