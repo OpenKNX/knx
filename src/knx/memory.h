@@ -45,6 +45,7 @@ class Memory
     void saveMemory();
     void addSaveRestore(SaveRestore* obj);
     void addSaveRestore(TableObject* obj);
+    void loop();
 
     uint8_t* allocMemory(size_t size);
     void freeMemory(uint8_t* ptr);
@@ -71,6 +72,7 @@ class Memory
     uint8_t* eraseBlockEnd(uint32_t blockNum);
     void saveBufferdEraseBlock();
 
+    unsigned long _saveTimeout = 0; // timeout for saving memory
     VersionCheckCallback _versionCheckCallback = 0;
     Platform& _platform;
     DeviceObject& _deviceObject;

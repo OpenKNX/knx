@@ -116,6 +116,13 @@ void TpUartDataLinkLayer::loop()
     if (!_initialized)
         return;
 
+    const uint16_t individualAddress = _deviceObject.individualAddress();
+    if (individualAddress > 0 && _individualAddress != individualAddress)
+    {
+        _individualAddress = individualAddress;
+        _tpuart.setOwnAddress(_individualAddress);
+    }
+
     _tpuart.process();
 }
 
@@ -183,17 +190,21 @@ void TpUartDataLinkLayer::processRxFrame(TPUart::Frame &tpFrame)
     {
         printMessage(tpFrame.printFrame().c_str(), false);
     }
-
-    if (tpFrame.isTransmitted())
-        return;
+    
 #if MASK_VERSION != 0x091A
     if (tpFrame.isFiltered())
         return;
 #endif
 
-    // CemiFrame cemiFrame = convertTPFrameToCemi(&tpFrame);
     uint8_t *cemiData = (uint8_t *)tpFrame.cemiData();
     CemiFrame cemiFrame(cemiData, tpFrame.cemiSize());
+
+    if (tpFrame.isTransmitted()) {
+        dataConReceived(cemiFrame, tpFrame.isAck());
+        delete cemiData;
+        return;
+    }
+
     // printHex("  TP<: ", (const uint8_t *)tpFrame.data(), tpFrame.size());
     // printHex("  CEMI<: ", cemiFrame.data(), cemiFrame.dataLength());
 
