@@ -13,6 +13,9 @@ See the examples for basic usage options
 
 ## Changelog
 
+### v1dev (replace this with version and date when releasing to v1)
+- deactivate by default not KNX-Standard compatible 'Tunnel-Optimization" which reduces traffic on TP
+
 ### v2.2.2 - 2025-10-21
 - Fix: DPT subgroup 0 handling
 
