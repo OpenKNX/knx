@@ -9,6 +9,7 @@
 #include "ip_data_link_layer.h"
 #include "tpuart_data_link_layer.h"
 #include "cemi_server_object.h"
+#include "ip_tunnel_server.h"
 
 class Bau091A : public BauSystemBCoupler, public ITpUartCallBacks, public DataLinkLayerCallbacks
 {
@@ -37,6 +38,9 @@ class Bau091A : public BauSystemBCoupler, public ITpUartCallBacks, public DataLi
 #ifdef USE_CEMI_SERVER
     CemiServer _cemiServer;
     CemiServerObject _cemiServerObject;
+#endif
+#ifdef KNX_TUNNELING
+    IpTunnelServer _ipTunnelServer;
 #endif
 };
 #endif
