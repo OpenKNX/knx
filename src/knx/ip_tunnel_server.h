@@ -6,9 +6,10 @@
 #include <stdint.h>
 #include "knx_types.h"
 #include "knx_ip_tunnel_connection.h"
-#include "cemi_server.h"
 #include "cemi_frame.h"
 #include "ip_parameter_object.h"
+
+class CemiServer;
 
 class IpTunnelServer
 {

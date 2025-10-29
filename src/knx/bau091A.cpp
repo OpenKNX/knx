@@ -24,13 +24,11 @@ Bau091A::Bau091A(Platform& platform)
       (DataLinkLayerCallbacks*) this),
       _dlLayerSecondary(_deviceObj, _netLayer.getSecondaryInterface(), platform, *this, (ITpUartCallBacks&) *this, (DataLinkLayerCallbacks*) this),
       DataLinkLayerCallbacks()
-#ifdef USE_CEMI_SERVER
-      ,
-      _cemiServer(*this)
-#endif
 #ifdef KNX_TUNNELING
-      ,
-      _ipTunnelServer(_deviceObj, _ipParameters, platform, _cemiServer)
+      , _cemiServer(*this, _ipTunnelServer)
+      , _ipTunnelServer(_deviceObj, _ipParameters, platform, _cemiServer)
+#elif defined(USE_CEMI_SERVER) // USE_CEMI_SERVER must be defined if KNX_TUNNELING us used
+      , _ipTunnelServer(_deviceObj, _ipParameters, platform, _cemiServer)
 #endif
 {
     // Before accessing anything of the router object they have to be initialized according to the used medium

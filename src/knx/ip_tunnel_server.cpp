@@ -15,6 +15,7 @@
 #include "knx_ip_description_request.h"
 #include "knx_ip_description_response.h"
 #include "knx_ip_config_request.h"
+#include "cemi_server.h"
 
 
 IpTunnelServer::IpTunnelServer(DeviceObject& devObj, IpParameterObject& ipParam, Platform& platform, CemiServer& cemiServer) :
