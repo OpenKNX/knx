@@ -167,7 +167,9 @@ void Bau091A::loop()
     _dlLayerPrimary.loop();
     _dlLayerSecondary.loop();
     BauSystemBCoupler::loop();
+#ifdef KNX_TUNNELING
     _ipTunnelServer.loop();
+#endif
 }
 
 TPAckType Bau091A::isAckRequired(uint16_t address, bool isGrpAddr)
