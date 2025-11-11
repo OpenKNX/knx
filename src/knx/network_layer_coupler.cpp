@@ -619,7 +619,7 @@ void NetworkLayerCoupler::dataSystemBroadcastRequest(AckType ack, HopCountType h
 #ifdef KNX_TUNNELING
 bool NetworkLayerCoupler::isTunnelAddress(uint16_t destination)
 {
-    // tunnels are managed within the IpDataLinkLayer - kPrimaryIfIndex
-    return _netLayerEntities[kPrimaryIfIndex].dataLinkLayer().isTunnelAddress(destination);
+    // tunnels are managed within the TP LinkLayer - kSecondaryIfIndex
+    return _netLayerEntities[kSecondaryIfIndex].dataLinkLayer().isTunnelingPA(destination);
 }
 #endif

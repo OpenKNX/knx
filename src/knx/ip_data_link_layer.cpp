@@ -27,12 +27,13 @@ IpDataLinkLayer::IpDataLinkLayer(DeviceObject& devObj, IpParameterObject& ipPara
 #ifdef KNX_TUNNELING
                                 IpTunnelServer& ipTunnelServer,
 #endif
-                                 DataLinkLayerCallbacks* dllcb) : DataLinkLayer(devObj, netLayerEntity, platform, busAccessUnit),
+                                 DataLinkLayerCallbacks* dllcb) : DataLinkLayer(devObj, netLayerEntity, platform, busAccessUnit
+#ifdef KNX_TUNNELING
+                                                                                    , ipTunnelServer
+#endif
+                                ),
                                  _ipParameters(ipParam),
                                  _dllcb(dllcb)
-#ifdef KNX_TUNNELING
-                                ,_ipTunnelServer(ipTunnelServer)
-#endif                              
 {
 }
 

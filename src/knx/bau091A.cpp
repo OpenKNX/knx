@@ -22,7 +22,11 @@ Bau091A::Bau091A(Platform& platform)
                       _ipTunnelServer,
 #endif
       (DataLinkLayerCallbacks*) this),
-      _dlLayerSecondary(_deviceObj, _netLayer.getSecondaryInterface(), platform, *this, (ITpUartCallBacks&) *this, (DataLinkLayerCallbacks*) this),
+      _dlLayerSecondary(_deviceObj, _netLayer.getSecondaryInterface(), platform, *this,
+#ifdef KNX_TUNNELING
+                      _ipTunnelServer,
+#endif
+      (ITpUartCallBacks&) *this, (DataLinkLayerCallbacks*) this),
       DataLinkLayerCallbacks()
 #ifdef KNX_TUNNELING
       , _cemiServer(*this, _ipTunnelServer)

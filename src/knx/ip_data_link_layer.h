@@ -43,8 +43,5 @@ class IpDataLinkLayer : public DataLinkLayer
 
     IpParameterObject& _ipParameters;
     DataLinkLayerCallbacks* _dllcb;
-#ifdef KNX_TUNNELING
-    IpTunnelServer& _ipTunnelServer;
-#endif
 };
 #endif

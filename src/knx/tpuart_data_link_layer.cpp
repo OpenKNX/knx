@@ -140,9 +140,16 @@ TpUartDataLinkLayer::TpUartDataLinkLayer(DeviceObject &devObj,
                                          NetworkLayerEntity &netLayerEntity,
                                          Platform &platform,
                                          BusAccessUnit &busAccessUnit,
+#ifdef KNX_TUNNELING
+                                        IpTunnelServer& ipTunnelServer,
+#endif
                                          ITpUartCallBacks &cb,
                                          DataLinkLayerCallbacks *dllcb)
-    : DataLinkLayer(devObj, netLayerEntity, platform, busAccessUnit),
+    : DataLinkLayer(devObj, netLayerEntity, platform, busAccessUnit
+#ifdef KNX_TUNNELING
+                                        ,ipTunnelServer
+#endif
+    ),
       _cb(cb),
       _dllcb(dllcb)
 {
