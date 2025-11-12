@@ -39,7 +39,7 @@ class IpTunnelServer
     void HandleTunnelingRequest(uint8_t* buffer, uint16_t length);
 
 
-    KnxIpTunnelConnection tunnels[KNX_TUNNELING];
+    KnxIpTunnelConnection tunnels[KNX_TUNNELING+1];
     uint8_t _lastChannelId = 0;
     IpParameterObject& _ipParameters;
     DeviceObject& _deviceObject;
