@@ -373,10 +373,11 @@ void NetworkLayerCoupler::routeDataIndividual(AckType ack, uint16_t destination,
             //unknown coupler type, should not happen
             return ;
         }
-        
 
         // if destination is not within our scope then send via primary interface, else via secondary interface
         uint8_t destIfidx = (Z != netaddr) ? kPrimaryIfIndex : kSecondaryIfIndex;
+        
+#ifndef KNX_ROUTING_BC_DC
 #ifdef KNX_TUNNELING
         if(destIfidx == kPrimaryIfIndex)
             if(isTunnelAddress(destination))
@@ -385,6 +386,12 @@ void NetworkLayerCoupler::routeDataIndividual(AckType ack, uint16_t destination,
         //print("NetworkLayerCoupler::routeDataIndividual local to s or p: ");
         //println(destIfidx);
         _netLayerEntities[destIfidx].sendDataRequest(npdu, ack, destination, source, priority, AddressType::IndividualAddress, Broadcast);
+#else
+        _netLayerEntities[kPrimaryIfIndex].sendDataRequest(npdu, ack, destination, source, priority, AddressType::IndividualAddress, Broadcast);
+        if(destIfidx == kPrimaryIfIndex)
+            ack = AckDontCare;
+        _netLayerEntities[kSecondaryIfIndex].sendDataRequest(npdu, ack, destination, source, priority, AddressType::IndividualAddress, Broadcast);
+#endif
         return;
     }
 
