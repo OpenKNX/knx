@@ -25,7 +25,7 @@ IpTunnelServer::IpTunnelServer(DeviceObject& devObj, IpParameterObject& ipParam,
 
 void IpTunnelServer::loop()
 {
-    for (int i = 0; i < KNX_TUNNELING + 1; i++)
+    for (int i = 0; i < KNX_TUNNELING + KNX_TUNNELING_DEVMGMT; i++)
     {
         if (tunnels[i].ChannelId != 0)
         {
@@ -427,9 +427,15 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
     uint8_t tunIdx = 0xff;
     if (connRequest.cri().type() == DEVICE_MGMT_CONNECTION)
     {
-        if (tunnels[KNX_TUNNELING].ChannelId == 0) // last tunnel is reserved for device management, check if free
-            tunIdx = KNX_TUNNELING;
-        else
+        for (int i = KNX_TUNNELING; i < KNX_TUNNELING + KNX_TUNNELING_DEVMGMT; i++)
+        {
+            if (tunnels[i].ChannelId == 0)
+            {
+                tunIdx = i;
+                break;
+            }
+        }
+        if (tunIdx == 0xff) 
             ; // Todo? tunIdx = 0xff => tun = null => E_NO_MORE_CONNECTIONS
     }
     else if (connRequest.cri().type() == TUNNEL_CONNECTION) //
@@ -640,7 +646,7 @@ void IpTunnelServer::HandleConnectionStateRequest(uint8_t* buffer, uint16_t leng
     KnxIpStateRequest stateRequest(buffer, length);
 
     KnxIpTunnelConnection* tun = nullptr;
-    for (int i = 0; i < KNX_TUNNELING; i++)
+    for (int i = 0; i < KNX_TUNNELING + KNX_TUNNELING_DEVMGMT; i++)
     {
         if (tunnels[i].ChannelId == stateRequest.channelId())
         {
@@ -680,7 +686,7 @@ void IpTunnelServer::HandleDisconnectRequest(uint8_t* buffer, uint16_t length)
 #endif
 
     KnxIpTunnelConnection* tun = nullptr;
-    for (int i = 0; i < KNX_TUNNELING; i++)
+    for (int i = 0; i < KNX_TUNNELING + KNX_TUNNELING_DEVMGMT; i++)
     {
         if (tunnels[i].ChannelId == discReq.channelId())
         {
@@ -717,7 +723,7 @@ void IpTunnelServer::HandleDeviceConfigurationRequest(uint8_t* buffer, uint16_t 
     KnxIpConfigRequest confReq(buffer, length);
 
     KnxIpTunnelConnection* tun = nullptr;
-    for (int i = 0; i < KNX_TUNNELING; i++)
+    for (int i = KNX_TUNNELING; i < KNX_TUNNELING + KNX_TUNNELING_DEVMGMT; i++)
     {
         if (tunnels[i].ChannelId == confReq.connectionHeader().channelId())
         {

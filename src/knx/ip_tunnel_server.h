@@ -2,6 +2,9 @@
 
 #include "config.h"
 #ifdef KNX_TUNNELING
+#ifndef KNX_TUNNELING_DEVMGMT
+#define KNX_TUNNELING_DEVMGMT 1
+#endif
 
 #include <stdint.h>
 #include "knx_types.h"
@@ -39,7 +42,7 @@ class IpTunnelServer
     void HandleTunnelingRequest(uint8_t* buffer, uint16_t length);
 
 
-    KnxIpTunnelConnection tunnels[KNX_TUNNELING+1];
+    KnxIpTunnelConnection tunnels[KNX_TUNNELING+KNX_TUNNELING_DEVMGMT];
     uint8_t _lastChannelId = 0;
     IpParameterObject& _ipParameters;
     DeviceObject& _deviceObject;
