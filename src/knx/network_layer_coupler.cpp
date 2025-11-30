@@ -388,9 +388,7 @@ void NetworkLayerCoupler::routeDataIndividual(AckType ack, uint16_t destination,
         _netLayerEntities[destIfidx].sendDataRequest(npdu, ack, destination, source, priority, AddressType::IndividualAddress, Broadcast);
 #else
         _netLayerEntities[kPrimaryIfIndex].sendDataRequest(npdu, ack, destination, source, priority, AddressType::IndividualAddress, Broadcast);
-        if(destIfidx == kPrimaryIfIndex)
-            ack = AckDontCare;
-        _netLayerEntities[kSecondaryIfIndex].sendDataRequest(npdu, ack, destination, source, priority, AddressType::IndividualAddress, Broadcast);
+        _netLayerEntities[kSecondaryIfIndex].sendDataRequest(npdu, ack, destination, source, priority, AddressType::IndividualAddress, Broadcast, (destIfidx == kPrimaryIfIndex)); // if the "real" destination is primary, send with no repeat on secondary (TP)
 #endif
         return;
     }
