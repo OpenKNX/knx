@@ -32,7 +32,11 @@ class TpUartDataLinkLayer : public DataLinkLayer
 
   public:
     TpUartDataLinkLayer(DeviceObject& devObj, NetworkLayerEntity& netLayerEntity,
-                        Platform& platform, BusAccessUnit& busAccessUnit, ITpUartCallBacks& cb, DataLinkLayerCallbacks* dllcb = nullptr);
+                        Platform& platform, BusAccessUnit& busAccessUnit,
+#ifdef KNX_TUNNELING
+                        IpTunnelServer& ipTunnelServer,
+#endif
+                        ITpUartCallBacks& cb, DataLinkLayerCallbacks* dllcb = nullptr);
 
     void loop();
     void enabled(bool value);

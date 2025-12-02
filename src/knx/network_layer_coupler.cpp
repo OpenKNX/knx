@@ -373,10 +373,11 @@ void NetworkLayerCoupler::routeDataIndividual(AckType ack, uint16_t destination,
             //unknown coupler type, should not happen
             return ;
         }
-        
 
         // if destination is not within our scope then send via primary interface, else via secondary interface
         uint8_t destIfidx = (Z != netaddr) ? kPrimaryIfIndex : kSecondaryIfIndex;
+        
+#ifndef KNX_ROUTING_BC_DC
 #ifdef KNX_TUNNELING
         if(destIfidx == kPrimaryIfIndex)
             if(isTunnelAddress(destination))
@@ -385,6 +386,10 @@ void NetworkLayerCoupler::routeDataIndividual(AckType ack, uint16_t destination,
         //print("NetworkLayerCoupler::routeDataIndividual local to s or p: ");
         //println(destIfidx);
         _netLayerEntities[destIfidx].sendDataRequest(npdu, ack, destination, source, priority, AddressType::IndividualAddress, Broadcast);
+#else
+        _netLayerEntities[kPrimaryIfIndex].sendDataRequest(npdu, ack, destination, source, priority, AddressType::IndividualAddress, Broadcast);
+        _netLayerEntities[kSecondaryIfIndex].sendDataRequest(npdu, ack, destination, source, priority, AddressType::IndividualAddress, Broadcast, (destIfidx == kPrimaryIfIndex)); // if the "real" destination is primary, send with no repeat on secondary (TP)
+#endif
         return;
     }
 
@@ -619,7 +624,7 @@ void NetworkLayerCoupler::dataSystemBroadcastRequest(AckType ack, HopCountType h
 #ifdef KNX_TUNNELING
 bool NetworkLayerCoupler::isTunnelAddress(uint16_t destination)
 {
-    // tunnels are managed within the IpDataLinkLayer - kPrimaryIfIndex
-    return _netLayerEntities[kPrimaryIfIndex].dataLinkLayer().isTunnelAddress(destination);
+    // tunnels are managed within the TP LinkLayer - kSecondaryIfIndex
+    return _netLayerEntities[kSecondaryIfIndex].dataLinkLayer().isTunnelingPA(destination);
 }
 #endif

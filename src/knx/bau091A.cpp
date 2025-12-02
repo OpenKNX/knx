@@ -17,12 +17,22 @@ Bau091A::Bau091A(Platform& platform)
     : BauSystemBCoupler(platform),
       _routerObj(memory(), 0x200, 0x2000),  // the Filtertable of 0x091A IP Routers is fixed at 0x200 and 0x2000 long
       _ipParameters(_deviceObj, platform),
-      _dlLayerPrimary(_deviceObj, _ipParameters, _netLayer.getPrimaryInterface(), _platform, *this, (DataLinkLayerCallbacks*) this),
-      _dlLayerSecondary(_deviceObj, _netLayer.getSecondaryInterface(), platform, *this, (ITpUartCallBacks&) *this, (DataLinkLayerCallbacks*) this),
+      _dlLayerPrimary(_deviceObj, _ipParameters, _netLayer.getPrimaryInterface(), _platform, *this,
+#ifdef KNX_TUNNELING
+                      _ipTunnelServer,
+#endif
+      (DataLinkLayerCallbacks*) this),
+      _dlLayerSecondary(_deviceObj, _netLayer.getSecondaryInterface(), platform, *this,
+#ifdef KNX_TUNNELING
+                      _ipTunnelServer,
+#endif
+      (ITpUartCallBacks&) *this, (DataLinkLayerCallbacks*) this),
       DataLinkLayerCallbacks()
-#ifdef USE_CEMI_SERVER
-      ,
-      _cemiServer(*this)
+#ifdef KNX_TUNNELING
+      , _cemiServer(*this, _ipTunnelServer)
+      , _ipTunnelServer(_deviceObj, _ipParameters, platform, _cemiServer)
+#elif defined(USE_CEMI_SERVER) // USE_CEMI_SERVER must be defined if KNX_TUNNELING us used
+      , _ipTunnelServer(_deviceObj, _ipParameters, platform, _cemiServer)
 #endif
 {
     // Before accessing anything of the router object they have to be initialized according to the used medium
@@ -159,6 +169,9 @@ void Bau091A::loop()
     _dlLayerPrimary.loop();
     _dlLayerSecondary.loop();
     BauSystemBCoupler::loop();
+#ifdef KNX_TUNNELING
+    _ipTunnelServer.loop();
+#endif
 }
 
 TPAckType Bau091A::isAckRequired(uint16_t address, bool isGrpAddr)
@@ -195,7 +208,7 @@ TPAckType Bau091A::isAckRequired(uint16_t address, bool isGrpAddr)
             }
         }
 #ifdef KNX_TUNNELING
-        if(_dlLayerPrimary.isSentToTunnel(address, isGrpAddr))
+        if(_ipTunnelServer.isSentToTunnel(address, isGrpAddr))
             ack = TPAckType::AckReqAck;
 #endif
     }
@@ -212,7 +225,7 @@ TPAckType Bau091A::isAckRequired(uint16_t address, bool isGrpAddr)
                 ack = TPAckType::AckReqNone;
 
 #ifdef KNX_TUNNELING
-        if(_dlLayerPrimary.isSentToTunnel(address, isGrpAddr))
+        if(_ipTunnelServer.isSentToTunnel(address, isGrpAddr))
             ack = TPAckType::AckReqAck;
 #endif
 

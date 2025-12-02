@@ -9,9 +9,15 @@
 #include "string.h"
 #include "bits.h"
 #include <stdio.h>
+#include "ip_tunnel_server.h"
 
+#ifndef KNX_TUNNELING
 CemiServer::CemiServer(BauSystemB& bau)
     : _bau(bau)
+#else
+CemiServer::CemiServer(BauSystemB& bau, IpTunnelServer& ipTunnelServer)
+    : _bau(bau), _ipTunnelServer(ipTunnelServer)
+#endif
 #ifdef USE_USB
         ,
         _usbTunnelInterface(*this,
@@ -64,7 +70,7 @@ void CemiServer::dataConfirmationToTunnel(CemiFrame& frame)
 #ifdef USE_USB
     _usbTunnelInterface.sendCemiFrame(frame);
 #elif defined(KNX_TUNNELING)
-    _dataLinkLayerPrimary->dataConfirmationToTunnel(frame);
+    _ipTunnelServer.dataConfirmationToTunnel(frame);
 #endif
 
     frame.messageCode(backupMsgCode);
@@ -115,7 +121,7 @@ void CemiServer::dataIndicationToTunnel(CemiFrame& frame)
 #ifdef USE_USB
     _usbTunnelInterface.sendCemiFrame(tmpFrame);
 #elif defined(KNX_TUNNELING)
-    _dataLinkLayerPrimary->dataIndicationToTunnel(frame);
+    _ipTunnelServer.dataIndicationToTunnel(frame);
 #endif
 }
 
@@ -293,7 +299,7 @@ void CemiServer::handleMPropRead(CemiFrame& frame)
 #ifdef USE_USB
         _usbTunnelInterface.sendCemiFrame(responseFrame);
 #elif defined(KNX_TUNNELING)
-        _dataLinkLayerPrimary->dataRequestToTunnel(responseFrame);
+        _ipTunnelServer.dataRequestToTunnel(responseFrame);
 #endif
         delete[] data;
     }
@@ -313,7 +319,7 @@ void CemiServer::handleMPropRead(CemiFrame& frame)
 #ifdef USE_USB
         _usbTunnelInterface.sendCemiFrame(responseFrame);
 #elif defined(KNX_TUNNELING)
-    _dataLinkLayerPrimary->dataRequestToTunnel(responseFrame);
+    _ipTunnelServer.dataRequestToTunnel(responseFrame);
 #endif
     }
 }
@@ -383,7 +389,7 @@ void CemiServer::handleMPropWrite(CemiFrame& frame)
 #ifdef USE_USB
         _usbTunnelInterface.sendCemiFrame(responseFrame);
 #elif defined(KNX_TUNNELING)
-    _dataLinkLayerPrimary->dataRequestToTunnel(responseFrame);
+    _ipTunnelServer.dataRequestToTunnel(responseFrame);
 #endif
     }
     else
@@ -402,7 +408,7 @@ void CemiServer::handleMPropWrite(CemiFrame& frame)
 #ifdef USE_USB
         _usbTunnelInterface.sendCemiFrame(responseFrame);
 #elif defined(KNX_TUNNELING)
-    _dataLinkLayerPrimary->dataRequestToTunnel(responseFrame);
+    _ipTunnelServer.dataRequestToTunnel(responseFrame);
 #endif
     }
 }
@@ -421,7 +427,7 @@ void CemiServer::handleMReset(CemiFrame& frame)
 #ifdef USE_USB
     _usbTunnelInterface.sendCemiFrame(responseFrame);
 #elif defined(KNX_TUNNELING)
-    _dataLinkLayerPrimary->dataRequestToTunnel(responseFrame);
+    _ipTunnelServer.dataRequestToTunnel(responseFrame);
 #endif
 }
 

@@ -10,6 +10,7 @@
 class BauSystemB;
 class DataLinkLayer;
 class CemiFrame;
+class IpTunnelServer;
 
 /**
  * This is an implementation of the cEMI server as specified in @cite knx:3/6/3.
@@ -26,7 +27,11 @@ class CemiServer
      * The constructor.
      * @param bau methods are called here depending of the content of the APDU
      */
+#ifndef KNX_TUNNELING
     CemiServer(BauSystemB& bau);
+#else
+    CemiServer(BauSystemB& bau, IpTunnelServer& ipTunnelServer);
+#endif
 
     void dataLinkLayer(DataLinkLayer& layer);
 #ifdef KNX_TUNNELING
@@ -58,6 +63,7 @@ class CemiServer
     DataLinkLayer* _dataLinkLayer = nullptr;
 #ifdef KNX_TUNNELING
     DataLinkLayer* _dataLinkLayerPrimary = nullptr;
+    IpTunnelServer& _ipTunnelServer;
 #endif
     BauSystemB& _bau;
 #ifdef USE_USB

@@ -14,7 +14,11 @@ See the examples for basic usage options
 ## Changelog
 
 ### v1dev (replace this with version and date when releasing to v1)
-- deactivate by default not KNX-Standard compatible 'Tunnel-Optimization" which reduces traffic on TP
+- deactivate by default not KNX-Standard compatible 'Tunnel-Optimization" which reduces traffic on TP (can be used with compiler option KNX_TUNNELING_NO_TUNNEL_PA_ON_TP and KNX_TUNNELING_STRICT_TOPOLOGY)
+- refactor KNX IP Tunneling
+- the Device Management Connection is now handled independently from Tunnel Connections and do not consume a Tunnel PA anymore
+  new compiler option KNX_TUNNELING_DEVMGMT (default = 1) to set the number of availible Device Management Connections
+- new Compiler Option KNX_ROUTING_BC_DC: Unicast packets from the device itself is sent to both interfaces (IP and TP in case of 0x091A)
 
 ### v2.2.2 - 2025-10-21
 - Fix: DPT subgroup 0 handling
