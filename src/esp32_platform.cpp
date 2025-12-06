@@ -75,10 +75,11 @@ void Esp32Platform::setupMultiCast(uint32_t addr, uint16_t port)
     }
     IPAddress mcastaddr(htonl(addr));
 
-    println("Initializing KNX multicast");
-    
-    // KNX_DEBUG_SERIAL.printf("setup multicast addr: %s port: %d ip: %s\n", mcastaddr.toString().c_str(), port,
-    //    KNX_NETIF.localIP().toString().c_str());
+    println("Initializing KNX multicast.");
+    print("  Bind ");
+    print(mcastaddr.toString().c_str());
+    print(":");
+    println(port);
     uint8_t result = _udp.beginMulticast(mcastaddr, port);
     (void)result; // Suppress unused variable warning
     // KNX_DEBUG_SERIAL.printf("result %d\n", result);
