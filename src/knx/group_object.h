@@ -151,6 +151,10 @@ class GroupObject
      */
     size_t sizeInMemory() const;
     /**
+     * recalculate the data length of the group object according to the given datapoint type. This happens just for uninitialized group objects if size doesn't fit.
+     */
+    void recalculateDataLength(const Dpt& type);
+    /**
      * returns the pointer to the value of the group object. This can be used if a datapoint type is not supported or if you want do 
      * your own conversion.
      */
