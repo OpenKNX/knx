@@ -7,6 +7,7 @@
 #include "knx/bau27B0.h"
 #include "knx/bau2920.h"
 #include "knx/bau57B0.h"
+#include <string>
 
 #ifndef USERDATA_SAVE_SIZE
 #define USERDATA_SAVE_SIZE 0
@@ -306,6 +307,15 @@ template <class P, class B> class KnxFacade : private SaveRestore
             return nullptr;
 
         return _bau.parameters().data(addr);
+    }
+
+    std::string paramString(uint32_t addr, uint32_t length)
+    {
+        if (!_bau.configured())
+            return std::string();
+
+        const char* str = (const char*) _bau.parameters().data(addr);
+        return std::string(str, strnlen(str, length));
     }
 
     // paramBit(address, shift)
