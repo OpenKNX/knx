@@ -28,6 +28,7 @@ class RfDataLinkLayer : public DataLinkLayer
     void enabled(bool value);
     bool enabled() const;
     DptMedium mediumType() const override;
+    void registerReceivedFrame(std::function<void(const char *)> callback);
 
   private:
     bool _enabled = false;
@@ -62,6 +63,9 @@ class RfDataLinkLayer : public DataLinkLayer
     void loadNextTxFrame(uint8_t** sendBuffer, uint16_t* sendBufferLength);
     bool sendFrame(CemiFrame& frame);
     void frameBytesReceived(uint8_t* buffer, uint16_t length);
+
+    void receivedFrame(CemiFrame& frame);
+    std::vector<std::function<void(const char *)>> _callbacksReceivedFrame;
 };
 
 #endif

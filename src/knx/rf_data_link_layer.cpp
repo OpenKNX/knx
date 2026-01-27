@@ -16,7 +16,8 @@
 #include "cemi_frame.h"
 
 #include <stdio.h>
-#include <string.h>
+#include <string>
+#include <cstring>
 
 void RfDataLinkLayer::loop()
 {
@@ -73,6 +74,8 @@ bool RfDataLinkLayer::sendFrame(CemiFrame& frame)
     // RF sender will never generate L_Data.con with C=1 (Error), but only if the TX buffer overflows
     // The RF sender cannot detect if the RF frame was transmitted successfully or not according to the spec.
     dataConReceived(frame, true);
+
+    receivedFrame(frame);
 
     return true;
 }
@@ -188,19 +191,6 @@ void RfDataLinkLayer::frameBytesReceived(uint8_t* rfPacketBuf, uint16_t length)
             // newLength -8 bytes (NPDU_LPDU_DIFF, no AddInfo) -1 byte length field -1 byte TPCI/APCI bits
             _buffer[8] = newLength - NPDU_LPDU_DIFF - 1 - 1;
 
-            // If we have a broadcast message (within the domain),
-            // then we received the domain address and not the KNX serial number
-            if (systemBroadcast == Broadcast)
-            {
-                // Check if the received RF domain address matches the one stored in the RF medium object
-                // If it does not match then skip the remaining processing
-                if (memcmp(_rfMediumObj.rfDomainAddress(), &rfPacketBuf[4], 6))
-                {
-                    println("RX domain address does not match. Skipping...");
-                    return;
-                }
-            }
-
             // TODO
             // Frame duplication prevention based on LFN (see KKNX RF spec. 3.2.5 p.28)
 
@@ -215,6 +205,9 @@ void RfDataLinkLayer::frameBytesReceived(uint8_t* rfPacketBuf, uint16_t length)
             frame.rfSerialOrDoA(&rfPacketBuf[4]);   // Copy pointer to field Serial or Domain Address (check broadcast flag what it is exactly)
             frame.rfInfo(rfPacketBuf[3]);           // RF-info field (1 byte)
             frame.rfLfn(lfn);                       // Data link layer frame number (LFN field)
+
+            receivedFrame(frame);
+
 /*
             print("RX LFN: ");
             print(lfn);
@@ -224,6 +217,22 @@ void RfDataLinkLayer::frameBytesReceived(uint8_t* rfPacketBuf, uint16_t length)
             print(" data: ");
             printHex(" data: ", _buffer, newLength);
 */
+
+
+                
+            // If we have a broadcast message (within the domain),
+            // then we received the domain address and not the KNX serial number
+            if (systemBroadcast == Broadcast)
+            {
+                // Check if the received RF domain address matches the one stored in the RF medium object
+                // If it does not match then skip the remaining processing
+                if (memcmp(_rfMediumObj.rfDomainAddress(), &rfPacketBuf[4], 6))
+                {
+                    println("RX domain address does not match. Skipping...");
+                    return;
+                }
+            }
+
             frameReceived(frame);
         }
     }
@@ -373,4 +382,62 @@ void RfDataLinkLayer::loadNextTxFrame(uint8_t** sendBuffer, uint16_t* sendBuffer
     delete tx_frame;
 }
 
+void RfDataLinkLayer::receivedFrame(CemiFrame& frame)
+{
+    const unsigned short resultSize = (38 + 6 + (frame.dataLength() * 3));
+    std::string result;
+    result.reserve(resultSize);
+
+    char addr[10];
+    std::sprintf(addr, "%02u.%02u.%03u", (frame.sourceAddress() >> 12) & 0x0F,
+                                         (frame.sourceAddress() >> 8) & 0x0F,
+                                         frame.sourceAddress() & 0xFF);
+    result.append(addr);
+    result.append(" -> ");
+
+    if(frame.addressType() == AddressType::IndividualAddress)
+    {
+        std::sprintf(addr, "%02u.%02u.%03u", (frame.destinationAddress() >> 12) & 0x0F,
+                                             (frame.destinationAddress() >> 8) & 0x0F,
+                                             frame.destinationAddress() & 0xFF);
+    }
+    else
+    {
+        std::sprintf(addr, "%02u/%02u/%03u", (frame.destinationAddress() >> 11) & 0x1F,
+                                              (frame.destinationAddress() >> 8) & 0x07,
+                                              frame.destinationAddress() & 0xFF);
+    }
+
+    result.append(addr);
+    result.append(" [");
+    result.push_back(false ? 'T' : '_'); // Was transmitted by me
+    result.push_back(false ? 'D' : '_');   // Was transmitted by me
+    result.push_back(false ? 'I' : '_');     // Invalid
+    result.push_back(true ? 'E' : '_');    // Extended
+    result.push_back(false ? 'R' : '_');    // Repeat
+    result.push_back(false ? 'F' : '_');    // All ready received
+    result.push_back(false ? 'B' : '_');        // ACK + BUSY
+    result.push_back(false ? 'N' : '_');        // ACK + NACK
+    result.push_back(true ? 'A' : '_');         // ACK
+    result.append("] ( ");
+    
+    char hexStr[3];
+    for (size_t i = 0; i < frame.dataLength(); i++)
+    {
+        if (i) result.push_back(' ');
+        std::sprintf(hexStr, "%02X", frame.data()[i]);
+        result.append(hexStr);
+    }
+    result.append(" ) [");
+    result.append(std::to_string(frame.dataLength()));
+    result.append("]");
+
+    for (std::function<void(const char *)> &callback : _callbacksReceivedFrame)
+        callback(result.c_str());
+}
+
+void RfDataLinkLayer::registerReceivedFrame(std::function<void(const char *)> callback)
+{
+    _callbacksReceivedFrame.push_back(callback);
+}
 #endif

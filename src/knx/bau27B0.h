@@ -14,7 +14,7 @@
 #include "cemi_server.h"
 #include "cemi_server_object.h"
 
-class Bau27B0 : public BauSystemBDevice
+class Bau27B0 : public BauSystemBDevice, public DataLinkLayerCallbacks
 {
   public:
     Bau27B0(Platform& platform);
