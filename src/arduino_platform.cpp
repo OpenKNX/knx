@@ -33,11 +33,11 @@ void ArduinoPlatform::fatalError()
 #ifndef KNX_NO_SPI
 void ArduinoPlatform::setupSpi()
 {
-    //#ifdef RF_MISO_PIN
+    #ifdef RF_MISO_PIN
     RF_SPI.setRX(RF_MISO_PIN);
     RF_SPI.setTX(RF_MOSI_PIN);
     RF_SPI.setSCK(RF_SCK_PIN);
-    //#endif
+    #endif
     RF_SPI.begin();
     RF_SPI.beginTransaction(SPISettings(4000000, MSBFIRST, SPI_MODE0));
 }
