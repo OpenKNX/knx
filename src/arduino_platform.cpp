@@ -14,7 +14,6 @@ ArduinoPlatform::ArduinoPlatform()
 {
 }
 
-
 void ArduinoPlatform::fatalError()
 {
     while (true)
@@ -26,6 +25,7 @@ void ArduinoPlatform::fatalError()
             digitalWrite(KNX_LED, HIGH);
         else
             digitalWrite(KNX_LED, LOW);
+        print("Fatal Error - system halted\n");
 #endif
     }
 }
@@ -33,19 +33,24 @@ void ArduinoPlatform::fatalError()
 #ifndef KNX_NO_SPI
 void ArduinoPlatform::setupSpi()
 {
-    SPI.begin();
-    SPI.beginTransaction(SPISettings(4000000, MSBFIRST, SPI_MODE0));
+    //#ifdef RF_MISO_PIN
+    RF_SPI.setRX(RF_MISO_PIN);
+    RF_SPI.setTX(RF_MOSI_PIN);
+    RF_SPI.setSCK(RF_SCK_PIN);
+    //#endif
+    RF_SPI.begin();
+    RF_SPI.beginTransaction(SPISettings(4000000, MSBFIRST, SPI_MODE0));
 }
 
 void ArduinoPlatform::closeSpi()
 {
-    SPI.endTransaction();
-    SPI.end();
+    RF_SPI.endTransaction();
+    RF_SPI.end();
 }
 
 int ArduinoPlatform::readWriteSpi(uint8_t* data, size_t len)
 {
-    SPI.transfer(data, len);
+    RF_SPI.transfer(data, len);
     return 0;
 }
 #endif

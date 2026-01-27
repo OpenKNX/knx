@@ -229,9 +229,9 @@ void RfPhysicalLayerCC1101::spiWriteRegister(uint8_t spi_instr, uint8_t value)
      tbuf[0] = spi_instr | WRITE_SINGLE_BYTE;
      tbuf[1] = value;
      uint8_t len = 2;
-     digitalWrite(SPI_SS_PIN, LOW);
+     digitalWrite(RF_SS_PIN, LOW);
      _platform.readWriteSpi(tbuf, len);
-     digitalWrite(SPI_SS_PIN, HIGH);
+     digitalWrite(RF_SS_PIN, HIGH);
 }
 
 uint8_t RfPhysicalLayerCC1101::spiReadRegister(uint8_t spi_instr)
@@ -240,9 +240,9 @@ uint8_t RfPhysicalLayerCC1101::spiReadRegister(uint8_t spi_instr)
      uint8_t rbuf[2] = {0};
      rbuf[0] = spi_instr | READ_SINGLE_BYTE;
      uint8_t len = 2;
-     digitalWrite(SPI_SS_PIN, LOW);
+     digitalWrite(RF_SS_PIN, LOW);
      _platform.readWriteSpi(rbuf, len);
-     digitalWrite(SPI_SS_PIN, HIGH);
+     digitalWrite(RF_SS_PIN, HIGH);
      value = rbuf[1];
      //printf("SPI_arr_0: 0x%02X\n", rbuf[0]);
      //printf("SPI_arr_1: 0x%02X\n", rbuf[1]);
@@ -254,9 +254,9 @@ uint8_t RfPhysicalLayerCC1101::spiWriteStrobe(uint8_t spi_instr)
      uint8_t tbuf[1] = {0};
      tbuf[0] = spi_instr;
      //printf("SPI_data: 0x%02X\n", tbuf[0]);
-     digitalWrite(SPI_SS_PIN, LOW);
+     digitalWrite(RF_SS_PIN, LOW);
      _platform.readWriteSpi(tbuf, 1);
-     digitalWrite(SPI_SS_PIN, HIGH);
+     digitalWrite(RF_SS_PIN, HIGH);
      return tbuf[0];
 }
 
@@ -264,9 +264,9 @@ void RfPhysicalLayerCC1101::spiReadBurst(uint8_t spi_instr, uint8_t *pArr, uint8
 {
      uint8_t rbuf[len + 1];
      rbuf[0] = spi_instr | READ_BURST;
-     digitalWrite(SPI_SS_PIN, LOW);
+     digitalWrite(RF_SS_PIN, LOW);
      _platform.readWriteSpi(rbuf, len + 1);
-     digitalWrite(SPI_SS_PIN, HIGH);
+     digitalWrite(RF_SS_PIN, HIGH);
      for (uint8_t i=0; i<len ;i++ )
      {
           pArr[i] = rbuf[i+1];
@@ -283,9 +283,9 @@ void RfPhysicalLayerCC1101::spiWriteBurst(uint8_t spi_instr, const uint8_t *pArr
           tbuf[i+1] = pArr[i];
           //printf("SPI_arr_write: 0x%02X\n", tbuf[i+1]);
      }
-     digitalWrite(SPI_SS_PIN, LOW);
+     digitalWrite(RF_SS_PIN, LOW);
      _platform.readWriteSpi(tbuf, len + 1);
-     digitalWrite(SPI_SS_PIN, HIGH);
+     digitalWrite(RF_SS_PIN, HIGH);
 }
 
 void RfPhysicalLayerCC1101::powerDownCC1101()
@@ -317,25 +317,25 @@ bool RfPhysicalLayerCC1101::InitChip()
 {
     // Setup SPI and GPIOs
     _platform.setupSpi();
-    pinMode(GPIO_GDO2_PIN, INPUT);
-    pinMode(GPIO_GDO0_PIN, INPUT);
-    pinMode(SPI_SS_PIN, OUTPUT);
+    pinMode(RF_GDO2_PIN, INPUT);
+    pinMode(RF_GDO0_PIN, INPUT);
+    pinMode(RF_SS_PIN, OUTPUT);
 
     // Toggle chip select signal as described in CC11xx manual
-    digitalWrite(SPI_SS_PIN, HIGH); 
+    digitalWrite(RF_SS_PIN, HIGH); 
     delayMicroseconds(30);
-    digitalWrite(SPI_SS_PIN, LOW);
+    digitalWrite(RF_SS_PIN, LOW);
     delayMicroseconds(30);
-    digitalWrite(SPI_SS_PIN, HIGH); 
+    digitalWrite(RF_SS_PIN, HIGH); 
     delayMicroseconds(45);
    
     // Send SRES command   
-    digitalWrite(SPI_SS_PIN, LOW);
+    digitalWrite(RF_SS_PIN, LOW);
     delay(10); // Normally we would have to poll MISO here: while(_platform.readGpio(SPI_MISO_PIN));
     spiWriteStrobe(SRES);
     // Wait for chip to finish internal reset   
     delay(10); // Normally we would have to poll MISO here: while(_platform.readGpio(SPI_MISO_PIN));
-    digitalWrite(SPI_SS_PIN, HIGH); 
+    digitalWrite(RF_SS_PIN, HIGH); 
 
     // Flush the FIFOs
     spiWriteStrobe(SFTX);
@@ -490,7 +490,7 @@ void RfPhysicalLayerCC1101::loop()
             }
 
             // Detect falling edge 1->0 on GDO2
-            statusGDO2 = digitalRead(GPIO_GDO2_PIN);
+            statusGDO2 = digitalRead(RF_GDO2_PIN);
             if(prevStatusGDO2 != statusGDO2)
             {
                 prevStatusGDO2 = statusGDO2;
@@ -515,7 +515,7 @@ void RfPhysicalLayerCC1101::loop()
             }
 
             // Detect falling edge 1->0 on GDO0                
-            statusGDO0 = digitalRead(GPIO_GDO0_PIN);
+            statusGDO0 = digitalRead(RF_GDO0_PIN);
             if(prevStatusGDO0 != statusGDO0)
             {
                 prevStatusGDO0 = statusGDO0;
@@ -608,7 +608,7 @@ void RfPhysicalLayerCC1101::loop()
             }
 
             // Detect rising edge 0->1 on GDO2
-            statusGDO2 = digitalRead(GPIO_GDO2_PIN);
+            statusGDO2 = digitalRead(RF_GDO2_PIN);
             if(prevStatusGDO2 != statusGDO2)
             {
                 prevStatusGDO2 = statusGDO2;
@@ -683,7 +683,7 @@ void RfPhysicalLayerCC1101::loop()
             }
 
             // Detect falling edge 1->0 on GDO0                
-            statusGDO0 = digitalRead(GPIO_GDO0_PIN);
+            statusGDO0 = digitalRead(RF_GDO0_PIN);
             if(prevStatusGDO0 != statusGDO0)
             {
                 prevStatusGDO0 = statusGDO0;

@@ -8,6 +8,12 @@
 #define KNX_DEBUG_SERIAL Serial
 #endif
 
+#if defined(USE_RF) && (RF_SPI == 1)
+#define RF_SPI SPI1
+#else
+#define RF_SPI SPI
+#endif
+
 class ArduinoPlatform : public Platform
 {
   public:
