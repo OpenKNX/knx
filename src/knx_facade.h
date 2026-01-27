@@ -524,6 +524,8 @@ template <class P, class B> class KnxFacade : private SaveRestore
         // predefined global instance for TP or IP or TP/IP coupler
         #if MASK_VERSION == 0x07B0
             extern KnxFacade<Esp32Platform, Bau07B0> knx;
+        #elif MASK_VERSION == 0x27B0
+            extern KnxFacade<Esp32Platform, Bau27B0> knx;
         #elif MASK_VERSION == 0x57B0
             extern KnxFacade<Esp32Platform, Bau57B0> knx;
         #elif MASK_VERSION == 0x091A

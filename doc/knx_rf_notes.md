@@ -91,3 +91,12 @@ variant.cpp
   { NOT_A_PORT, 0, PIO_NOT_A_PIN, PIN_ATTR_NONE, No_ADC_Channel, NOT_ON_PWM, NOT_ON_TIMER, EXTERNAL_INT_NONE }, // RESET
   { NOT_A_PORT, 0, PIO_NOT_A_PIN, PIN_ATTR_NONE, No_ADC_Channel, NOT_ON_PWM, NOT_ON_TIMER, EXTERNAL_INT_NONE }, // GND
 ```
+
+New Pin Definition (PiPico )
+----------
+#define RF_MOSI_PIN 3
+#define RF_MISO_PIN 0
+#define RF_SCK_PIN 6
+#define RF_SS_PIN 1
+#define RF_GDO2_PIN 21
+#define RF_GDO0_PIN 5
