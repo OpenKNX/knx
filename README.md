@@ -20,6 +20,14 @@ See the examples for basic usage options
   new compiler option KNX_TUNNELING_DEVMGMT (default = 1) to set the number of availible Device Management Connections
 - new Compiler Option KNX_ROUTING_BC_DC: Unicast packets from the device itself is sent to both interfaces (IP and TP in case of 0x091A)
 
+### v2.3.0 - 2026-01-28
+- Fix Define for 'DPT_FlowRate_m3/h'
+- Enhance multicast initialization logging
+- Allow write to hidden KO for DPT of size > 1 Byte
+- Add function paramString to access string parameters
+- Update TPUart dependency to version 1.0.4
+
+
 ### v2.2.2 - 2025-10-21
 - Fix: DPT subgroup 0 handling
 

@@ -106,7 +106,8 @@ size_t GroupObject::goSize()
     return size;
 }
 
-// see knxspec 3.5.1 p. 178
+// see knxspec 3.5.1 p. 272
+// ref: 4.18.6.2.4.1.4 Value Field Types
 size_t GroupObject::asapValueSize(uint8_t code) const
 {
     if (code < 7)
@@ -284,8 +285,23 @@ bool GroupObject::valueNoSend(const KNXValue& value)
 }
 #endif
 
+void GroupObject::recalculateDataLength(const Dpt& type)
+{
+    uint8_t sizeInMemory = type.sizeInMemory();
+    if (_commFlagEx.uninitialized && sizeInMemory > _dataLength)
+    {
+        _dataLength = sizeInMemory;
+        if (_data)
+            delete[] _data;
+        _data = new uint8_t[_dataLength];
+        memset(_data, 0, _dataLength);
+    }
+}
+
 bool GroupObject::valueNoSend(const KNXValue& value, const Dpt& type)
 {
+    if (_commFlagEx.uninitialized)
+        recalculateDataLength(type);
     const bool encodingDone = KNX_Encode_Value(value, _data, _dataLength, type);
 
     // initialize on succesful conversion only
