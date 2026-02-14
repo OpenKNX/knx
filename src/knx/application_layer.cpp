@@ -216,14 +216,22 @@ void ApplicationLayer::dataSystemBroadcastIndication(HopCountType hopType, Prior
         {
             uint16_t objectType;
             uint16_t propertyId;
-            uint8_t testInfo[2];
+            uint16_t testInfoLength = apdu.length() - 4;
+            uint8_t testInfo[4];
+            if(testInfoLength > sizeof(testInfo))
+                printf("Warning: testInfoLength %d is larger than expected %d\n", testInfoLength, sizeof(testInfo));
             popWord(objectType, data + 1);
             popWord(propertyId, data + 3);
-            popByte(testInfo[0], data + 4);
-            popByte(testInfo[1], data + 5);
+
+            for(int i = 0; i < testInfoLength; i++)
+            {
+                popByte(testInfo[i], data + 4 + i);
+                printf("testInfo[%d]: %.2X\n", i, testInfo[i]);
+            }
+
             propertyId = (propertyId >> 4) & 0x0FFF;;
             testInfo[0] &= 0x0F;
-            _bau.systemNetworkParameterReadIndication(priority, hopType, secCtrl, objectType, propertyId, testInfo, sizeof(testInfo));
+            _bau.systemNetworkParameterReadIndication(priority, hopType, secCtrl, objectType, propertyId, testInfo, testInfoLength);
             break;
         }
         case DomainAddressSerialNumberWrite:

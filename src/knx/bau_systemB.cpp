@@ -346,7 +346,7 @@ void BauSystemB::propertyValueReadIndication(Priority priority, HopCountType hop
     
     if (elementCount == 0)
         size = 0;
-    
+
     applicationLayer().propertyValueReadResponse(AckRequested, priority, hopType, asap, secCtrl, objectIndex, propertyId, elementCount,
                                         startIndex, data, size);
 }
@@ -669,6 +669,14 @@ void BauSystemB::systemNetworkParameterReadIndication(Priority priority, HopCoun
         break;
 
         case NM_Read_SerialNumber_By_ManufacturerSpecific: // Manufacturer specific use of A_SystemNetworkParameter_Read
+            uint16_t manuId = testInfo[3] | testInfo[2] << 8;
+            // Only send a reply if manufacturer ID matches
+            if(manuId == _deviceObj.manufacturerId() && (objectType == OT_DEVICE) && (propertyId == PID_SERIAL_NUMBER))
+            {
+                // Send reply. testResult data is KNX serial number
+                applicationLayer().systemNetworkParameterReadResponse(priority, hopType, secCtrl, objectType, propertyId,
+                                                             testInfo, 2, (uint8_t*)_deviceObj.propertyData(PID_SERIAL_NUMBER), 6);
+            }
         break;
     }
 }
