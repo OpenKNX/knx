@@ -50,6 +50,36 @@ void IpTunnelServer::loop()
     }
 }
 
+void IpTunnelServer::dataRequestToChannelId(CemiFrame& frame, uint8_t channelId)
+{
+    KnxIpTunnelConnection* tun = nullptr;
+    for (int i = 0; i < KNX_TUNNELING + KNX_TUNNELING_DEVMGMT; i++)
+    {
+        print("Tunnel ChannelId: ");
+        if(tunnels[i].IsConfig)
+        {
+            print("Config ");
+        }
+        println(tunnels[i].ChannelId, 16);
+        if (tunnels[i].ChannelId == channelId)
+        {
+            tun = &tunnels[i];
+            break;
+        }
+    }
+
+    if (tun == nullptr)
+    {
+#ifdef KNX_LOG_TUNNELING
+        print("Found no Tunnel for ChannelId: ");
+        println(channelId, 16);
+#endif
+        return;
+    }
+
+    sendFrameToTunnel(tun, frame);
+}
+
 void IpTunnelServer::dataRequestToTunnel(CemiFrame& frame)
 {
     if (frame.addressType() == AddressType::GroupAddress)
@@ -750,7 +780,7 @@ void IpTunnelServer::HandleDeviceConfigurationRequest(uint8_t* buffer, uint16_t 
     _platform.sendBytesUniCast(tun->IpAddress, tun->PortData, tunnAck.data(), tunnAck.totalLength());
 
     tun->lastHeartbeat = millis();
-    _cemiServer.frameReceived(confReq.frame());
+    _cemiServer.frameReceived(confReq.frame(), tun->ChannelId);
 }
 
 void IpTunnelServer::HandleTunnelingRequest(uint8_t* buffer, uint16_t length)
@@ -819,7 +849,7 @@ void IpTunnelServer::HandleTunnelingRequest(uint8_t* buffer, uint16_t length)
     if (tunnReq.frame().sourceAddress() == 0)
         tunnReq.frame().sourceAddress(tun->IndividualAddress);
 
-    _cemiServer.frameReceived(tunnReq.frame());
+    _cemiServer.frameReceived(tunnReq.frame(), tun->ChannelId);
 }
 
 #endif
