@@ -91,37 +91,56 @@ void Memory::readMemory()
     }
 
     println("restoring data from flash...");
-    print("saverestores ");
+    print("Restore saveRestores: ");
     println(_saveCount);
     for (int i = 0; i < _saveCount; i++)
     {
-        println(flashStart - buffer);
-        println(".");
         buffer = _saveRestores[i]->restore(buffer);
     }
-    println("restored saveRestores");
+    println("Restored saveRestores");
+
+#if MASK_VERSION == 0x091A
+    if(versionCheck == FlashTablesInvalid)
+    {
+        println("TableObjects are referring to an older firmware version and are restored, unloaded and filled with 0xff");
+    }
+#else
     if (versionCheck == FlashTablesInvalid) 
     {
-        println("TableObjects are referring to an older firmware version and are not loaded");
+        println("TableObjects are referring to an older firmware version and are not restored");
         return;
     }
-    print("tableObjs ");
+#endif
+    print("Restore TableObjs: ");
     println(_tableObjCount);
     for (int i = 0; i < _tableObjCount; i++)
     {
-        println(flashStart - buffer);
-        println(".");
         buffer = _tableObjects[i]->restore(buffer);
         uint16_t memorySize = 0;
         buffer = popWord(memorySize, buffer);
+        print("Size: ");
         println(memorySize);
         if (memorySize == 0)
             continue;
 
         // this works because TableObject saves a relative addr and restores it itself
         addNewUsedBlock(_tableObjects[i]->_data, memorySize);
+
+#if MASK_VERSION == 0x091A
+    	// load the tables but delete the data
+        if(versionCheck == FlashTablesInvalid)
+        {
+            println("unload and fill with 0xff");
+            _tableObjects[i]->loadState(LS_UNLOADED);
+            uint32_t start = toRelative(_tableObjects[i]->_data);
+            uint8_t fillByte = 0xff;
+            uint32_t end = start + _tableObjects[i]->_size;
+            for(int i = start;i < end;i++)
+                writeMemory(i, 1, &fillByte);
+        }
+#endif
     }
-    println("restored Tableobjects");
+    println("restored TableObjects");
 }
 
 void Memory::writeMemory()
