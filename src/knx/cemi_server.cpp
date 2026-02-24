@@ -125,7 +125,7 @@ void CemiServer::dataIndicationToTunnel(CemiFrame& frame)
 #endif
 }
 
-void CemiServer::frameReceived(CemiFrame& frame)
+void CemiServer::frameReceived(CemiFrame& frame, uint8_t channelId)
 {
     switch(frame.messageCode())
     {
@@ -137,13 +137,13 @@ void CemiServer::frameReceived(CemiFrame& frame)
 
         case M_PropRead_req:
         {
-            handleMPropRead(frame);
+            handleMPropRead(frame, channelId);
             break;
         }
 
         case M_PropWrite_req:
         {
-            handleMPropWrite(frame);
+            handleMPropWrite(frame, channelId);
             break;
         }
 
@@ -161,7 +161,7 @@ void CemiServer::frameReceived(CemiFrame& frame)
 
         case M_Reset_req:
         {
-            handleMReset(frame);
+            handleMReset(frame, channelId);
             break;
         }
 
@@ -234,7 +234,7 @@ void CemiServer::handleLData(CemiFrame& frame)
     _dataLinkLayer->dataRequestFromTunnel(frame);
 }
 
-void CemiServer::handleMPropRead(CemiFrame& frame)
+void CemiServer::handleMPropRead(CemiFrame& frame, uint8_t channelId)
 {
 #ifdef KNX_LOG_TUNNELING
     print("M_PropRead_req: ");
@@ -299,7 +299,7 @@ void CemiServer::handleMPropRead(CemiFrame& frame)
 #ifdef USE_USB
         _usbTunnelInterface.sendCemiFrame(responseFrame);
 #elif defined(KNX_TUNNELING)
-        _ipTunnelServer.dataRequestToTunnel(responseFrame);
+        _ipTunnelServer.dataRequestToChannelId(responseFrame, channelId);
 #endif
         delete[] data;
     }
@@ -319,12 +319,12 @@ void CemiServer::handleMPropRead(CemiFrame& frame)
 #ifdef USE_USB
         _usbTunnelInterface.sendCemiFrame(responseFrame);
 #elif defined(KNX_TUNNELING)
-    _ipTunnelServer.dataRequestToTunnel(responseFrame);
+        _ipTunnelServer.dataRequestToChannelId(responseFrame, channelId);
 #endif
     }
 }
 
-void CemiServer::handleMPropWrite(CemiFrame& frame)
+void CemiServer::handleMPropWrite(CemiFrame& frame, uint8_t channelId)
 {
     print("M_PropWrite_req: "); 
 
@@ -389,7 +389,7 @@ void CemiServer::handleMPropWrite(CemiFrame& frame)
 #ifdef USE_USB
         _usbTunnelInterface.sendCemiFrame(responseFrame);
 #elif defined(KNX_TUNNELING)
-    _ipTunnelServer.dataRequestToTunnel(responseFrame);
+        _ipTunnelServer.dataRequestToChannelId(responseFrame, channelId);
 #endif
     }
     else
@@ -408,12 +408,12 @@ void CemiServer::handleMPropWrite(CemiFrame& frame)
 #ifdef USE_USB
         _usbTunnelInterface.sendCemiFrame(responseFrame);
 #elif defined(KNX_TUNNELING)
-    _ipTunnelServer.dataRequestToTunnel(responseFrame);
+        _ipTunnelServer.dataRequestToChannelId(responseFrame, channelId);
 #endif
     }
 }
 
-void CemiServer::handleMReset(CemiFrame& frame)
+void CemiServer::handleMReset(CemiFrame& frame, uint8_t channelId)
 {
     println("M_Reset_req: sending M_Reset_ind");  
     // A real device reset does not work for USB or KNXNET/IP.
@@ -427,7 +427,7 @@ void CemiServer::handleMReset(CemiFrame& frame)
 #ifdef USE_USB
     _usbTunnelInterface.sendCemiFrame(responseFrame);
 #elif defined(KNX_TUNNELING)
-    _ipTunnelServer.dataRequestToTunnel(responseFrame);
+    _ipTunnelServer.dataRequestToChannelId(responseFrame, channelId);
 #endif
 }
 
