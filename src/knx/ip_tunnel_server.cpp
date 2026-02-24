@@ -55,12 +55,18 @@ void IpTunnelServer::dataRequestToChannelId(CemiFrame& frame, uint8_t channelId)
     KnxIpTunnelConnection* tun = nullptr;
     for (int i = 0; i < KNX_TUNNELING + KNX_TUNNELING_DEVMGMT; i++)
     {
+#ifdef KNX_LOG_TUNNELING
         print("Tunnel ChannelId: ");
+#endif
         if(tunnels[i].IsConfig)
         {
+#ifdef KNX_LOG_TUNNELING
             print("Config ");
+#endif
         }
+#ifdef KNX_LOG_TUNNELING
         println(tunnels[i].ChannelId, 16);
+#endif
         if (tunnels[i].ChannelId == channelId)
         {
             tun = &tunnels[i];
