@@ -37,7 +37,7 @@ Bau091A::Bau091A(Platform& platform)
 {
     // Before accessing anything of the router object they have to be initialized according to the used medium
     // Coupler model 1.x
-    _routerObj.initialize1x(DptMedium::KNX_IP, 220);
+    _routerObj.initialize1x(DptMedium::KNX_IP, 254);
 
     // Mask 091A uses older coupler model 1.x which only uses one router object
     _netLayer.rtObj(_routerObj);
