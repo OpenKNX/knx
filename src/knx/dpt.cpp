@@ -22,7 +22,7 @@ bool Dpt::operator!=(const Dpt& other) const
     return !(other == *this);
 }
 
-unsigned char Dpt::sizeInMemory() const
+unsigned char Dpt::dataLength() const
 {
     switch (mainGroup)
     {
