@@ -293,8 +293,9 @@ void GroupObject::recalculateDataLength(const Dpt& type)
         _dataLength = sizeInMemory;
         if (_data)
             delete[] _data;
-        _data = new uint8_t[_dataLength];
-        memset(_data, 0, _dataLength);
+        if (type.mainGroup == 16) sizeInMemory++;
+        _data = new uint8_t[sizeInMemory];
+        memset(_data, 0, sizeInMemory);
     }
 }
 
