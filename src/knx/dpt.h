@@ -370,5 +370,5 @@ class Dpt
     unsigned short index;
     bool operator==(const Dpt& other) const;
     bool operator!=(const Dpt& other) const;
-    unsigned char sizeInMemory() const;
+    unsigned char dataLength() const;
 };

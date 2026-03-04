@@ -287,14 +287,15 @@ bool GroupObject::valueNoSend(const KNXValue& value)
 
 void GroupObject::recalculateDataLength(const Dpt& type)
 {
-    uint8_t sizeInMemory = type.sizeInMemory();
-    if (_commFlagEx.uninitialized && sizeInMemory > _dataLength)
+    uint8_t dataLength = type.dataLength();
+    if (_commFlagEx.uninitialized && dataLength > _dataLength)
     {
-        _dataLength = sizeInMemory;
+        _dataLength = dataLength;
         if (_data)
             delete[] _data;
-        _data = new uint8_t[_dataLength];
-        memset(_data, 0, _dataLength);
+        uint8_t sizeInMemory = (type.mainGroup == 16) ? dataLength + 1 : dataLength;
+        _data = new uint8_t[sizeInMemory];
+        memset(_data, 0, sizeInMemory);
     }
 }
 

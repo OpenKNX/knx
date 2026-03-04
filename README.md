@@ -20,6 +20,10 @@ See the examples for basic usage options
   new compiler option KNX_TUNNELING_DEVMGMT (default = 1) to set the number of availible Device Management Connections
 - new Compiler Option KNX_ROUTING_BC_DC: Unicast packets from the device itself is sent to both interfaces (IP and TP in case of 0x091A)
 
+### v2.3.1 - 2026-03-04
+
+- Hotfix: DPT16 was not correctly handled for uninitialized KOs
+
 ### v2.3.0 - 2026-01-28
 - Fix Define for 'DPT_FlowRate_m3/h'
 - Enhance multicast initialization logging
