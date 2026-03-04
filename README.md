@@ -13,6 +13,10 @@ See the examples for basic usage options
 
 ## Changelog
 
+### v2.3.1 - 2026-03-04
+
+- Hotfix: DPT16 was not correctly handled for uninitialized KOs
+
 ### v2.3.0 - 2026-01-28
 - Fix Define for 'DPT_FlowRate_m3/h'
 - Enhance multicast initialization logging
