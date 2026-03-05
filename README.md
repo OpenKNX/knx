@@ -19,6 +19,9 @@ See the examples for basic usage options
 - the Device Management Connection is now handled independently from Tunnel Connections and do not consume a Tunnel PA anymore
   new compiler option KNX_TUNNELING_DEVMGMT (default = 1) to set the number of availible Device Management Connections
 - new Compiler Option KNX_ROUTING_BC_DC: Unicast packets from the device itself is sent to both interfaces (IP and TP in case of 0x091A)
+- change default PID_MAX_APDU_LENGTH_ROUTER from 220 to 254
+- fix broken ConfigReq Responses
+- fix programming application when FlashTablesInvalid for 0x091A
 
 ### v2.3.1 - 2026-03-04
 

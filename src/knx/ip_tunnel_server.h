@@ -24,6 +24,7 @@ class IpTunnelServer
     IpTunnelServer(DeviceObject& devObj, IpParameterObject& ipParam, Platform& platform, CemiServer& cemiServer);
 
     void loop();
+    void dataRequestToChannelId(CemiFrame& frame, uint8_t channelId);
     void dataRequestToTunnel(CemiFrame& frame);
     void dataConfirmationToTunnel(CemiFrame& frame);
     void dataIndicationToTunnel(CemiFrame& frame);
