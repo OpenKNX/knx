@@ -22,7 +22,7 @@ bool Dpt::operator!=(const Dpt& other) const
     return !(other == *this);
 }
 
-unsigned char Dpt::sizeInMemory() const
+unsigned char Dpt::dataLength() const
 {
     switch (mainGroup)
     {
@@ -72,7 +72,7 @@ unsigned char Dpt::sizeInMemory() const
         case 275:
             return 8;
         case 16:
-            return 15; // terminating with 0x00 char
+            return 14; 
         case 285:
             return 16;
         default:
