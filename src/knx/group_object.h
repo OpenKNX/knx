@@ -203,6 +203,21 @@ class GroupObject
      */
     bool valueCompare(const KNXValue& value, const Dpt& type);
 
+
+    /**
+     * Check if the value (after conversion to dpt) will differ from current value of the group object and send only when the value differs or the time since last sending exceeds a threshold.
+     * Use this method only, when the value should not be sent if it was not changed, otherwise value(const KNXValue&, const Dpt&) will do the same (without overhead for comparing)
+     * @param value the value the group object is set to
+     * @param type the datapoint type used for the conversion.
+     * @param lastTime the variable where the last sending time of this KO can be stored, will be passed as reference
+     * @param time the threshold in milliseconds used to calculate if group object is sent regardless if the value differs
+     * 
+     * The parameters must fit the group object. Otherwise it will stay unchanged.
+     * 
+     * @returns true if the value of the group object has changed, false if conversion results in same value as stored in group object or failed.
+     */
+    bool valueCompareTime(const KNXValue& value, const Dpt& type, uint32_t& lastTime, const uint32_t time)
+
     /**
      * set the current value of the group object and show success.
      * @param value the value the group object is set to
