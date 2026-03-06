@@ -358,6 +358,10 @@ bool GroupObject::valueCompareTime(const KNXValue& value, const Dpt& type, uint3
         objectWritten();
         return true;
     }
-    else if((millis() - lastTime >= time)
+    else if(millis() - lastTime >= time)
+    {
+        objectWritten();
+        return true;
+    }
     return false;
 }

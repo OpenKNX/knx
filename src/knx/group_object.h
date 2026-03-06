@@ -214,9 +214,9 @@ class GroupObject
      * 
      * The parameters must fit the group object. Otherwise it will stay unchanged.
      * 
-     * @returns true if the value of the group object has changed, false if conversion results in same value as stored in group object or failed.
+     * @returns true if the value of the group object has been sent, false if not or conversion failed.
      */
-    bool valueCompareTime(const KNXValue& value, const Dpt& type, uint32_t& lastTime, const uint32_t time)
+    bool valueCompareTime(const KNXValue& value, const Dpt& type, uint32_t& lastTime, const uint32_t time);
 
     /**
      * set the current value of the group object and show success.
