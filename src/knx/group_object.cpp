@@ -356,11 +356,13 @@ bool GroupObject::valueCompareTime(const KNXValue& value, const Dpt& type, uint3
     if (valueNoSendCompare(value, type))
     {
         objectWritten();
+        lastTime = millis();
         return true;
     }
     else if(millis() - lastTime >= time)
     {
         objectWritten();
+        lastTime = millis();
         return true;
     }
     return false;
