@@ -41,6 +41,7 @@ public:
 
 private:
     WiFiUDP _udp;
+        WiFiUDP _udp2;
     // int8_t _rxPin = -1; 
     // int8_t _txPin = -1;
 };

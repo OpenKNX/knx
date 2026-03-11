@@ -74,6 +74,7 @@ void Esp32Platform::setupMultiCast(uint32_t addr, uint16_t port)
         fatalError();
     }
     IPAddress mcastaddr(htonl(addr));
+    IPAddress mcastaddr2(htonl(addr+1));
 
     println("Initializing KNX multicast.");
     print("  Bind ");
@@ -81,6 +82,18 @@ void Esp32Platform::setupMultiCast(uint32_t addr, uint16_t port)
     print(":");
     println(port);
     uint8_t result = _udp.beginMulticast(mcastaddr, port);
+#ifdef TEST_MC_ONESOCKET
+    _udp.beginMulticast(mcastaddr2, port);
+#else
+    _udp2.beginMulticast(mcastaddr2, port);
+#endif
+
+    
+
+
+
+
+
     (void)result; // Suppress unused variable warning
     // KNX_DEBUG_SERIAL.printf("result %d\n", result);
 }
@@ -103,7 +116,33 @@ int Esp32Platform::readBytesMultiCast(uint8_t * buffer, uint16_t maxLen, uint32_
 {
     int len = _udp.parsePacket();
     if (len == 0)
+    {
+            // check second socket for test purposes
+#ifndef TEST_MC_ONESOCKET
+        len = _udp2.parsePacket();
+        if (len == 0)
+        {
+            return 0;
+        }
+        else
+        {
+            _remoteIP = _udp2.remoteIP();
+            _remotePort = _udp2.remotePort();
+            src_addr = htonl(_remoteIP);
+            src_port = _remotePort;
+
+            print("Receive UDP2 ");
+            print(_udp2.remoteIP().toString().c_str());
+            print(":");
+            println(_udp2.remotePort());
+            printHex("-> ", buffer, len);
+            _udp2.read(buffer, len);
+            return len;
+        }
+#else
         return 0;
+#endif
+    }
 
     if (len > maxLen)
     {
@@ -119,9 +158,11 @@ int Esp32Platform::readBytesMultiCast(uint8_t * buffer, uint16_t maxLen, uint32_
     src_addr = htonl(_remoteIP);
     src_port = _remotePort;
 
-    // print("Remote IP: ");
-    // print(_udp.remoteIP().toString().c_str());
-    // printHex("-> ", buffer, len);
+    print("Receive UDP ");
+    print(_udp.remoteIP().toString().c_str());
+    print(":");
+    println(_udp.remotePort());
+    printHex("-> ", buffer, len);
 
     return len;
 }
