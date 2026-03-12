@@ -4,6 +4,9 @@
 
 
 #include <WiFiUdp.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
 
 class Esp32Platform : public ArduinoPlatform
 {
@@ -28,6 +31,7 @@ public:
     void closeMultiCast() override;
     bool sendBytesMultiCast(uint8_t* buffer, uint16_t len) override;
     int readBytesMultiCast(uint8_t* buffer, uint16_t maxLen, uint32_t& src_addr, uint16_t& src_port) override;
+    int readBytesUniCast(uint8_t* buffer, uint16_t maxLen, uint32_t& src_addr, uint16_t& src_port);
     
     //unicast 
     bool sendBytesUniCast(uint32_t addr, uint16_t port, uint8_t* buffer, uint16_t len) override;
@@ -36,12 +40,21 @@ public:
     uint8_t* getEepromBuffer(uint32_t size);
     void commitToEeprom();
 
-    protected: IPAddress _remoteIP;
+    protected: uint32_t _remoteIP;
     protected: uint16_t _remotePort;
 
 private:
-    WiFiUDP _udp;
-        WiFiUDP _udp2;
+    //WiFiUDP _udp;
+    //WiFiUDP _udp2;
+
+    int _udpSockUnicast = -1;
+
+    int _udpSockMulticast = -1;
+    struct sockaddr_in _udpSockMulticastAddr;
+
+
+    //int _udpSockMulticast2 = -1;
+    //uint32_t _multicastAddr2 = 0;
     // int8_t _rxPin = -1; 
     // int8_t _txPin = -1;
 };
