@@ -22,6 +22,7 @@ See the examples for basic usage options
 - change default PID_MAX_APDU_LENGTH_ROUTER from 220 to 254
 - fix broken ConfigReq Responses
 - fix programming application when FlashTablesInvalid for 0x091A
+- add GroupObject::valueCompareTime() to send a GroupObject only when value changed or after some time without sending
 
 ### v2.3.1 - 2026-03-04
 
