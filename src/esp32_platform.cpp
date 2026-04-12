@@ -7,7 +7,12 @@
 #include "knx/bits.h"
 
 
-#include <string.h>
+
+#include "lwip/udp.h"
+#include "lwip/igmp.h"
+#include "lwip/ip4_addr.h"
+#include "lwip/pbuf.h"
+
 
 // #ifndef KNX_SERIAL
 //     #define KNX_SERIAL Serial1
@@ -64,6 +69,34 @@ void Esp32Platform::restart()
     ESP.restart();
 }
 
+static void udpReceiveCallback(void* arg,
+                               struct udp_pcb* pcb,
+                               struct pbuf* p,
+                               const ip_addr_t* addr,
+                               u16_t port)
+{
+    Esp32Platform* self = (Esp32Platform*)arg;
+
+    if (!p) return;
+
+    if (p->tot_len > sizeof(self->_rxBuffer))
+    {
+        pbuf_free(p);
+        return;
+    }
+
+    pbuf_copy_partial(p, self->_rxBuffer, p->tot_len, 0);
+
+    self->_rxLen = p->tot_len;
+
+    self->_srcIP   = ntohl(ip4_addr_get_u32(ip_2_ip4(addr)));
+    self->_srcPort = port;
+
+    self->_dstIP   = ntohl(ip4_addr_get_u32(ip_2_ip4(&pcb->local_ip)));
+
+    pbuf_free(p);
+}
+
 void Esp32Platform::setupMultiCast(uint32_t addr, uint16_t port)
 {
 #ifdef KNX_IP_LAN
@@ -71,159 +104,125 @@ void Esp32Platform::setupMultiCast(uint32_t addr, uint16_t port)
 #else
     esp_netif_t* check = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
 #endif
-    if (check == nullptr)
+
+    if (!check)
     {
         println("No network interface initialized");
         fatalError();
     }
-    
-    // Create socket
-    _udpSock = socket(AF_INET, SOCK_DGRAM, 0);
-    if (_udpSock < 0)
+
+    _udpPcb = udp_new();
+
+    if (!_udpPcb)
     {
-        println("Failed to create multicast socket");
+        println("Failed to create UDP PCB");
+        return;
     }
 
-    // Set socket options
-    int opt = 1;
-    setsockopt(_udpSock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-    setsockopt(_udpSock, IPPROTO_IP, IP_PKTINFO, &opt, sizeof(opt));
-    int ttl = 1;
-    setsockopt(_udpSock, IPPROTO_IP, IP_MULTICAST_TTL, &ttl, sizeof(ttl));
-    int loop = 0;
-    setsockopt(_udpSock, IPPROTO_IP, IP_MULTICAST_LOOP, &loop, sizeof(loop));
+    ip_addr_t any;
+    ip4_addr_set_any(ip_2_ip4(&any));
 
-    int mode = 1;
-    ioctl(_udpSock, FIONBIO, &mode); // set socket to non blocking mode
-
-    // Bind to ANY address so we receive unicast + multicast (on any joined group)
-    struct sockaddr_in bind_addr;
-    memset(&bind_addr, 0, sizeof(bind_addr));
-    bind_addr.sin_family = AF_INET;
-    bind_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    bind_addr.sin_port = htons(port);
-
-    if (bind(_udpSock, (struct sockaddr*)&bind_addr, sizeof(bind_addr)) < 0)
+    if (udp_bind(_udpPcb, &any, port) != ERR_OK)
     {
-        println("Failed to bind socket");
-        close(_udpSock);
+        println("UDP bind failed");
+        udp_remove(_udpPcb);
+        _udpPcb = nullptr;
+        return;
     }
 
-    _udpSockMulticastAddr.sin_family = AF_INET;
-    _udpSockMulticastAddr.sin_addr.s_addr = htonl(addr);
-    _udpSockMulticastAddr.sin_port = htons(port);
+    udp_recv(_udpPcb, udpReceiveCallback, this);
 
-    // Join multicast group
-    ip_mreq mreq;
-    mreq.imr_multiaddr.s_addr = htonl(addr);
-    mreq.imr_interface.s_addr = INADDR_ANY;
-    if (setsockopt(_udpSock, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) < 0)
-    {
-        println("Failed to join multicast group");
-        close(_udpSock);
-    }
-
+    // Join multicast
+    joinMultiCast(addr);
 
     println("Initializing KNX multicast.");
-    print("  Bind Sock ");
-    print(_udpSock);
-    print(" ");
-    print(IPAddress(htonl(addr)).toString().c_str());
-    print(":");
-    println(port);
 }
 
-void Esp32Platform::closeMultiCast()
+void Esp32Platform::joinMultiCast(uint32_t addr)
 {
-    if (_udpSock >= 0)
-    {
-        close(_udpSock);
-        _udpSock = -1; // Mark as closed
-        println("Multicast socket closed");
-    }
+    ip4_addr_t maddr;
+    ip4_addr_set_u32(&maddr, htonl(addr));
 
-    // if (_udpSockUnicast >= 0)
-    // {
-    //     close(_udpSockUnicast);
-    //     _udpSockUnicast = -1; // Mark as closed
-    //     println("Unicast socket closed");
-    // }
+    igmp_joingroup(IP4_ADDR_ANY4, &maddr);
 }
 
-bool Esp32Platform::sendBytesMultiCast(uint8_t * buffer, uint16_t len)
+int Esp32Platform::readBytesMultiCast(uint8_t *buffer,
+                                      uint16_t maxLen,
+                                      uint32_t& src_addr,
+                                      uint16_t& src_port)
 {
-    if (_udpSock < 0)
-    {
-        println("Multicast socket not initialized");
-        return false;
-    }
-
-    ssize_t sentBytes = sendto(_udpSock, buffer, len, 0, (struct sockaddr*)&_udpSockMulticastAddr, sizeof(_udpSockMulticastAddr));
-    if (sentBytes < 0)
-    {
-        println("Failed to send multicast data");
-        return false;
-    }
-
-    return true;
-}
-
-int Esp32Platform::readBytesMultiCast(uint8_t * buffer, uint16_t maxLen, uint32_t& src_addr, uint16_t& src_port)
-{
-    struct sockaddr_in src_addr_struct;
-    socklen_t addrlen = sizeof(src_addr_struct);
-    ssize_t len = recvfrom(_udpSock, buffer, maxLen, 0, (struct sockaddr*)&src_addr_struct, &addrlen);
-
-    if (len < 0)
-    {
+    if (_rxLen == 0)
         return 0;
-    }
 
-    if (len > maxLen)
-    {
-        println("Unexpected UDP data packet length - drop packet");
+    if (_rxLen > maxLen)
         return 0;
-    }
 
-    src_addr = ntohl(src_addr_struct.sin_addr.s_addr);
-    src_port = ntohs(src_addr_struct.sin_port);
+    memcpy(buffer, _rxBuffer, _rxLen);
 
-    _remoteIP = src_addr;
-    _remotePort = src_port;
+    src_addr = _srcIP;
+    src_port = _srcPort;
 
-    print("Receive Multicast UDP ");
-    print(IPAddress(src_addr).toString().c_str());
+    print("Receive UDP ");
+    print(IPAddress(_srcIP).toString().c_str());
     print(":");
-    println(src_port);
-    printHex("-> ", buffer, len);
+    print(_srcPort);
+    print(" -> ");
+    println(IPAddress(_dstIP).toString().c_str());
+
+    int len = _rxLen;
+    _rxLen = 0;
 
     return len;
 }
 
+void Esp32Platform::closeMultiCast()
+{
+    if (_udpPcb)
+    {
+        udp_remove(_udpPcb);
+        _udpPcb = nullptr;
+    }
+}
+
+
+bool Esp32Platform::sendBytesMultiCast(uint8_t* buffer, uint16_t len)
+{
+    if (!_udpPcb) return false;
+
+    struct pbuf* p = pbuf_alloc(PBUF_TRANSPORT, len, PBUF_RAM);
+    if (!p) return false;
+
+    memcpy(p->payload, buffer, len);
+
+    ip_addr_t dest;
+    ip4_addr_set_u32(ip_2_ip4(&dest), htonl(_udpSockMulticastAddr.sin_addr.s_addr));
+
+    err_t err = udp_sendto(_udpPcb, p, &dest,
+                           ntohs(_udpSockMulticastAddr.sin_port));
+
+    pbuf_free(p);
+
+    return err == ERR_OK;
+}
 
 
 bool Esp32Platform::sendBytesUniCast(uint32_t addr, uint16_t port, uint8_t* buffer, uint16_t len)
 {
-    struct sockaddr_in dest_addr;
-    dest_addr.sin_family = AF_INET;
-    dest_addr.sin_addr.s_addr = htonl(addr);
-    
-    if (!addr)
-        dest_addr.sin_addr.s_addr = htonl(_remoteIP);
-    
-    if (!port)
-        port = _remotePort;
+    if (!_udpPcb) return false;
 
-    dest_addr.sin_port = htons(port);
+    struct pbuf* p = pbuf_alloc(PBUF_TRANSPORT, len, PBUF_RAM);
+    if (!p) return false;
 
-    ssize_t sentBytes = sendto(_udpSock, buffer, len, 0, (struct sockaddr*)&dest_addr, sizeof(dest_addr));
-    if (sentBytes < 0)
-    {
-        println("Failed to send unicast data");
-        return false;
-    }
+    memcpy(p->payload, buffer, len);
 
-    return true;
+    ip_addr_t dest;
+    ip4_addr_set_u32(ip_2_ip4(&dest), htonl(addr));
+
+    err_t err = udp_sendto(_udpPcb, p, &dest, port);
+
+    pbuf_free(p);
+
+    return err == ERR_OK;
 }
 
 uint8_t * Esp32Platform::getEepromBuffer(uint32_t size)

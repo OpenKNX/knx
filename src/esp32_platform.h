@@ -3,7 +3,6 @@
 #include "TPUart/Interface/Abstract.h"
 
 
-#include <WiFiUdp.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
@@ -31,6 +30,7 @@ public:
     void closeMultiCast() override;
     bool sendBytesMultiCast(uint8_t* buffer, uint16_t len) override;
     int readBytesMultiCast(uint8_t* buffer, uint16_t maxLen, uint32_t& src_addr, uint16_t& src_port) override;
+    void joinMultiCast(uint32_t addr);
     
     //unicast 
     bool sendBytesUniCast(uint32_t addr, uint16_t port, uint8_t* buffer, uint16_t len) override;
@@ -48,8 +48,17 @@ private:
 
     //int _udpSockUnicast = -1;
 
-    int _udpSock = -1;
+    public:
+    struct udp_pcb* _udpPcb = nullptr;
     struct sockaddr_in _udpSockMulticastAddr;
+
+    uint8_t _rxBuffer[1600];
+    uint16_t _rxLen = 0;
+
+    uint32_t _srcIP;
+    uint16_t _srcPort;
+
+    uint32_t _dstIP;
 
 
     //int _udpSockMulticast2 = -1;
