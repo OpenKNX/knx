@@ -20,8 +20,8 @@ See the examples for basic usage options
   - For RP2350 it uses an OTP-based unique chip ID
 - deactivate by default not KNX-Standard compatible 'Tunnel-Optimization" which reduces traffic on TP (can be used with compiler option KNX_TUNNELING_NO_TUNNEL_PA_ON_TP and KNX_TUNNELING_STRICT_TOPOLOGY)
 - refactor KNX IP Tunneling
-- the Device Management Connection is now handled independently from Tunnel Connections and do not consume a Tunnel PA anymore
-  new compiler option KNX_TUNNELING_DEVMGMT (default = 1) to set the number of availible Device Management Connections
+- the Device Management Connection is now handled independently of Tunnel Connections and do not consume a Tunnel PA anymore
+  new compiler option KNX_TUNNELING_DEVMGMT (default = 1) to set the number of available Device Management Connections
 - new Compiler Option KNX_ROUTING_BC_DC: Unicast packets from the device itself is sent to both interfaces (IP and TP in case of 0x091A)
 - change default PID_MAX_APDU_LENGTH_ROUTER from 220 to 254
 - fix broken ConfigReq Responses
