@@ -14,6 +14,10 @@ See the examples for basic usage options
 ## Changelog
 
 ### v1dev (replace this with version and date when releasing to v1)
+
+- Fix: `uniqueSerialNumber()` returned no unique id on RP2350. Use `pico_get_unique_board_id()`, this  is compatible to previous implementation:
+  - For RP2040 it will return the same serial as `flash_get_unique_id()` in old implementation
+  - For RP2350 it uses an OTP-based unique chip ID
 - deactivate by default not KNX-Standard compatible 'Tunnel-Optimization" which reduces traffic on TP (can be used with compiler option KNX_TUNNELING_NO_TUNNEL_PA_ON_TP and KNX_TUNNELING_STRICT_TOPOLOGY)
 - refactor KNX IP Tunneling
 - the Device Management Connection is now handled independently from Tunnel Connections and do not consume a Tunnel PA anymore
