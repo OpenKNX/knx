@@ -68,12 +68,15 @@ RP2040ArduinoPlatform::RP2040ArduinoPlatform(TPUart::Interface::Abstract* interf
 
 uint32_t RP2040ArduinoPlatform::uniqueSerialNumber()
 {
-    pico_unique_board_id_t id; // 64Bit unique serial number from the QSPI flash
+    pico_unique_board_id_t id; // 64Bit unique serial number
 
     noInterrupts();
     rp2040.idleOtherCore();
 
-    flash_get_unique_id(id.id); // pico_get_unique_board_id(&id);
+    // Retrieve a stable unique device ID across platforms.
+    // RP2040: reads JEDEC ID from external flash
+    // RP2350: falls back to OTP-based chip ID (preferred, flash may not be unique)
+    pico_get_unique_board_id(&id);
 
     rp2040.resumeOtherCore();
     interrupts();
@@ -249,7 +252,7 @@ void RP2040ArduinoPlatform::setupMultiCast(uint32_t addr, uint16_t port)
     print(mcastaddr.toString().c_str());
     print(":");
     println(port);
-    
+
     _port = port;
     uint8_t result = _udp.beginMulticast(mcastaddr, port);
     (void)result;
@@ -315,10 +318,10 @@ bool RP2040ArduinoPlatform::sendBytesUniCast(uint32_t addr, uint16_t port, uint8
 {
     IPAddress ucastaddr(htonl(addr));
 
-    if(!addr)
+    if (!addr)
         ucastaddr = _remoteIP;
-    
-    if(!port)
+
+    if (!port)
         port = _remotePort;
     // print("sendBytesUniCast to:");
     // println(ucastaddr.toString().c_str());
