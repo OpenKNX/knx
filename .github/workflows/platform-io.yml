@@ -35,7 +35,7 @@ jobs:
 
       # TODO use ./openknx.json#ofm.ref_oam
       oam: OAM-StateEngine
-      oam_ref: v1
+      # TODO FIXME: oam_ref: v1
       # TODO use default /OAM-Repo/openknx.json#ofm.prefix
       target: DFA16-Release
       KNXPROD_PREFIX: StateEngine
