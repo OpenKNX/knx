@@ -41,3 +41,12 @@ jobs:
       # TODO use default /OAM-Repo/openknx.json#ofm.prefix
       target: DFA16-Release
       KNXPROD_PREFIX: StateEngine
+
+  openknx-oam-internetservice:
+    uses: openknx/actions/.github/workflows/openknx-ofm-check.yml@v0
+    with:
+      # note: dummy value as knx has not OFM-prefix
+      ofm_prefix: KNX
+      oam: OAM-InternetServices
+      target: Release
+      KNXPROD_PREFIX: InternetServices
