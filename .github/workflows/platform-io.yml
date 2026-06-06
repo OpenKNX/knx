@@ -24,3 +24,18 @@ jobs:
       run: platformio ci --lib="." --project-conf=examples/knx-demo/platformio-ci.ini examples/knx-demo/knx-demo.ino
     - name: Build knx-demo-coupler
       run: platformio ci --lib="." --project-conf=examples/knx-demo-coupler/platformio-ci.ini examples/knx-demo-coupler/knx-demo-coupler.ino
+
+  openknx-oams:
+    uses: openknx/actions/.github/workflows/openknx-ofm-check.yml@v0
+    with:
+
+      # TODO use ./openknx.json#ofm.prefix
+      # note: dummy value as knx has not OFM-prefix
+      ofm_prefix: KNX
+
+      # TODO use ./openknx.json#ofm.ref_oam
+      oam: OAM-StateEngine
+      oam_ref: v1
+      # TODO use default /OAM-Repo/openknx.json#ofm.prefix
+      target: DFA16-Release
+      KNXPROD_PREFIX: StateEngine
