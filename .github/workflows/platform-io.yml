@@ -40,18 +40,18 @@ jobs:
             target: Release
             KNXPROD_PREFIX: InternetServices
 
-      uses: openknx/actions/.github/workflows/openknx-ofm-check.yml@v0
-      with:
-        # TODO use ./openknx.json#ofm.prefix
-        # note: dummy value as knx has not OFM-prefix
-        ofm_prefix: KNX
+    uses: openknx/actions/.github/workflows/openknx-ofm-check.yml@v0
+    with:
+      # TODO use ./openknx.json#ofm.prefix
+      # note: dummy value as knx has not OFM-prefix
+      ofm_prefix: KNX
 
-        # TODO use ./openknx.json#ofm.ref_oam
-        oam: ${{ matrix.oam }}
-        oam_ref: v1
+      # TODO use ./openknx.json#ofm.ref_oam
+      oam: ${{ matrix.oam }}
+      oam_ref: v1
 
-        # TODO use default /OAM-Repo/openknx.json#ofm.prefix
-        target: ${{ matrix.target }}
-        # restore_branch: ${{ matrix.restore_branch }}
-        KNXPROD_PREFIX: ${{ matrix.KNXPROD_PREFIX }}
-        restore_branch: false
+      # TODO use default /OAM-Repo/openknx.json#ofm.prefix
+      target: ${{ matrix.target }}
+      # restore_branch: ${{ matrix.restore_branch }}
+      KNXPROD_PREFIX: ${{ matrix.KNXPROD_PREFIX }}
+      restore_branch: false
