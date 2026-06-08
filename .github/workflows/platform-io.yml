@@ -28,25 +28,30 @@ jobs:
       run: platformio ci --lib="." --project-conf=examples/knx-demo-coupler/platformio-ci.ini examples/knx-demo-coupler/knx-demo-coupler.ino
 
   openknx-oams:
-    uses: openknx/actions/.github/workflows/openknx-ofm-check.yml@v0
-    with:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - oam: OAM-StateEngine
+            target: DFA16-Release
+            KNXPROD_PREFIX: StateEngine
 
-      # TODO use ./openknx.json#ofm.prefix
-      # note: dummy value as knx has not OFM-prefix
-      ofm_prefix: KNX
+          - oam: OAM-InternetServices
+            target: Release
+            KNXPROD_PREFIX: InternetServices
 
-      # TODO use ./openknx.json#ofm.ref_oam
-      oam: OAM-StateEngine
-      # TODO FIXME: oam_ref: v1
-      # TODO use default /OAM-Repo/openknx.json#ofm.prefix
-      target: DFA16-Release
-      KNXPROD_PREFIX: StateEngine
+      uses: openknx/actions/.github/workflows/openknx-ofm-check.yml@v0
+      with:
+        # TODO use ./openknx.json#ofm.prefix
+        # note: dummy value as knx has not OFM-prefix
+        ofm_prefix: KNX
 
-  openknx-oam-internetservice:
-    uses: openknx/actions/.github/workflows/openknx-ofm-check.yml@v0
-    with:
-      # note: dummy value as knx has not OFM-prefix
-      ofm_prefix: KNX
-      oam: OAM-InternetServices
-      target: Release
-      KNXPROD_PREFIX: InternetServices
+        # TODO use ./openknx.json#ofm.ref_oam
+        oam: ${{ matrix.oam }}
+        oam_ref: v1
+
+        # TODO use default /OAM-Repo/openknx.json#ofm.prefix
+        target: ${{ matrix.target }}
+        # restore_branch: ${{ matrix.restore_branch }}
+        KNXPROD_PREFIX: ${{ matrix.KNXPROD_PREFIX }}
+        restore_branch: false
