@@ -25,6 +25,7 @@ bool TpUartDataLinkLayer::sendFrame(CemiFrame &cemiFrame)
     if (!_tpuart.isConnected() || _tpuart.isMonitoring())
     {
         free(tpData);
+        delete tpFrame; // not queued -> free (queue didn't take ownership)
         dataConReceived(cemiFrame, false);
         return false;
     }
@@ -33,12 +34,14 @@ bool TpUartDataLinkLayer::sendFrame(CemiFrame &cemiFrame)
     if (!_tpuart.pushTransmitQueue(tpFrame))
     {
         free(tpData);
+        delete tpFrame; // queue full, not taken -> free (else leak per dropped frame)
         printMessage("Ignore frame because transmit queue is full!", true);
         dataConReceived(cemiFrame, false);
         return false;
     }
 
     free(tpData);
+    // success: queue took ownership of tpFrame -> it deletes it after TX (no delete here)
     // printHex("  CEMI>: ", cemiFrame.data(), cemiFrame.dataLength());
     return true;
 }

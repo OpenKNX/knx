@@ -301,7 +301,6 @@ void CemiServer::handleMPropRead(CemiFrame& frame, uint8_t channelId)
 #elif defined(KNX_TUNNELING)
         _ipTunnelServer.dataRequestToChannelId(responseFrame, channelId);
 #endif
-        delete[] data;
     }
     else
     {
@@ -322,6 +321,11 @@ void CemiServer::handleMPropRead(CemiFrame& frame, uint8_t channelId)
         _ipTunnelServer.dataRequestToChannelId(responseFrame, channelId);
 #endif
     }
+
+    // propertyValueRead() allocates 'data' on both branches -> free it once here.
+    // (The negative-response branch used to skip this -> leak per ETS prop scan.)
+    if (data)
+        delete[] data;
 }
 
 void CemiServer::handleMPropWrite(CemiFrame& frame, uint8_t channelId)
