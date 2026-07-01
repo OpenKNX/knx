@@ -45,7 +45,11 @@ void IpTunnelServer::loop()
                 _platform.sendBytesUniCast(tunnels[i].IpAddress, tunnels[i].PortCtrl, discReq.data(), discReq.totalLength());
                 tunnels[i].Reset();
             }
-            break;
+#ifndef KNX_FIXES_EC
+            break; // stock behaviour (stops the scan at the first OCCUPIED slot)
+#endif
+            // the slot-level break above is removed so loop() scans ALL slots and reaps every expired one.
+            // the old break stopped at the first OCCUPIED slot, leaving dead tunnels in later slots unreaped -> slot exhaustion.
         }
     }
 }
@@ -434,6 +438,12 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
         }
         uint8_t count = KNX_TUNNELING;
         _ipParameters.writeProperty(PID_ADDITIONAL_INDIVIDUAL_ADDRESSES, 1, addrbuffer, count);
+#ifdef KNX_FIXES_EC
+        // re-point `addresses` at the property's LIVE storage: addrbuffer[] is block-scoped and would
+        // dangle when read later (popWord(addresses + tunIdx*2)); propertyData() returns the persisted
+        // copy we just wrote (same source the configured `if` branch above uses).
+        addresses = _ipParameters.propertyData(PID_ADDITIONAL_INDIVIDUAL_ADDRESSES);
+#endif
 #ifdef KNX_LOG_TUNNELING
         println("no Tunnel-PAs configured, using own subnet");
 #endif
