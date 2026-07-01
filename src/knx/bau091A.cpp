@@ -181,7 +181,11 @@ TPAckType Bau091A::isAckRequired(uint16_t address, bool isGrpAddr)
 
     uint8_t lcconfig = LCCONFIG::PHYS_FRAME_ROUT | LCCONFIG::PHYS_REPEAT | LCCONFIG::BROADCAST_REPEAT | LCCONFIG::GROUP_IACK_ROUT | LCCONFIG::PHYS_IACK_NORMAL; // default value from spec. in case prop is not availible.
     Property* prop_lcconfig = _routerObj.property(PID_SUB_LCCONFIG);
+#ifdef KNX_FIXES_EC
+    if(prop_lcconfig) // check the POINTER, not the (always-nonzero) default value -> no null-deref if prop absent!!
+#else
     if(lcconfig)
+#endif
         prop_lcconfig->read(lcconfig);
 
     if (isGrpAddr)
