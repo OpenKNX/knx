@@ -17,6 +17,13 @@ void TpUartDataLinkLayer::setRepetitions(uint8_t nack, uint8_t busy)
 bool TpUartDataLinkLayer::sendFrame(CemiFrame &cemiFrame)
 {
     uint8_t *tpData = (uint8_t *)malloc(cemiFrame.telegramLengthtTP());
+#ifdef KNX_FIXES_EC
+    if (!tpData) // bail on alloc failure instead of null-deref in fillTelegramTP() under heap pressure
+    {
+        dataConReceived(cemiFrame, false);
+        return false;
+    }
+#endif
     cemiFrame.fillTelegramTP(tpData);
 
     TPUart::Frame *tpFrame = new TPUart::Frame((char *)tpData, cemiFrame.telegramLengthtTP());
