@@ -7,11 +7,11 @@
 cEMI Frame Format
 
               +--------+--------+--------+--------+---------+---------+--------+---------+
-	          |                               _data                                      |
+              |                               _data                                      |
               +--------+--------+--------+--------+---------+---------+--------+---------+
-	          |                               LPDU                                       |
-			  +--------+--------+--------+--------+---------+---------+--------+---------+
-	                                                                  |           NPDU   |
+              |                               LPDU                                       |
+              +--------+--------+--------+--------+---------+---------+--------+---------+
+                                                                      |           NPDU   |
     +---------+--------+--------+--------+--------+---------+---------+--------+---------+
     | Header  |  Msg   |Add.Info| Ctrl 1 | Ctrl 2 | Source  | Dest.   |  Data  |   TPDU  |
     |         | Code   | Length |        |        | Address | Address | Length |   APDU  |
@@ -371,6 +371,23 @@ APDU& CemiFrame::apdu()
 bool CemiFrame::valid() const
 {
     uint8_t addInfoLen = _data[1];
+#ifdef KNX_FIXES_EC
+    // For externally frames (_length != 0), bound the addInfoLen derived index against
+    // _length BEFORE dereferencing it else valid() is itself the out-of-bounds (oob) read it is meant to guard.
+    // The internally-built case (_length == 0) keeps its existing behaviour.
+
+    if (_length != 0 && (uint16_t)(addInfoLen + NPDU_LPDU_DIFF) >= _length)
+    {
+      //#ifdef KNX_LOG_TUNNELING
+      //  print("cEMI OOB-guard: addInfoLen ");
+      //  print(addInfoLen); 
+      //  print(" >= length "); 
+      //  println(_length);
+      //#endif
+        return false;
+    }
+      
+#endif
     uint8_t apduLen = _data[_data[1] + NPDU_LPDU_DIFF];
 
     if (_length != 0 && _length != (addInfoLen + apduLen + NPDU_LPDU_DIFF + 2))
