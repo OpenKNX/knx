@@ -239,7 +239,16 @@ void CemiServer::handleMPropRead(CemiFrame& frame, uint8_t channelId)
 #ifdef KNX_LOG_TUNNELING
     print("M_PropRead_req: ");
 #endif
-    
+
+#ifdef KNX_FIXES_EC
+    // drop a truncated M_PropRead_req before the data()[1..6]/echo reads
+    // Reason: ETS can send a M_PropWrite_req with no data (data length 7) to test if the property is writable.
+    // If we don't check this, we will dereference the data pointer below and crash.
+    // Note: The ETS test is not a valid cEMI request, but it is used in practice.
+    //      The cEMI spec does not define a minimum length for M_PropWrite_req, but it is implied that
+    //      the request must contain at least one data element.
+    if (frame.dataLength() < 7) return; 
+#endif
     uint16_t objectType;
     popWord(objectType, &frame.data()[1]);
     uint8_t objectInstance = frame.data()[3];
@@ -332,6 +341,15 @@ void CemiServer::handleMPropWrite(CemiFrame& frame, uint8_t channelId)
 {
     print("M_PropWrite_req: "); 
 
+#ifdef KNX_FIXES_EC
+    // drop a truncated M_PropRead_req before the data()[1..6]/echo reads
+    // Reason: ETS can send a M_PropWrite_req with no data (data length 7) to test if the property is writable.
+    // If we don't check this, we will dereference the data pointer below and crash.
+    // Note: The ETS test is not a valid cEMI request, but it is used in practice.
+    //      The cEMI spec does not define a minimum length for M_PropWrite_req, but it is implied that
+    //      the request must contain at least one data element.
+    if (frame.dataLength() < 7) return;
+#endif
     uint16_t objectType;
     popWord(objectType, &frame.data()[1]);
     uint8_t objectInstance = frame.data()[3];
