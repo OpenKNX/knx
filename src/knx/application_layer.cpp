@@ -525,6 +525,18 @@ void ApplicationLayer::restartResponse(AckType ack, Priority priority, HopCountT
     individualSend(ack, hopType, priority, _connectedTsap, apdu, secCtrl);
 }
 
+#ifdef OPENKNX_FTC
+void ApplicationLayer::ftcDeviceDescriptorReadConnected(const SecurityControl& secCtrl)
+{
+    // Modeled on restartRequest(): send to _connectedTsap so individualSend() goes connection-oriented
+    // (dataConnectedRequest). DeviceDescriptor_Read, descriptorType 0 -> the APCI byte is all we set.
+    CemiFrame frame(1);
+    APDU& apdu = frame.apdu();
+    apdu.type(DeviceDescriptorRead);
+    individualSend(AckRequested, NetworkLayerParameter, SystemPriority, _connectedTsap, apdu, secCtrl);
+}
+#endif
+
 //TODO: ApplicationLayer::systemNetworkParameterReadRequest()
 void ApplicationLayer::systemNetworkParameterReadResponse(Priority priority, HopCountType hopType, const SecurityControl &secCtrl,
                                                           uint16_t objectType, uint16_t propertyId,
@@ -1427,6 +1439,11 @@ void ApplicationLayer::individualConfirm(AckType ack, HopCountType hopType, Prio
         case FunctionPropertyCommand:
             // The L_Data.con of an FTC request frame we sent. Nothing to do -- without this the
             // stack prints "unhandled APDU-Type: 711" for every chunk (OFM-FileTransferModule).
+            break;
+        case FunctionPropertyStateResponse:
+            // Twin of the case above for the L_Data.con of an FTC *answer* frame the server sent
+            // (obj 159 data/ack, bau_systemB.cpp functionPropertyStateResponse at :412 and :445).
+            // Without it the target prints "unhandled APDU-Type: 713" for every answered chunk.
             break;
 #endif
         default:

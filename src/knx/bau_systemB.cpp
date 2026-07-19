@@ -651,6 +651,57 @@ void BauSystemB::propertyValueReadAppLayerConfirm(Priority priority, HopCountTyp
     if (_ftcPropCb != nullptr)
         _ftcPropCb(asap, objectIndex, propertyId, data, length);
 }
+
+bool BauSystemB::ftcSendPropertyValueWrite(uint16_t asap, const SecurityControl secCtrl, uint8_t objectIndex, uint8_t propertyId,
+                                           uint8_t count, uint16_t startIndex, uint8_t* data, uint8_t length)
+{
+    // Fire-and-forget (`ftc <pa> led`): the target echoes a PropertyValue_Response onto _ftcPropCb; ignored.
+    applicationLayer().propertyValueWriteRequest(AckRequested, LowPriority, NetworkLayerParameter, asap, secCtrl,
+                                                 objectIndex, propertyId, count, startIndex, data, length);
+    return true;
+}
+
+bool BauSystemB::ftcSendMemoryRead(uint16_t asap, const SecurityControl secCtrl, uint8_t number, uint16_t memoryAddress)
+{
+    // GA/assoc table walk: same connectionless, AckRequested, LowPriority path as ftcSendPropertyValueRead.
+    applicationLayer().memoryReadRequest(AckRequested, LowPriority, NetworkLayerParameter, asap, secCtrl, number, memoryAddress);
+    return true;
+}
+
+void BauSystemB::memoryReadAppLayerConfirm(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl& secCtrl,
+                                           uint8_t number, uint16_t memoryAddress, uint8_t* data)
+{
+    // Park only -- the group-comm state machine reads it back in loop().
+    if (_ftcMemCb != nullptr)
+        _ftcMemCb(asap, memoryAddress, data, number);
+}
+
+// --- CO scan shims (thin, because _connectedTsap is private to ApplicationLayer). Inherited by Bau091A. ---
+bool BauSystemB::ftcScanConnect(uint16_t pa)
+{
+    // Self-guard: never step on an existing connection (an ETS session or a pending restart).
+    if (applicationLayer().isConnected())
+        return false;
+    applicationLayer().connectRequest(pa, SystemPriority);
+    return true;
+}
+
+bool BauSystemB::ftcScanConnected()
+{
+    return applicationLayer().isConnected();
+}
+
+void BauSystemB::ftcScanReadDescriptor(const SecurityControl& sec)
+{
+    applicationLayer().ftcDeviceDescriptorReadConnected(sec);
+}
+
+void BauSystemB::ftcScanDisconnect()
+{
+    // NOT gated on isConnected(): a failed TP connect leaves the transport stuck in Connecting, and only
+    // disconnectRequest returns it to Closed -- so this must run on every scan exit path.
+    applicationLayer().disconnectRequest(SystemPriority);
+}
 #endif
 
 bool BauSystemB::restartRequest(uint16_t asap, const SecurityControl secCtrl)

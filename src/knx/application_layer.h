@@ -123,6 +123,10 @@ class ApplicationLayer
     // KnxFileTransfer (ObjectIndex 159) on another device, PA -> PA, no PC.
     void functionPropertyCommandRequest(AckType ack, Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl,
                                         uint8_t objectIndex, uint8_t propertyId, uint8_t *data, uint8_t length);
+    // CO scan (`ftc scan ... ets`): DeviceDescriptor_Read (type 0) to the CURRENTLY CONNECTED peer.
+    // asap == _connectedTsap (private here) makes individualSend() take the connection-oriented path,
+    // which is the only way to reach old BCU1/BCU2 masks. Modeled on restartRequest().
+    void ftcDeviceDescriptorReadConnected(const SecurityControl& secCtrl);
 #endif
     void functionPropertyExtStateResponse(AckType ack, Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl& secCtrl,
                                           uint16_t objectType, uint8_t objectInstance, uint16_t propertyId, uint8_t* resultData, uint8_t resultLength);

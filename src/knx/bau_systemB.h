@@ -45,6 +45,19 @@ class BauSystemB : protected BusAccessUnit
     bool ftcSendPropertyValueRead(uint16_t asap, const SecurityControl secCtrl, uint8_t objectIndex, uint8_t propertyId,
                                   uint8_t count, uint16_t startIndex);
     void ftcSetPropertyCallback(void (*cb)(uint16_t pa, uint8_t objectIndex, uint8_t propertyId, const uint8_t* data, uint8_t length)) { _ftcPropCb = cb; }
+    // Device diagnosis: PropertyValue_WRITE (e.g. PID_PROG_MODE to drive the target's prog-LED, `ftc <pa> led`).
+    // Fire-and-forget: the echoed PropertyValue_Response lands harmlessly on _ftcPropCb and is ignored.
+    bool ftcSendPropertyValueWrite(uint16_t asap, const SecurityControl secCtrl, uint8_t objectIndex, uint8_t propertyId,
+                                   uint8_t count, uint16_t startIndex, uint8_t* data, uint8_t length);
+    // Device diagnosis: A_Memory_Read (ETS path to the GA + association tables, `ftc <pa> info ga`). Answer via the callback.
+    bool ftcSendMemoryRead(uint16_t asap, const SecurityControl secCtrl, uint8_t number, uint16_t memoryAddress);
+    void ftcSetMemoryCallback(void (*cb)(uint16_t pa, uint16_t addr, const uint8_t* data, uint8_t len)) { _ftcMemCb = cb; }
+    // CO scan (`ftc scan ... ets`): ETS-parity connection-oriented probe. Reaches old BCU1/BCU2 masks that
+    // answer ONLY connection-oriented (the connectionless scan misses them). Driven serially from the client.
+    bool ftcScanConnect(uint16_t pa);                       // open a T_Connect to pa (self-guards: no-op if already connected)
+    bool ftcScanConnected();                                // T_Connect established?
+    void ftcScanReadDescriptor(const SecurityControl& sec); // CO DeviceDescriptor_Read on the open connection
+    void ftcScanDisconnect();                               // ALWAYS callable -- also unwedges a stuck Connecting state
     // FTC fast-transfer flow control: current TP transmit-FIFO depth. Base has no TP link -> 0; the
     // coupler/device bau overrides it (Transmitter::queueSize()) so the pump paces against the driver.
     virtual uint16_t ftcTxQueueSize() { return 0; }
@@ -123,6 +136,9 @@ class BauSystemB : protected BusAccessUnit
     void propertyValueReadAppLayerConfirm(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl,
                                           uint8_t objectIndex, uint8_t propertyId, uint8_t numberOfElements, uint16_t startIndex,
                                           uint8_t* data, uint8_t length) override;
+    // A MemoryResponse we asked for came back (GA/association table walk): hand PA + address + bytes on.
+    void memoryReadAppLayerConfirm(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl,
+                                   uint8_t number, uint16_t memoryAddress, uint8_t* data) override;
 #endif
     void functionPropertyExtCommandIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, ObjectType objectType, uint8_t objectInstance,
                                                       uint8_t propertyId, uint8_t* data, uint8_t length) override;
@@ -159,6 +175,7 @@ class BauSystemB : protected BusAccessUnit
     void (*_ftcResponseCb)(uint8_t objectIndex, uint8_t propertyId, uint8_t* data, uint8_t length) = nullptr;
     void (*_ftcDdCb)(uint16_t pa, uint8_t descriptorType, const uint8_t* data) = nullptr;
     void (*_ftcPropCb)(uint16_t pa, uint8_t objectIndex, uint8_t propertyId, const uint8_t* data, uint8_t length) = nullptr;
+    void (*_ftcMemCb)(uint16_t pa, uint16_t addr, const uint8_t* data, uint8_t len) = nullptr;
 #endif
     SecurityControl _restartSecurity;
     uint32_t _restartDelay = 0;
