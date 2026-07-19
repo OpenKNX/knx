@@ -27,6 +27,14 @@ bool TpUartDataLinkLayer::sendFrame(CemiFrame &cemiFrame)
     cemiFrame.fillTelegramTP(tpData);
 
     TPUart::Frame *tpFrame = new TPUart::Frame((char *)tpData, cemiFrame.telegramLengthtTP());
+#ifdef KNX_FIXES_EC
+    if (!tpFrame) // heap exhaustion under an IP->TP routing flood -> bail instead of null-deref downstream
+    {
+        free(tpData);
+        dataConReceived(cemiFrame, false);
+        return false;
+    }
+#endif
 
     // when not connected or in monitoring mode, discard the frame - silently
     if (!_tpuart.isConnected() || _tpuart.isMonitoring())
@@ -42,7 +50,15 @@ bool TpUartDataLinkLayer::sendFrame(CemiFrame &cemiFrame)
     {
         free(tpData);
         delete tpFrame; // queue full, not taken -> free (else leak per dropped frame)
+#ifdef KNX_FIXES_EC
+        // Do NOT print per dropped frame: under an IP->TP flood the queue stays full and a blocking
+        // USB-CDC print on every drop starves the loop() watchdog -> 16s reset. Rate-limit to ~1/1024.
+        static uint16_t _qFullDrops = 0;
+        if ((_qFullDrops++ & 0x3FF) == 0)
+            printMessage("TP transmit queue full - dropping routed frame(s)", true);
+#else
         printMessage("Ignore frame because transmit queue is full!", true);
+#endif
         dataConReceived(cemiFrame, false);
         return false;
     }
