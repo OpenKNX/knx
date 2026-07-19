@@ -1159,10 +1159,12 @@ void ApplicationLayer::individualIndication(HopCountType hopType, Priority prior
             break;
         }
         case FunctionPropertyCommand:
-            _bau.functionPropertyCommandIndication(priority, hopType, tsap, secCtrl, data[1], data[2], &data[3], apdu.length() - 3); //TODO: check length
+            if (apdu.length() < 3) break; // short frame: length-3 underflows the uint8_t to ~253 -> over-read via &data[3]
+            _bau.functionPropertyCommandIndication(priority, hopType, tsap, secCtrl, data[1], data[2], &data[3], apdu.length() - 3);
             break;
         case FunctionPropertyState:
-            _bau.functionPropertyStateIndication(priority, hopType, tsap, secCtrl, data[1], data[2], &data[3], apdu.length() - 3); //TODO: check length
+            if (apdu.length() < 3) break; // same guard as FunctionPropertyCommand
+            _bau.functionPropertyStateIndication(priority, hopType, tsap, secCtrl, data[1], data[2], &data[3], apdu.length() - 3);
             break;
 #ifdef OPENKNX_FTC
         // OPENKNX_FTC: the answer to our own functionPropertyCommandRequest(). Without this case
@@ -1176,6 +1178,7 @@ void ApplicationLayer::individualIndication(HopCountType hopType, Priority prior
 #endif
         case FunctionPropertyExtCommand:
         {
+            if (apdu.length() < 6) break; // reads data[1..5] + length-6 underflow guard
             ObjectType objectType = (ObjectType)(((data[1] & 0xff) << 8) | (data[2] & 0xff));
             uint8_t objectInstance = ((data[3] & 0xff) << 4) | ((data[4] & 0xff) >> 4);
             uint16_t propertyId = ((data[4] & 0xf) << 8) | (data[5] & 0xff);
@@ -1185,6 +1188,7 @@ void ApplicationLayer::individualIndication(HopCountType hopType, Priority prior
         }
         case FunctionPropertyExtState:
         {
+            if (apdu.length() < 6) break; // reads data[1..5] + length-6 underflow guard
             ObjectType objectType = (ObjectType)(((data[1] & 0xff) << 8) | (data[2] & 0xff));
             uint8_t objectInstance = ((data[3] & 0xff) << 4) | ((data[4] & 0xff) >> 4);
             uint16_t propertyId = ((data[4] & 0xf) << 8) | (data[5] & 0xff);
@@ -1214,6 +1218,7 @@ void ApplicationLayer::individualIndication(HopCountType hopType, Priority prior
             _bau.memoryReadIndication(priority, hopType, tsap, secCtrl, data[0] & 0x3f, getWord(data + 1));
             break;
         case MemoryResponse:
+            if (apdu.length() < 3 || (data[0] & 0x3f) > apdu.length() - 3) break; // EC: count must fit the frame -> no over-read (only forwarded now that FTC overrides memoryReadAppLayerConfirm)
             _bau.memoryReadAppLayerConfirm(priority, hopType, tsap, secCtrl, data[0] & 0x3f, getWord(data + 1), data + 3);
             break;
         case MemoryWrite:
