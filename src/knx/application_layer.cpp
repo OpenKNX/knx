@@ -595,8 +595,10 @@ void ApplicationLayer::propertyValueReadRequest(AckType ack, Priority priority, 
     data = pushByte(objectIndex, data);
     data = pushByte(propertyId, data);
     pushWord(startIndex & 0xfff, data);
-    *data &= ((numberOfElements & 0xf) << 4);
-    
+    // OR, not AND: the byte already holds the startIndex top nibble; numberOfElements goes in the HIGH
+    // nibble. `&=` cleared it -> every PropertyValue_Read came back with 0 elements (empty). `|=` fixes it.
+    *data |= ((numberOfElements & 0xf) << 4);
+
     individualSend(ack, hopType, priority, asap, apdu, secCtrl);
 }
 
