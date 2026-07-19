@@ -57,6 +57,12 @@ class BusAccessUnit
                                                    uint8_t propertyId, uint8_t* data, uint8_t length);
     virtual void functionPropertyStateIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, uint8_t objectIndex,
                                                  uint8_t propertyId, uint8_t* data, uint8_t length);
+#ifdef OPENKNX_FTC
+    // OPENKNX_FTC: reply to our own functionPropertyCommandRequest(). Default no-op so every other
+    // BAU keeps its behaviour; only the one acting as a FileTransfer client overrides it.
+    virtual void functionPropertyStateResponseIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, uint8_t objectIndex,
+                                                         uint8_t propertyId, uint8_t* data, uint8_t length) {}
+#endif
     virtual void functionPropertyExtCommandIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, ObjectType objectType, uint8_t objectInstance,
                                                       uint8_t propertyId, uint8_t* data, uint8_t length);
     virtual void functionPropertyExtStateIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, ObjectType objectType, uint8_t objectInstance,

@@ -669,6 +669,28 @@ void ApplicationLayer::functionPropertyStateResponse(AckType ack, Priority prior
         dataIndividualRequest(ack, hopType, priority, asap, apdu, secCtrl);
 }
 
+#ifdef OPENKNX_FTC
+
+void ApplicationLayer::functionPropertyCommandRequest(AckType ack, Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl& secCtrl,
+                                                      uint8_t objectIndex, uint8_t propertyId, uint8_t* data, uint8_t length)
+{
+    // Mirror of functionPropertyCommandIndication's wire layout: [objectIndex][propertyId][data...]
+    CemiFrame frame(3 + length);
+    APDU& apdu = frame.apdu();
+    apdu.type(FunctionPropertyCommand);
+    uint8_t* apduData = apdu.data() + 1;
+
+    apduData[0] = objectIndex;
+    apduData[1] = propertyId;
+    if (length > 0)
+        memcpy(&apduData[2], data, length);
+
+    // Always connectionless (unnumbered T_Data_Individual): gating on asap == _connectedTsap like the
+    // response senders do would divert to the connection-oriented path, which FTC never opens.
+    dataIndividualRequest(ack, hopType, priority, asap, apdu, secCtrl);
+}
+#endif
+
 void ApplicationLayer::functionPropertyExtStateResponse(AckType ack, Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl& secCtrl,
                                                         uint16_t objectType, uint8_t objectInstance, uint16_t propertyId, uint8_t* resultData, uint8_t resultLength)
 {
@@ -1060,7 +1082,8 @@ void ApplicationLayer::individualIndication(HopCountType hopType, Priority prior
             _bau.deviceDescriptorReadIndication(priority, hopType, tsap, secCtrl, *data & 0x3f);
             break;
         case DeviceDescriptorResponse:
-            _bau.deviceDescriptorReadAppLayerConfirm(priority, hopType, tsap, secCtrl, *data & 0x3f, data + 1);
+            if (apdu.length() >= 3) // Guard length: a short frame would read the 2 descriptor bytes at data+1 past the frame end.
+                _bau.deviceDescriptorReadAppLayerConfirm(priority, hopType, tsap, secCtrl, *data & 0x3f, data + 1);
             break;
         case Restart:
         case RestartMasterReset:
@@ -1092,6 +1115,10 @@ void ApplicationLayer::individualIndication(HopCountType hopType, Priority prior
         }
         case PropertyValueResponse:
         {
+            // A short frame (< 5) over-reads data[3..4] and underflows the uint8_t length arg to ~251,
+            // handing a bogus (ptr, len) to the confirm. Any bus frame can be short.
+            if (apdu.length() < 5)
+                break;
             uint16_t startIndex;
             popWord(startIndex, data + 3);
             startIndex &= 0xfff;
@@ -1137,6 +1164,16 @@ void ApplicationLayer::individualIndication(HopCountType hopType, Priority prior
         case FunctionPropertyState:
             _bau.functionPropertyStateIndication(priority, hopType, tsap, secCtrl, data[1], data[2], &data[3], apdu.length() - 3); //TODO: check length
             break;
+#ifdef OPENKNX_FTC
+        // OPENKNX_FTC: the answer to our own functionPropertyCommandRequest(). Without this case
+        // the switch silently drops it -- we would send and never hear the reply.
+        case FunctionPropertyStateResponse:
+            // Guard before subtracting: apdu.length() < 3 underflows the uint8_t length to ~253 and
+            // hands out a &data[3] past the frame. Bus frames can be short.
+            if (apdu.length() >= 3)
+                _bau.functionPropertyStateResponseIndication(priority, hopType, tsap, secCtrl, data[1], data[2], &data[3], apdu.length() - 3);
+            break;
+#endif
         case FunctionPropertyExtCommand:
         {
             ObjectType objectType = (ObjectType)(((data[1] & 0xff) << 8) | (data[2] & 0xff));
@@ -1381,6 +1418,12 @@ void ApplicationLayer::individualConfirm(AckType ack, HopCountType hopType, Prio
         case KeyResponse:
             _bau.keyWriteResponseConfirm(ack, priority, hopType, tsap, secCtrl, data[1], status);
             break;
+#ifdef OPENKNX_FTC
+        case FunctionPropertyCommand:
+            // The L_Data.con of an FTC request frame we sent. Nothing to do -- without this the
+            // stack prints "unhandled APDU-Type: 711" for every chunk (OFM-FileTransferModule).
+            break;
+#endif
         default:
             print("Individual-confirm: unhandled APDU-Type: ");
             println(apdu.type());

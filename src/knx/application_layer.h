@@ -118,6 +118,12 @@ class ApplicationLayer
                                                      uint8_t channelNr, uint8_t readCount, int16_t value);
     void functionPropertyStateResponse(AckType ack, Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl,
                                        uint8_t objectIndex, uint8_t propertyId, uint8_t *resultData, uint8_t resultLength);
+#ifdef OPENKNX_FTC
+    // OPENKNX_FTC: client side of FunctionProperty (the stack could answer but not send) -- drives
+    // KnxFileTransfer (ObjectIndex 159) on another device, PA -> PA, no PC.
+    void functionPropertyCommandRequest(AckType ack, Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl,
+                                        uint8_t objectIndex, uint8_t propertyId, uint8_t *data, uint8_t length);
+#endif
     void functionPropertyExtStateResponse(AckType ack, Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl& secCtrl,
                                           uint16_t objectType, uint8_t objectInstance, uint16_t propertyId, uint8_t* resultData, uint8_t resultLength);
     void propertyDescriptionReadRequest(AckType ack, Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl& secCtrl,

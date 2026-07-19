@@ -259,4 +259,12 @@ IpDataLinkLayer* Bau091A::getPrimaryDataLinkLayer() {
 TpUartDataLinkLayer* Bau091A::getSecondaryDataLinkLayer() {
     return (TpUartDataLinkLayer*)&_dlLayerSecondary;
 }
+
+#ifdef OPENKNX_FTC
+uint16_t Bau091A::ftcTxQueueSize() {
+    // Read-only depth of the TP transmit FIFO (Transmitter::queueSize() -> _queue.size()). No TX
+    // logic is touched -- the fast-transfer pump uses this only to pace itself against the driver.
+    return (uint16_t)_dlLayerSecondary.getTPUart().getTransmitter().queueSize();
+}
+#endif
 #endif

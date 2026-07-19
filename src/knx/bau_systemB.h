@@ -31,6 +31,25 @@ class BauSystemB : protected BusAccessUnit
     void addSaveRestore(SaveRestore* obj);
 
     bool restartRequest(uint16_t asap, const SecurityControl secCtrl);
+#ifdef OPENKNX_FTC
+    // OPENKNX_FTC: client role for KnxFileTransfer (ObjectIndex 159). Connectionless by design; the
+    // reply arrives via the callback.
+    bool ftcSendCommand(uint16_t asap, const SecurityControl secCtrl, uint8_t objectIndex, uint8_t propertyId, uint8_t* data, uint8_t length);
+    void ftcSetResponseCallback(void (*cb)(uint8_t objectIndex, uint8_t propertyId, uint8_t* data, uint8_t length)) { _ftcResponseCb = cb; }
+    // Scan probe: connectionless DeviceDescriptor_Read (type 0 = mask version) to one PA. The reply
+    // reaches the client through the callback below. A read only, exactly what a bus scanner sends.
+    bool ftcSendDeviceDescriptorRead(uint16_t asap, const SecurityControl secCtrl);
+    void ftcSetDeviceDescriptorCallback(void (*cb)(uint16_t pa, uint8_t descriptorType, const uint8_t* data)) { _ftcDdCb = cb; }
+    // Device-info: read one interface-object property (serial, order number, app version ...). Answer
+    // via the callback. A standard PropertyValue_Read, the same one ETS uses to identify a device.
+    bool ftcSendPropertyValueRead(uint16_t asap, const SecurityControl secCtrl, uint8_t objectIndex, uint8_t propertyId,
+                                  uint8_t count, uint16_t startIndex);
+    void ftcSetPropertyCallback(void (*cb)(uint16_t pa, uint8_t objectIndex, uint8_t propertyId, const uint8_t* data, uint8_t length)) { _ftcPropCb = cb; }
+    // FTC fast-transfer flow control: current TP transmit-FIFO depth. Base has no TP link -> 0; the
+    // coupler/device bau overrides it (Transmitter::queueSize()) so the pump paces against the driver.
+    virtual uint16_t ftcTxQueueSize() { return 0; }
+#endif
+
     uint8_t checkmasterResetValidity(EraseCode eraseCode, uint8_t channel);
 
     void propertyValueRead(ObjectType objectType, uint8_t objectInstance, uint8_t propertyId,
@@ -94,6 +113,17 @@ class BauSystemB : protected BusAccessUnit
                                            uint8_t propertyId, uint8_t* data, uint8_t length) override;
     void functionPropertyStateIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, uint8_t objectIndex,
                                          uint8_t propertyId, uint8_t* data, uint8_t length) override;
+#ifdef OPENKNX_FTC
+    void functionPropertyStateResponseIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, uint8_t objectIndex,
+                                                 uint8_t propertyId, uint8_t* data, uint8_t length) override;
+    // A DeviceDescriptor_Response we asked for came back (scan): hand the responder's PA + mask to the client.
+    void deviceDescriptorReadAppLayerConfirm(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl,
+                                             uint8_t descriptortype, uint8_t* deviceDescriptor) override;
+    // A PropertyValue_Response we asked for came back (device info): hand PA + object/property + data on.
+    void propertyValueReadAppLayerConfirm(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl,
+                                          uint8_t objectIndex, uint8_t propertyId, uint8_t numberOfElements, uint16_t startIndex,
+                                          uint8_t* data, uint8_t length) override;
+#endif
     void functionPropertyExtCommandIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, ObjectType objectType, uint8_t objectInstance,
                                                       uint8_t propertyId, uint8_t* data, uint8_t length) override;
     void functionPropertyExtStateIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, ObjectType objectType, uint8_t objectInstance,
@@ -125,6 +155,11 @@ class BauSystemB : protected BusAccessUnit
     ApplicationProgramObject _appProgram;
     Platform& _platform;
     RestartState _restartState = Idle;
+#ifdef OPENKNX_FTC
+    void (*_ftcResponseCb)(uint8_t objectIndex, uint8_t propertyId, uint8_t* data, uint8_t length) = nullptr;
+    void (*_ftcDdCb)(uint16_t pa, uint8_t descriptorType, const uint8_t* data) = nullptr;
+    void (*_ftcPropCb)(uint16_t pa, uint8_t objectIndex, uint8_t propertyId, const uint8_t* data, uint8_t length) = nullptr;
+#endif
     SecurityControl _restartSecurity;
     uint32_t _restartDelay = 0;
     BeforeRestartCallback _beforeRestart = 0;

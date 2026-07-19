@@ -586,6 +586,73 @@ void BauSystemB::addSaveRestore(SaveRestore* obj)
     _memory.addSaveRestore(obj);
 }
 
+#ifdef OPENKNX_FTC
+// OPENKNX_FTC: client role for KnxFileTransfer (ObjectIndex 159) -- lets one device drive another's
+// file transfer PA -> PA. The transfer state machine lives in the application, not here.
+void BauSystemB::functionPropertyStateResponseIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl& secCtrl,
+                                                         uint8_t objectIndex, uint8_t propertyId, uint8_t* data, uint8_t length)
+{
+    if (_ftcResponseCb != nullptr)
+        _ftcResponseCb(objectIndex, propertyId, data, length);
+}
+
+bool BauSystemB::ftcSendCommand(uint16_t asap, const SecurityControl secCtrl, uint8_t objectIndex, uint8_t propertyId, uint8_t* data, uint8_t length)
+{
+    // Stack-overflow guard: functionPropertyCommandRequest() memcpy's `length` (caller-controlled) bytes to
+    // offset 13 of a 263-byte stack CemiFrame -> payload must fit 263-13 = 250; more smashes the stack, and
+    // length >= 253 also wraps the uint8_t (3 + length). Bound it hard.
+    if (length > 250)
+    {
+        print("ftcSendCommand: length ");
+        print(length);
+        println(" > 250 -- rejected (would overflow the CemiFrame buffer)");
+        return false;
+    }
+
+    // Connectionless by design (like the reference client) -- an isConnected() gate would reject every
+    // frame. LowPriority, not System: a bulk upload runs ~34 min; System would win every arbitration and
+    // starve time-critical group traffic. The server echoes the priority, so answers stay Low too.
+    applicationLayer().functionPropertyCommandRequest(AckRequested, LowPriority, NetworkLayerParameter, asap, secCtrl,
+                                                      objectIndex, propertyId, data, length);
+    return true;
+}
+
+bool BauSystemB::ftcSendDeviceDescriptorRead(uint16_t asap, const SecurityControl secCtrl)
+{
+    // Scan probe: connectionless type-0 (mask version) read, LowPriority. AckDontCare, not AckRequested:
+    // a scan hits many ABSENT addresses; AckRequested would retransmit each 3x -> a congestion storm that
+    // drowns the real answers. Absent -> silence, present -> the DeviceDescriptor_Response is the proof.
+    applicationLayer().deviceDescriptorReadRequest(AckDontCare, LowPriority, NetworkLayerParameter, asap, secCtrl, 0);
+    return true;
+}
+
+void BauSystemB::deviceDescriptorReadAppLayerConfirm(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl& secCtrl,
+                                                     uint8_t descriptortype, uint8_t* deviceDescriptor)
+{
+    // Park only -- the scan state machine in the client owns the follow-up.
+    if (_ftcDdCb != nullptr)
+        _ftcDdCb(asap, descriptortype, deviceDescriptor);
+}
+
+bool BauSystemB::ftcSendPropertyValueRead(uint16_t asap, const SecurityControl secCtrl, uint8_t objectIndex, uint8_t propertyId,
+                                          uint8_t count, uint16_t startIndex)
+{
+    // AckRequested here (unlike the scan): one known-present target, so retry a lost read. LowPriority.
+    applicationLayer().propertyValueReadRequest(AckRequested, LowPriority, NetworkLayerParameter, asap, secCtrl,
+                                                objectIndex, propertyId, count, startIndex);
+    return true;
+}
+
+void BauSystemB::propertyValueReadAppLayerConfirm(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl& secCtrl,
+                                                  uint8_t objectIndex, uint8_t propertyId, uint8_t numberOfElements, uint16_t startIndex,
+                                                  uint8_t* data, uint8_t length)
+{
+    // Park only -- the device-info state machine reads it back in loop().
+    if (_ftcPropCb != nullptr)
+        _ftcPropCb(asap, objectIndex, propertyId, data, length);
+}
+#endif
+
 bool BauSystemB::restartRequest(uint16_t asap, const SecurityControl secCtrl)
 {
     if (applicationLayer().isConnected())
