@@ -701,7 +701,12 @@ void TransportLayer::A12(uint16_t destination, Priority priority)
 
 void TransportLayer::A13(uint16_t destination)
 {
-    _applicationLayer.connectConfirm(destination, 0, true);
+    // Originator side (we opened the T_Connect): tsap = the partner address, NOT 0. individualSend() only
+    // takes the connection-oriented path when asap == _connectedTsap; with 0 every send addressed to the
+    // real PA fell back to connectionless despite the open connection. Mirrors connectIndication() (receiver
+    // side: _connectedTsap = source of the incoming connect). Without this, CO reads over a self-originated
+    // connection do not work (e.g. reading the group-address/association tables the way ETS does).
+    _applicationLayer.connectConfirm(destination, destination, true);
 }
 
 void TransportLayer::A14(uint16_t tsap, Priority priority)
