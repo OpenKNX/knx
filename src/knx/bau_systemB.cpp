@@ -593,7 +593,7 @@ void BauSystemB::functionPropertyStateResponseIndication(Priority priority, HopC
                                                          uint8_t objectIndex, uint8_t propertyId, uint8_t* data, uint8_t length)
 {
     if (_ftcResponseCb != nullptr)
-        _ftcResponseCb(objectIndex, propertyId, data, length);
+        _ftcResponseCb(asap, objectIndex, propertyId, data, length);
 }
 
 bool BauSystemB::ftcSendCommand(uint16_t asap, const SecurityControl secCtrl, uint8_t objectIndex, uint8_t propertyId, uint8_t* data, uint8_t length)

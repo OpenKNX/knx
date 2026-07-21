@@ -35,7 +35,7 @@ class BauSystemB : protected BusAccessUnit
     // OPENKNX_FTC: client role for KnxFileTransfer (ObjectIndex 159). Connectionless by design; the
     // reply arrives via the callback.
     bool ftcSendCommand(uint16_t asap, const SecurityControl secCtrl, uint8_t objectIndex, uint8_t propertyId, uint8_t* data, uint8_t length);
-    void ftcSetResponseCallback(void (*cb)(uint8_t objectIndex, uint8_t propertyId, uint8_t* data, uint8_t length)) { _ftcResponseCb = cb; }
+    void ftcSetResponseCallback(void (*cb)(uint16_t pa, uint8_t objectIndex, uint8_t propertyId, uint8_t* data, uint8_t length)) { _ftcResponseCb = cb; }
     // Scan probe: connectionless DeviceDescriptor_Read (type 0 = mask version) to one PA. The reply
     // reaches the client through the callback below. A read only, exactly what a bus scanner sends.
     bool ftcSendDeviceDescriptorRead(uint16_t asap, const SecurityControl secCtrl);
@@ -172,7 +172,7 @@ class BauSystemB : protected BusAccessUnit
     Platform& _platform;
     RestartState _restartState = Idle;
 #ifdef OPENKNX_FTC
-    void (*_ftcResponseCb)(uint8_t objectIndex, uint8_t propertyId, uint8_t* data, uint8_t length) = nullptr;
+    void (*_ftcResponseCb)(uint16_t pa, uint8_t objectIndex, uint8_t propertyId, uint8_t* data, uint8_t length) = nullptr;
     void (*_ftcDdCb)(uint16_t pa, uint8_t descriptorType, const uint8_t* data) = nullptr;
     void (*_ftcPropCb)(uint16_t pa, uint8_t objectIndex, uint8_t propertyId, const uint8_t* data, uint8_t length) = nullptr;
     void (*_ftcMemCb)(uint16_t pa, uint16_t addr, const uint8_t* data, uint8_t len) = nullptr;
