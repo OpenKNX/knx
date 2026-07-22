@@ -27,9 +27,14 @@ class IpDataLinkLayer : public DataLinkLayer
     bool enabled() const;
     DptMedium mediumType() const override;
 
+    // Interface mode: when false, inbound KNXnet/IP RoutingIndications are ignored. A Tunnelling-only
+    // interface (e.g. Bau07B0IP) does not receive group communication over IP -- group comm is on TP.
+    // Discovery (SearchRequest) and the tunnel receive-path stay active regardless.
+    void enableRoutingIndications(bool value) { _rxRoutingIndications = value; }
 
   private:
     bool _enabled = false;
+    bool _rxRoutingIndications = true;
     uint8_t _frameCount[10] = {0,0,0,0,0,0,0,0,0,0};
     uint8_t _frameCountBase = 0;
     uint32_t _frameCountTimeBase = 0;

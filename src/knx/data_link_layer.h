@@ -77,4 +77,13 @@ class DataLinkLayer
     bool isTunnelingPA(uint16_t pa);
     bool isRoutedPA(uint16_t pa);
 #endif
+  protected:
+    // Single-interface devices (a TP device with an IP tunnel front-end) have their bus link at entity
+    // index 0, not 1. Such a BAU opts its bus DLL into forwarding both received bus frames AND its own
+    // transmitted responses to the tunnel. The coupler keeps working via the index==1 default, so this
+    // flag stays false there (zero behaviour change). Unconditional (not under KNX_TUNNELING) so the
+    // USE_CEMI_SERVER transmit path in sendTelegram() can read it too.
+    bool _forwardToTunnel = false;
+  public:
+    void forwardToTunnel(bool value) { _forwardToTunnel = value; }
 };

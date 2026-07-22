@@ -93,6 +93,10 @@ void IpDataLinkLayer::loop()
     {
         case RoutingIndication:
         {
+            // Interface mode (no routing): drop inbound group traffic from IP -- it must not enter the
+            // local stack. Group communication happens on the TP link only.
+            if (!_rxRoutingIndications)
+                break;
             KnxIpRoutingIndication routingIndication(buffer, len);
 #ifdef KNX_FIXES_EC
             // Validate the inbound multicast cEMI BEFORE forwarding it to TP -- a malformed routing

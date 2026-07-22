@@ -168,8 +168,9 @@ void DataLinkLayer::frameReceived(CemiFrame& frame)
     // Do not send our own message back to the tunnel
 #ifdef KNX_TUNNELING
     //we dont need to check it here
-    // send inbound frames to the tunnel if we are the secondary (TP) interface
-    if( _networkLayerEntity.getEntityIndex() == 1)
+    // send inbound frames to the tunnel if we are the secondary (TP) interface (coupler, index 1) or the
+    // BAU opted this bus link in explicitly (single-interface IP-Interface device, TP at index 0)
+    if( _networkLayerEntity.getEntityIndex() == 1 || _forwardToTunnel)
         _cemiServer->dataIndicationToTunnel(frame);
 #else
     if (frame.sourceAddress() != _cemiServer->clientAddress())
@@ -246,7 +247,7 @@ bool DataLinkLayer::sendTelegram(NPDU & npdu, AckType ack, uint16_t destinationA
     // this interface is the secondary interface (e.g. KNX-TP) AND
     // destination == PA of a Tunnel (configurable KNX_TUNNELING_NO_TUNNEL_PA_ON_TP)
 #ifdef KNX_TUNNELING_NO_TUNNEL_PA_ON_TP
-    if(_networkLayerEntity.getEntityIndex() == 1 && addrType == AddressType::IndividualAddress)    // don't send to tp if we are the secondary (TP) interface AND the destination is a tunnel-PA
+    if((_networkLayerEntity.getEntityIndex() == 1 || _forwardToTunnel) && addrType == AddressType::IndividualAddress)    // don't send to tp if we are the secondary (TP) interface (coupler) or a single-interface device AND the destination is a tunnel-PA
     {
         if(isTunnelingPA(destinationAddr))
             sendTheFrame = false;
@@ -274,7 +275,7 @@ bool DataLinkLayer::sendTelegram(NPDU & npdu, AckType ack, uint16_t destinationA
 #endif
     tmpFrame.confirm(ConfirmNoError);
 
-    if(_networkLayerEntity.getEntityIndex() == 1)    // only send to tunnel if we are the secondary (TP) interface
+    if(_networkLayerEntity.getEntityIndex() == 1 || _forwardToTunnel)    // send own transmitted frames to the tunnel: coupler secondary (TP) interface, or single-interface device opted in
         _cemiServer->dataIndicationToTunnel(tmpFrame);
 #endif
 
