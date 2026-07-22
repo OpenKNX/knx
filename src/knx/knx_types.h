@@ -42,6 +42,9 @@ enum MessageCode
     L_data_con = 0x2E,
     L_data_ind = 0x29,
 
+    // L_Busmon service (HW busmonitor, cEMI 3/6/3)
+    L_busmon_ind = 0x2B,
+
     // Data Properties
     M_PropRead_req = 0xFC,
     M_PropRead_con = 0xFB,

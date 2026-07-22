@@ -24,6 +24,9 @@ class ITpUartCallBacks
 };
 
 class TpUartDataLinkLayer : public DataLinkLayer
+#if defined(OPENKNX_HW_BUSMON) && defined(KNX_TUNNELING)
+                          , public IHwBusMonitorDll
+#endif
 {
     friend class TPUart::DataLinkLayer;
 
@@ -55,6 +58,13 @@ class TpUartDataLinkLayer : public DataLinkLayer
     bool isStopped();
     bool isBusy();
     void resetStats();
+
+#if defined(OPENKNX_HW_BUSMON) && defined(KNX_TUNNELING)
+    // IHwBusMonitorDll bridge: let the IP tunnel server drive the TP chip's HW monitor mode.
+    void hwBusMonEnter() override { monitor(); }
+    void hwBusMonExit() override { reset(); }
+    bool hwBusMonConnected() override { return isConnected(); }
+#endif
 
     void powerControl(bool state);
 

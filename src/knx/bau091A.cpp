@@ -62,6 +62,11 @@ Bau091A::Bau091A(Platform& platform)
 
     _memory.addSaveRestore(&_ipParameters);
 
+#if defined(OPENKNX_HW_BUSMON) && defined(KNX_TUNNELING)
+    // Bridge so a KNX-Busmonitor tunnel can put the TP secondary chip into HW monitor mode.
+    _ipTunnelServer.setHwBusMonitorDll(&_dlLayerSecondary);
+#endif
+
     // Set Mask Version in Device Object depending on the BAU
     _deviceObj.maskVersion(0x091A);
 

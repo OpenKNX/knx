@@ -16,6 +16,10 @@
 #include "knx_ip_tunneling_ack.h"
 #include "knx_ip_tunneling_request.h"
 
+#ifdef OPENKNX_HW_BUSMON
+#include <string.h>
+#endif
+
 IpTunnelServer::IpTunnelServer(DeviceObject& devObj, IpParameterObject& ipParam, Platform& platform, CemiServer& cemiServer) : _deviceObject(devObj),
                                                                                                                                _ipParameters(ipParam),
                                                                                                                                _platform(platform),
@@ -52,6 +56,39 @@ void IpTunnelServer::loop()
             // the old break stopped at the first OCCUPIED slot, leaving dead tunnels in later slots unreaped -> slot exhaustion.
         }
     }
+
+#ifdef OPENKNX_HW_BUSMON
+    // Busmon self-heal safety-net: if ETS vanishes, the heartbeat times out -> leave monitor mode so
+    // routing is never permanently stuck off (plan 5b.3).
+    if (_busMonTunnel.ChannelId != 0 && millis() - _busMonTunnel.lastHeartbeat > 120000)
+    {
+        println("HW-Busmon: no heartbeat in 2 minutes -> leaving monitor mode");
+        KnxIpDisconnectRequest discReq;
+        discReq.channelId(_busMonTunnel.ChannelId);
+        discReq.hpaiCtrl().length(LEN_IPHPAI);
+        discReq.hpaiCtrl().code(IPV4_UDP);
+        discReq.hpaiCtrl().ipAddress(_busMonTunnel.IpAddress);
+        discReq.hpaiCtrl().ipPortNumber(_busMonTunnel.PortCtrl);
+        _platform.sendBytesUniCast(_busMonTunnel.IpAddress, _busMonTunnel.PortCtrl, discReq.data(), discReq.totalLength());
+        busMonitorTeardown();
+    }
+
+    // Bounded, non-blocking exit recovery: poll the chip back to CONNECTED after leaving monitor mode.
+    if (_busMonExitPending)
+    {
+        if (_hwBusMon && _hwBusMon->hwBusMonConnected())
+        {
+            _busMonExitPending = false; // routing restored
+        }
+        else if (millis() - _busMonExitStart > 3000)
+        {
+            _busMonExitPending = false;
+            if (_hwBusMon)
+                _hwBusMon->hwBusMonExit(); // one more reset; NCN may need a power-cycle (plan 6)
+            println("HW-Busmon: chip did not return to CONNECTED within 3s (possible NCN latch, see plan 6)");
+        }
+    }
+#endif
 }
 
 void IpTunnelServer::dataRequestToChannelId(CemiFrame& frame, uint8_t channelId)
@@ -405,6 +442,16 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
 
     if (connRequest.cri().type() == TUNNEL_CONNECTION && connRequest.cri().layer() != 0x02) // LinkLayer
     {
+#ifdef OPENKNX_HW_BUSMON
+        // KNX Busmonitor tunnelling layer (0x80): put the TP chip into real HW monitor mode.
+        // NOTE (03_08_04 Tunnelling 2.2.4): busmonitor is not conformant on a routing device; this is a
+        // build-flag opt-in and routing is physically paused (chip passive) for the busmon session only.
+        if (connRequest.cri().layer() == 0x80)
+        {
+            HandleBusMonitorConnect(connRequest, src_addr, src_port);
+            return;
+        }
+#endif
         // We only support 0x02!
 #ifdef KNX_LOG_TUNNELING
         println("Only LinkLayer ist supported!");
@@ -701,6 +748,11 @@ void IpTunnelServer::HandleConnectionStateRequest(uint8_t* buffer, uint16_t leng
         }
     }
 
+#ifdef OPENKNX_HW_BUSMON
+    if (tun == nullptr && _busMonTunnel.ChannelId != 0 && _busMonTunnel.ChannelId == stateRequest.channelId())
+        tun = &_busMonTunnel;
+#endif
+
     if (tun == nullptr)
     {
 #ifdef KNX_LOG_TUNNELING
@@ -740,6 +792,17 @@ void IpTunnelServer::HandleDisconnectRequest(uint8_t* buffer, uint16_t length)
             break;
         }
     }
+
+#ifdef OPENKNX_HW_BUSMON
+    if (tun == nullptr && _busMonTunnel.ChannelId != 0 && _busMonTunnel.ChannelId == discReq.channelId())
+    {
+        // Busmon tunnel closed by ETS -> leave HW monitor mode, routing returns (see plan 5b/6).
+        KnxIpDisconnectResponse discRes(_busMonTunnel.ChannelId, E_NO_ERROR);
+        _platform.sendBytesUniCast(discReq.hpaiCtrl().ipAddress(), discReq.hpaiCtrl().ipPortNumber(), discRes.data(), discRes.totalLength());
+        busMonitorTeardown();
+        return;
+    }
+#endif
 
     if (tun == nullptr)
     {
@@ -867,5 +930,91 @@ void IpTunnelServer::HandleTunnelingRequest(uint8_t* buffer, uint16_t length)
 
     _cemiServer.frameReceived(tunnReq.frame(), tun->ChannelId);
 }
+
+#ifdef OPENKNX_HW_BUSMON
+void IpTunnelServer::HandleBusMonitorConnect(KnxIpConnectRequest& connRequest, uint32_t src_addr, uint16_t src_port)
+{
+    uint32_t srcIP = connRequest.hpaiCtrl().ipAddress() ? connRequest.hpaiCtrl().ipAddress() : src_addr;
+    uint16_t srcPort = connRequest.hpaiCtrl().ipPortNumber() ? connRequest.hpaiCtrl().ipPortNumber() : src_port;
+
+    // Single busmonitor connection only.
+    if (_busMonTunnel.ChannelId != 0 || _hwBusMon == nullptr)
+    {
+        KnxIpConnectResponse connRes(0x00, _hwBusMon == nullptr ? E_TUNNELING_LAYER : E_NO_MORE_CONNECTIONS);
+        _platform.sendBytesUniCast(connRequest.hpaiCtrl().ipAddress(), connRequest.hpaiCtrl().ipPortNumber(), connRes.data(), connRes.totalLength());
+        return;
+    }
+
+    // Unique channel id across all normal tunnels and the busmon connection.
+    bool channelIdInUse;
+    do
+    {
+        _lastChannelId++;
+        channelIdInUse = (_lastChannelId == 0);
+        for (int x = 0; x < KNX_TUNNELING + KNX_TUNNELING_DEVMGMT; x++)
+            if (tunnels[x].ChannelId == _lastChannelId)
+                channelIdInUse = true;
+    } while (channelIdInUse);
+
+    _busMonTunnel.IsConfig = false;
+    _busMonTunnel.IndividualAddress = 0;
+    _busMonTunnel.IpAddress = srcIP;
+    _busMonTunnel.PortData = connRequest.hpaiData().ipPortNumber() ? connRequest.hpaiData().ipPortNumber() : srcPort;
+    _busMonTunnel.PortCtrl = connRequest.hpaiCtrl().ipPortNumber() ? connRequest.hpaiCtrl().ipPortNumber() : srcPort;
+    _busMonTunnel.SequenceCounter_S = 0;
+    _busMonTunnel.lastHeartbeat = millis();
+    _busMonTunnel.ChannelId = _lastChannelId; // set last -> busMonitorActive() true only once fully set up
+    _busMonExitPending = false;
+
+    _hwBusMon->hwBusMonEnter(); // U_BUSMON_REQ -> chip passive, routing paused
+
+    print("New HW-Busmon connection, Channel: 0x");
+    print(_busMonTunnel.ChannelId, 16);
+    println(" (routing paused until disconnect)");
+
+    KnxIpConnectResponse connRes(_ipParameters, _deviceObject.individualAddress(), 3671, _busMonTunnel.ChannelId, TUNNEL_CONNECTION);
+    _platform.sendBytesUniCast(_busMonTunnel.IpAddress, _busMonTunnel.PortCtrl, connRes.data(), connRes.totalLength());
+}
+
+void IpTunnelServer::busMonitorTeardown()
+{
+    if (_busMonTunnel.ChannelId == 0)
+        return;
+
+    _busMonTunnel.Reset(); // stop forwarding at once (busMonitorActive() -> false)
+    if (_hwBusMon)
+    {
+        _hwBusMon->hwBusMonExit();     // reset() -> BCU_CONNECTED
+        _busMonExitPending = true;     // bounded, non-blocking recovery poll in loop()
+        _busMonExitStart = millis();
+    }
+}
+
+void IpTunnelServer::busMonitorFrame(uint8_t* lpdu, uint16_t len)
+{
+    if (_busMonTunnel.ChannelId == 0 || len == 0)
+        return;
+
+    // cEMI L_Busmon.ind: [0x2B][AI len=3][AI type 0x03, len 0x01, status/seq][raw LPDU incl FCS].
+    // CemiFrame carries a fixed (0xFF + NPDU_LPDU_DIFF)=263 byte buffer -> length-guard the copy.
+    if ((uint16_t)(5 + len) > (0xFF + NPDU_LPDU_DIFF))
+        return;
+
+    uint8_t buf[0xFF + NPDU_LPDU_DIFF];
+    buf[0] = L_busmon_ind; // 0x2B
+    buf[1] = 0x03;         // additional info length
+    buf[2] = 0x03;         // AI type: bus monitor status
+    buf[3] = 0x01;         // AI value length
+    buf[4] = _busMonSeq++ & 0x0F; // low nibble = rolling frame sequence
+    memcpy(buf + 5, lpdu, len);
+
+    CemiFrame frame(buf, 5 + len);
+    KnxIpTunnelingRequest req(frame); // ctor sets serviceTypeIdentifier(TunnelingRequest)
+    req.connectionHeader().sequenceCounter(_busMonTunnel.SequenceCounter_S++);
+    req.connectionHeader().length(LEN_CH);
+    req.connectionHeader().channelId(_busMonTunnel.ChannelId);
+    _platform.sendBytesUniCast(_busMonTunnel.IpAddress, _busMonTunnel.PortData, req.data(), req.totalLength());
+}
+#endif
 
 #endif

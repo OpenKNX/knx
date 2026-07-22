@@ -222,8 +222,13 @@ void TpUartDataLinkLayer::processRxFrame(TPUart::Frame &tpFrame)
     if (isMonitoring())
     {
         printMessage(tpFrame.printFrame().c_str(), false);
+#if defined(OPENKNX_HW_BUSMON) && defined(KNX_TUNNELING)
+        // Forward every raw monitor-mode frame (incl. error/un-ACKed frames, FCS) to the ETS busmon tunnel.
+        if (_ipTunnelServer.busMonitorActive())
+            _ipTunnelServer.busMonitorFrame((uint8_t*)tpFrame.data(), tpFrame.size());
+#endif
     }
-    
+
 #if MASK_VERSION != 0x091A
     if (tpFrame.isFiltered())
         return;
