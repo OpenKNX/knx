@@ -3,6 +3,7 @@
 #include "knx/bits.h"
 #include "knx/config.h"
 #include "knx/bau07B0.h"
+#include "knx/bau07B0_ip.h"
 #include "knx/bau091A.h"
 #include "knx/bau27B0.h"
 #include "knx/bau2920.h"
@@ -497,7 +498,11 @@ template <class P, class B> class KnxFacade : private SaveRestore
     #elif defined(ARDUINO_ARCH_RP2040)
         // predefined global instance for TP or RF or TP/RF or TP/IP coupler
         #if MASK_VERSION == 0x07B0
-            extern KnxFacade<RP2040ArduinoPlatform, Bau07B0> knx;
+            #ifdef KNX_TUNNELING
+                extern KnxFacade<RP2040ArduinoPlatform, Bau07B0IP> knx;
+            #else
+                extern KnxFacade<RP2040ArduinoPlatform, Bau07B0> knx;
+            #endif
         #elif MASK_VERSION == 0x27B0
             extern KnxFacade<RP2040ArduinoPlatform, Bau27B0> knx;
         #elif MASK_VERSION == 0x57B0
@@ -512,7 +517,11 @@ template <class P, class B> class KnxFacade : private SaveRestore
     #elif defined(ARDUINO_ARCH_ESP8266)
         // predefined global instance for TP or IP or TP/IP coupler
         #if MASK_VERSION == 0x07B0
-            extern KnxFacade<EspPlatform, Bau07B0> knx;
+            #ifdef KNX_TUNNELING
+                extern KnxFacade<EspPlatform, Bau07B0IP> knx;
+            #else
+                extern KnxFacade<EspPlatform, Bau07B0> knx;
+            #endif
         #elif MASK_VERSION == 0x57B0
             extern KnxFacade<EspPlatform, Bau57B0> knx;
         #elif MASK_VERSION == 0x091A
@@ -523,7 +532,11 @@ template <class P, class B> class KnxFacade : private SaveRestore
     #elif defined(ARDUINO_ARCH_ESP32)
         // predefined global instance for TP or IP or TP/IP coupler
         #if MASK_VERSION == 0x07B0
-            extern KnxFacade<Esp32Platform, Bau07B0> knx;
+            #ifdef KNX_TUNNELING
+                extern KnxFacade<Esp32Platform, Bau07B0IP> knx;
+            #else
+                extern KnxFacade<Esp32Platform, Bau07B0> knx;
+            #endif
         #elif MASK_VERSION == 0x57B0
             extern KnxFacade<Esp32Platform, Bau57B0> knx;
         #elif MASK_VERSION == 0x091A

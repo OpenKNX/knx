@@ -29,6 +29,11 @@
 // Data Linklayer Driver Options
 #if MASK_VERSION == 0x07B0
 #define USE_TP
+// A 0x07B0 device built with KNX_TUNNELING becomes an IP Interface (Bau07B0IP): pull in the IP stack
+// for the KNXnet/IP tunnelling server. Routing is NOT enabled -- the ROUTING DIB stays gated to 0x091A.
+#ifdef KNX_TUNNELING
+#define USE_IP
+#endif
 #endif
 
 #if MASK_VERSION == 0x27B0

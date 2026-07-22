@@ -1,7 +1,8 @@
 #pragma once
 
 #include "config.h"
-#if MASK_VERSION == 0x07B0
+// Plain 0x07B0 TP device. With KNX_TUNNELING the IP-Interface variant Bau07B0IP is used instead.
+#if MASK_VERSION == 0x07B0 && !defined(KNX_TUNNELING)
 
 #include "bau_systemB_device.h"
 #include "tpuart_data_link_layer.h"

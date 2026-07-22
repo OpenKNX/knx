@@ -1,5 +1,5 @@
 #include "config.h"
-#if MASK_VERSION == 0x07B0
+#if MASK_VERSION == 0x07B0 && !defined(KNX_TUNNELING)
 
 #include "bau07B0.h"
 #include "bits.h"

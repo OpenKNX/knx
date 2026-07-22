@@ -55,7 +55,11 @@
     #elif defined(ARDUINO_ARCH_RP2040)
         // predefined global instance for TP or RF or IP or TP/RF coupler or TP/IP coupler
         #if MASK_VERSION == 0x07B0
-            KnxFacade<RP2040ArduinoPlatform, Bau07B0> knx(buttonEvent);
+            #ifdef KNX_TUNNELING
+                KnxFacade<RP2040ArduinoPlatform, Bau07B0IP> knx(buttonEvent);
+            #else
+                KnxFacade<RP2040ArduinoPlatform, Bau07B0> knx(buttonEvent);
+            #endif
         #elif MASK_VERSION == 0x27B0
             KnxFacade<RP2040ArduinoPlatform, Bau27B0> knx(buttonEvent);
         #elif MASK_VERSION == 0x57B0
@@ -71,7 +75,11 @@
     #elif defined(ARDUINO_ARCH_ESP8266)
         // predefined global instance for TP or IP or TP/IP coupler
         #if MASK_VERSION == 0x07B0
-            KnxFacade<EspPlatform, Bau07B0> knx(buttonEvent);
+            #ifdef KNX_TUNNELING
+                KnxFacade<EspPlatform, Bau07B0IP> knx(buttonEvent);
+            #else
+                KnxFacade<EspPlatform, Bau07B0> knx(buttonEvent);
+            #endif
         #elif MASK_VERSION == 0x57B0
             KnxFacade<EspPlatform, Bau57B0> knx(buttonEvent);
         #elif MASK_VERSION == 0x091A
@@ -83,7 +91,11 @@
     #elif defined(ARDUINO_ARCH_ESP32)
         // predefined global instance for TP or IP or TP/IP coupler
         #if MASK_VERSION == 0x07B0
-            KnxFacade<Esp32Platform, Bau07B0> knx(buttonEvent);
+            #ifdef KNX_TUNNELING
+                KnxFacade<Esp32Platform, Bau07B0IP> knx(buttonEvent);
+            #else
+                KnxFacade<Esp32Platform, Bau07B0> knx(buttonEvent);
+            #endif
         #elif MASK_VERSION == 0x57B0
             KnxFacade<Esp32Platform, Bau57B0> knx(buttonEvent);
         #elif MASK_VERSION == 0x091A
