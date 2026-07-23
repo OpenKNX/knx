@@ -832,8 +832,14 @@ void BauSystemB::propertyValueWrite(ObjectType objectType, uint8_t objectInstanc
     InterfaceObject* obj =  getInterfaceObject(objectType, objectInstance);
     if(obj)
         obj->writeProperty((PropertyID)propertyId, startIndex, data, numberOfElements);
-    else 
+    else
         numberOfElements = 0;
+}
+
+Property* BauSystemB::property(ObjectType objectType, uint8_t objectInstance, uint8_t propertyId)
+{
+    InterfaceObject* obj = getInterfaceObject(objectType, objectInstance);
+    return obj ? obj->property((PropertyID)propertyId) : nullptr;
 }
 
 Memory& BauSystemB::memory()

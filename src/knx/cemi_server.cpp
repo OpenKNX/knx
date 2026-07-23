@@ -351,6 +351,7 @@ void CemiServer::handleMPropWrite(CemiFrame& frame, uint8_t channelId)
     uint16_t startIndex = frame.data()[6] | ((frame.data()[5]&0x0F)<<8);
     uint8_t* requestData = &frame.data()[7];
     uint32_t requestDataSize = frame.dataLength() - 7;
+    uint8_t errorCode = 0; // cEMI error code for the M_PropWrite.con; 0 = success (KNX 03_06_03 cEMI §4.1.7.3.7.3 p.109)
 
     print("ObjType: ");
     print(objectType, DEC);
@@ -388,10 +389,19 @@ void CemiServer::handleMPropWrite(CemiFrame& frame, uint8_t channelId)
     }            
     else
     {
-        _bau.propertyValueWrite((ObjectType)objectType, objectInstance, propertyId, numberOfElements, startIndex, requestData, requestDataSize);
+        // KNX 03_06_03 cEMI §4.1.7.3.7.3 p.109: report the actual write failure instead of a blanket
+        // positive con. The stack already signals index/count/type failures by setting numberOfElements=0
+        // (caught below); it does NOT reject write-protected properties, so check that here explicitly.
+        Property* prop = _bau.property((ObjectType)objectType, objectInstance, propertyId);
+        if (!prop)
+            errorCode = Void_DP; // property/object does not exist
+        else if (!prop->WriteEnable())
+            errorCode = Read_Only; // write access to a read-only / write-protected property
+        else
+            _bau.propertyValueWrite((ObjectType)objectType, objectInstance, propertyId, numberOfElements, startIndex, requestData, requestDataSize);
     }
 
-    if (numberOfElements)
+    if (errorCode == 0 && numberOfElements)
     {
         // Prepare positive response
         uint8_t responseData[7];
@@ -412,7 +422,7 @@ void CemiServer::handleMPropWrite(CemiFrame& frame, uint8_t channelId)
         // Prepare negative response
         uint8_t responseData[7 + 1];
         memcpy(responseData, frame.data(), sizeof(responseData));
-        responseData[7] = Illegal_Command; // Set cEMI error code
+        responseData[7] = errorCode ? errorCode : Illegal_Command; // specific cause if known, else generic
         responseData[5] = 0; // Set Number of elements to zero
 
         printHex(" <- error: ", &responseData[7], 1);

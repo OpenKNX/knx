@@ -71,6 +71,9 @@ class BauSystemB : protected BusAccessUnit
     void propertyValueWrite(ObjectType objectType, uint8_t objectInstance, uint8_t propertyId,
                             uint8_t& numberOfElements, uint16_t startIndex,
                             uint8_t* data, uint32_t length) override;
+    // Read-only access to a property's metadata (used by the cEMI server to pick the correct
+    // M_PropWrite error code, e.g. read-only detection). Returns nullptr if object/property is absent.
+    Property* property(ObjectType objectType, uint8_t objectInstance, uint8_t propertyId);
     void versionCheckCallback(VersionCheckCallback func);
     VersionCheckCallback versionCheckCallback();
     void beforeRestartCallback(BeforeRestartCallback func);
