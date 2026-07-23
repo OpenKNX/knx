@@ -182,9 +182,18 @@ TPAckType Bau07B0IP::isAckRequired(uint16_t address, bool isGrpAddr)
     // Also ACK for our own individual address
     if (address == _deviceObj.individualAddress())
         return TPAckType::AckReqAck;
-    // ACK for an individual address assigned to a tunnel connection
+#ifdef KNX_TUNNEL_IA_DEFENCE
+    // KNX 03_08_04 Tunnelling §2.2.2 p.7: defend every CONFIGURED additional tunnel IA (connected or not),
+    // so an address-in-use check (NM_IndividualAddress_Check) gets an L2-ACK and the IA counts as occupied.
+    // isTunnelAddress() is a strict superset of the connected-only isSentToTunnel() case, one O(16) scan ->
+    // same hot-path cost, and it emits only a HW ACK bit (no fabricated frame -> no un-acked TX / Protocol-Error).
+    if (_ipTunnelServer.isTunnelAddress(address))
+        return TPAckType::AckReqAck;
+#else
+    // ACK for an individual address assigned to a currently-open tunnel connection
     if (_ipTunnelServer.isSentToTunnel(address, isGrpAddr))
         return TPAckType::AckReqAck;
+#endif
 
     return TPAckType::AckReqNone;
 }

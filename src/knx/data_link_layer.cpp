@@ -180,6 +180,12 @@ void DataLinkLayer::frameReceived(CemiFrame& frame)
 #endif
 #endif
 
+    // NOTE: additional-IA defence (KNX 03_08_04 §2.2.2) is NOT done here. An earlier attempt fabricated a
+    // T_Disconnect sourced from the tunnel IA at this layer; on HW that produced "TP Error: Protocol-Error"
+    // because its destination is an IP-side address checker, not a TP device, so the transmitted L_Data got
+    // no L2-ACK (the NCN surfaces every un-acked TX as a Protocol-Error). The correct, frame-free defence is
+    // to L2-ACK the reserved IA in Bau07B0IP::isAckRequired (behind KNX_TUNNEL_IA_DEFENCE) -- no TX at all.
+
     // print("Frame received destination: ");
     // print(destination, 16);
     // println();
