@@ -91,6 +91,11 @@ class IpTunnelServer
   private:
 
     void sendFrameToTunnel(KnxIpTunnelConnection *tunnel, CemiFrame& frame);
+#ifdef KNX_TUNNEL_RESEND
+    void pumpTunnel(KnxIpTunnelConnection *t);                 // send the FIFO head if nothing is in flight
+    void disconnectTunnel(KnxIpTunnelConnection *t, uint8_t reason); // server-initiated teardown + reap
+    void handleTunnelAck(uint8_t *buffer, uint16_t length);    // pop the acked head + pump the next
+#endif
     void HandleConnectRequest(uint8_t* buffer, uint16_t length, uint32_t& src_addr, uint16_t& src_port);
     void HandleConnectionStateRequest(uint8_t* buffer, uint16_t length);
     void HandleDisconnectRequest(uint8_t* buffer, uint16_t length);

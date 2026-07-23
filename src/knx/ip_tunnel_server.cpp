@@ -16,7 +16,7 @@
 #include "knx_ip_tunneling_ack.h"
 #include "knx_ip_tunneling_request.h"
 
-#ifdef OPENKNX_HW_BUSMON
+#if defined(OPENKNX_HW_BUSMON) || defined(KNX_TUNNEL_RESEND)
 #include <string.h>
 #endif
 
@@ -125,6 +125,23 @@ void IpTunnelServer::loop()
                 recordTunnelSession(tunnels[i].IpAddress, tunnels[i].IndividualAddress, tunnels[i].IsConfig ? TUN_CONFIG : TUN_DATA, tunnels[i].connectStart, END_TIMEOUT);
                 tunnels[i].Reset();
             }
+#ifdef KNX_TUNNEL_RESEND
+            // KNX 03_08_04 Tunnelling §2.6.1 p.9: no TUNNELLING_ACK for the in-flight head within 1 s ->
+            // resend it verbatim once (same stamped seq); on the 2nd timeout disconnect the client.
+            else if (tunnels[i]._armed && millis() - tunnels[i]._sentAt > 1000)
+            {
+                if (tunnels[i]._retries == 0)
+                {
+                    _platform.sendBytesUniCast(tunnels[i].IpAddress, tunnels[i].PortData, tunnels[i]._txBuf[tunnels[i]._txHead], tunnels[i]._txLen[tunnels[i]._txHead]);
+                    tunnels[i]._retries = 1;
+                    tunnels[i]._sentAt = millis();
+                }
+                else
+                {
+                    disconnectTunnel(&tunnels[i], END_TIMEOUT);
+                }
+            }
+#endif
 #ifndef KNX_FIXES_EC
             break; // stock behaviour (stops the scan at the first OCCUPIED slot)
 #endif
@@ -361,16 +378,111 @@ void IpTunnelServer::sendFrameToTunnel(KnxIpTunnelConnection* tunnel, CemiFrame&
     print("Send to Channel: ");
     println(tunnel->ChannelId, 16);
 #endif
+
+    const uint16_t cemiLen = frame.totalLenght();
+    const uint16_t totalLen = cemiLen + LEN_CH + LEN_KNXIP_HEADER;
+    // L_Data goes as a TUNNELLING_REQUEST; everything else (M_Prop*/cEMI mgmt) as DEVICE_CONFIGURATION_REQUEST.
+    const uint16_t svc = (frame.messageCode() == L_data_req || frame.messageCode() == L_data_con
+                          || frame.messageCode() == L_data_ind) ? TunnelingRequest : DeviceConfigurationRequest;
+
+#ifdef KNX_TUNNEL_RESEND
+    // Enqueue the datagram; pumpTunnel() keeps exactly one on the wire. The sequence counter is stamped at
+    // pump time (offset 8), so an overflow-dropped frame consumes no seq -> the on-wire sequence stays gap-free.
+    if (totalLen > KNX_TUNNEL_RESEND_BUF)
+    {
+        // Oversize (only ever a large group frame, never a CO frame on TP1). Drop it (group delivery has no
+        // guarantee) rather than break the one-on-the-wire ordering.
+    #ifdef KNX_LOG_TUNNELING
+        println("tunnel tx: oversize frame dropped");
+    #endif
+        return;
+    }
+    if (tunnel->_txCount == KNX_TUNNEL_RESEND_DEPTH)
+    {
+        // Queue full -> the client stopped acking while the device kept producing responses: disconnect it.
+        disconnectTunnel(tunnel, END_TIMEOUT);
+        return;
+    }
+    // Build the datagram DIRECTLY into the FIFO slot -> no per-frame new[] and no intermediate copy (was:
+    // KnxIpTunnelingRequest new[] then memcpy into the slot). Fixed KNXnet/IP layout: 6-byte header + 4-byte
+    // connection header + cEMI. Built by hand (not via KnxIpTunnelingRequest) so no CemiFrame view is placed
+    // over the still-uninitialized slot -- the view ctor reads data[1] to compute its offsets. seqCounter
+    // (offset 8) is stamped in pumpTunnel; status (offset 9) is reserved 0 on a request.
+    uint8_t* buf = tunnel->_txBuf[tunnel->_txTail];
+    buf[0] = LEN_KNXIP_HEADER;    // KNXnet/IP header length (6)
+    buf[1] = KnxIp1_0;            // protocol version (0x10)
+    pushWord(svc, buf + 2);       // service type identifier
+    pushWord(totalLen, buf + 4);  // total datagram length
+    buf[6] = LEN_CH;              // connection header structure length (4)
+    buf[7] = tunnel->ChannelId;   // channel id
+    buf[8] = 0;                   // sequence counter (set in pumpTunnel)
+    buf[9] = 0;                   // status / reserved
+    memcpy(buf + LEN_KNXIP_HEADER + LEN_CH, frame.data(), cemiLen);
+
+    tunnel->_txLen[tunnel->_txTail] = totalLen;
+    tunnel->_txTail = (tunnel->_txTail + 1) % KNX_TUNNEL_RESEND_DEPTH;
+    tunnel->_txCount++;
+    pumpTunnel(tunnel);
+#else
     KnxIpTunnelingRequest req(frame);
-    req.connectionHeader().sequenceCounter(tunnel->SequenceCounter_S++);
     req.connectionHeader().length(LEN_CH);
     req.connectionHeader().channelId(tunnel->ChannelId);
-
-    if (frame.messageCode() != L_data_req && frame.messageCode() != L_data_con && frame.messageCode() != L_data_ind)
-        req.serviceTypeIdentifier(DeviceConfigurationRequest);
-
+    req.serviceTypeIdentifier(svc);
+    req.connectionHeader().sequenceCounter(tunnel->SequenceCounter_S++);
     _platform.sendBytesUniCast(tunnel->IpAddress, tunnel->PortData, req.data(), req.totalLength());
+#endif
 }
+
+#ifdef KNX_TUNNEL_RESEND
+// Send the head of a tunnel's FIFO if nothing is in flight. Exactly one unacked TUNNELLING_REQUEST per
+// tunnel; the sequence counter is stamped into the connection header here (KNX 03_08_04 Tunnelling §2.6.1).
+void IpTunnelServer::pumpTunnel(KnxIpTunnelConnection* t)
+{
+    if (t->_armed || t->_txCount == 0) return;
+    uint8_t h = t->_txHead;
+    t->_txBuf[h][8] = t->SequenceCounter_S; // connection header: length@6, channelId@7, sequenceCounter@8
+    t->_seq = t->SequenceCounter_S++;
+    t->_retries = 0;
+    t->_sentAt = millis();
+    t->_armed = true;
+    _platform.sendBytesUniCast(t->IpAddress, t->PortData, t->_txBuf[h], t->_txLen[h]);
+}
+
+// Server-initiated teardown (retry-exhausted / queue-overflow): tell the client and reap the slot.
+void IpTunnelServer::disconnectTunnel(KnxIpTunnelConnection* t, uint8_t reason)
+{
+    KnxIpDisconnectRequest discReq;
+    discReq.channelId(t->ChannelId);
+    discReq.hpaiCtrl().length(LEN_IPHPAI);
+    discReq.hpaiCtrl().code(IPV4_UDP);
+    discReq.hpaiCtrl().ipAddress(t->IpAddress);
+    discReq.hpaiCtrl().ipPortNumber(t->PortCtrl);
+    _platform.sendBytesUniCast(t->IpAddress, t->PortCtrl, discReq.data(), discReq.totalLength());
+    recordTunnelSession(t->IpAddress, t->IndividualAddress, t->IsConfig ? TUN_CONFIG : TUN_DATA, t->connectStart, reason);
+    t->Reset();
+}
+
+// A TUNNELLING_ACK / DEVICE_CONFIGURATION_ACK cleared the in-flight head -> pop it and pump the next.
+void IpTunnelServer::handleTunnelAck(uint8_t* buffer, uint16_t length)
+{
+    if (length < LEN_KNXIP_HEADER + LEN_CH) return;
+    KnxIpTunnelingAck ack(buffer, length);
+    uint8_t ch = ack.connectionHeader().channelId();
+    uint8_t seq = ack.connectionHeader().sequenceCounter();
+    for (int i = 0; i < KNX_TUNNELING + KNX_TUNNELING_DEVMGMT; i++)
+        if (tunnels[i].ChannelId == ch && tunnels[i]._armed && tunnels[i]._seq == seq)
+        {
+            if (ack.connectionHeader().status() == E_NO_ERROR)
+            {
+                tunnels[i]._txHead = (tunnels[i]._txHead + 1) % KNX_TUNNEL_RESEND_DEPTH;
+                tunnels[i]._txCount--;
+                tunnels[i]._armed = false;
+                pumpTunnel(&tunnels[i]); // send the next queued frame, if any
+            }
+            break;
+        }
+}
+#endif
 
 bool IpTunnelServer::isTunnelAddress(uint16_t addr)
 {
@@ -446,14 +558,16 @@ bool IpTunnelServer::HandleIpFrame(uint8_t* buffer, uint16_t length, uint32_t& s
         }
 
         case DeviceConfigurationAck: {
-            // TOOD nothing to do now
-            // println("got Ack");
+#ifdef KNX_TUNNEL_RESEND
+            handleTunnelAck(buffer, length); // pop the acked head on a devmgmt channel + pump the next
+#endif
             break;
         }
 
         case TunnelingAck: {
-            // TOOD nothing to do now
-            // println("got Ack");
+#ifdef KNX_TUNNEL_RESEND
+            handleTunnelAck(buffer, length); // pop the acked head on a data tunnel + pump the next
+#endif
             break;
         }
         case DisconnectResponse:
