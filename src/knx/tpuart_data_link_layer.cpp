@@ -83,6 +83,7 @@ void TpUartDataLinkLayer::connected(bool state /* = true */)
 
 void TpUartDataLinkLayer::reset()
 {
+    _monitorConsoleLog = false; // leaving monitor mode: stop any console echo
     _tpuart.reset();
 }
 
@@ -105,6 +106,12 @@ void TpUartDataLinkLayer::monitor()
         return;
 
     _tpuart.startMonitoring();
+}
+
+void TpUartDataLinkLayer::monitorWithConsoleLog()
+{
+    _monitorConsoleLog = true; // echo raw frames to the console (console-initiated busmon only)
+    monitor();
 }
 
 void TpUartDataLinkLayer::initialize()
@@ -223,7 +230,10 @@ void TpUartDataLinkLayer::processRxFrame(TPUart::Frame &tpFrame)
 {
     if (isMonitoring())
     {
-        printMessage(tpFrame.printFrame().c_str(), false);
+        // Echo raw frames to the console only for a console-initiated busmon (`bcu mon`);
+        // an ETS-initiated busmon stays silent on the console.
+        if (_monitorConsoleLog)
+            printMessage(tpFrame.printFrame().c_str(), false);
 #if defined(OPENKNX_HW_BUSMON) && defined(KNX_TUNNELING)
         // Forward every raw monitor-mode frame (incl. error/un-ACKed frames, FCS) to the ETS busmon tunnel.
         if (_ipTunnelServer.busMonitorActive())

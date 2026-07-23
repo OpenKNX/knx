@@ -47,6 +47,9 @@ class TpUartDataLinkLayer : public DataLinkLayer
     DptMedium mediumType() const override;
     void reset();
     void monitor();
+    // Console-initiated busmon (`bcu mon`): same as monitor() but also echoes each raw frame to the
+    // console. ETS-initiated busmon (hwBusMonEnter) stays silent on the console.
+    void monitorWithConsoleLog();
     void stop(bool state);
     void requestBusy(bool state);
     // void forceAck(bool state);
@@ -61,7 +64,7 @@ class TpUartDataLinkLayer : public DataLinkLayer
 
 #if defined(OPENKNX_HW_BUSMON) && defined(KNX_TUNNELING)
     // IHwBusMonitorDll bridge: let the IP tunnel server drive the TP chip's HW monitor mode.
-    void hwBusMonEnter() override { monitor(); }
+    void hwBusMonEnter() override { _monitorConsoleLog = false; monitor(); } // ETS busmon: no console echo
     void hwBusMonExit() override { reset(); }
     bool hwBusMonConnected() override { return isConnected(); }
 #endif
@@ -82,6 +85,8 @@ class TpUartDataLinkLayer : public DataLinkLayer
     volatile bool _stopped = false;
     volatile bool _connected = false;
     volatile bool _monitoring = false;
+    // True only while a console-initiated busmon (`bcu mon`) is active -> echo raw frames to console.
+    volatile bool _monitorConsoleLog = false;
     volatile bool _busy = false;
     volatile bool _initialized = false;
     uint16_t _individualAddress = 0;
