@@ -16,9 +16,15 @@ void TpUartDataLinkLayer::setRepetitions(uint8_t nack, uint8_t busy)
 
 bool TpUartDataLinkLayer::sendFrame(CemiFrame &cemiFrame)
 {
-    uint8_t *tpData = (uint8_t *)malloc(cemiFrame.telegramLengthtTP());
+    const uint16_t tpLen = cemiFrame.telegramLengthtTP();
+
+    // Transient serialization buffer. It only has to live until TPUart::Frame below copies it into its own
+    // heap buffer for the async TX queue, so a fixed stack buffer replaces the former per-frame malloc()/free()
+    // on this IP->TP send hot path (one heap alloc + one free removed per frame). Sized to the max cEMI/TP
+    // telegram; the guard keeps fillTelegramTP() from ever writing past it under a corrupt length.
+    uint8_t tpData[0xff + APDU_LPDU_DIFF];
 #ifdef KNX_FIXES_EC
-    if (!tpData) // bail on alloc failure instead of null-deref in fillTelegramTP() under heap pressure
+    if (tpLen > sizeof(tpData)) // impossible for a valid frame -> never OOB fillTelegramTP()
     {
         dataConReceived(cemiFrame, false);
         return false;
@@ -26,11 +32,10 @@ bool TpUartDataLinkLayer::sendFrame(CemiFrame &cemiFrame)
 #endif
     cemiFrame.fillTelegramTP(tpData);
 
-    TPUart::Frame *tpFrame = new TPUart::Frame((char *)tpData, cemiFrame.telegramLengthtTP());
+    TPUart::Frame *tpFrame = new TPUart::Frame((char *)tpData, tpLen);
 #ifdef KNX_FIXES_EC
     if (!tpFrame) // heap exhaustion under an IP->TP routing flood -> bail instead of null-deref downstream
     {
-        free(tpData);
         dataConReceived(cemiFrame, false);
         return false;
     }
@@ -39,7 +44,6 @@ bool TpUartDataLinkLayer::sendFrame(CemiFrame &cemiFrame)
     // when not connected or in monitoring mode, discard the frame - silently
     if (!_tpuart.isConnected() || _tpuart.isMonitoring())
     {
-        free(tpData);
         delete tpFrame; // not queued -> free (queue didn't take ownership)
         dataConReceived(cemiFrame, false);
         return false;
@@ -48,7 +52,6 @@ bool TpUartDataLinkLayer::sendFrame(CemiFrame &cemiFrame)
     // when frame not enqueued, discard the frame with a message
     if (!_tpuart.pushTransmitQueue(tpFrame))
     {
-        free(tpData);
         delete tpFrame; // queue full, not taken -> free (else leak per dropped frame)
 #ifdef KNX_FIXES_EC
         // Do NOT print per dropped frame: under an IP->TP flood the queue stays full and a blocking
@@ -63,7 +66,6 @@ bool TpUartDataLinkLayer::sendFrame(CemiFrame &cemiFrame)
         return false;
     }
 
-    free(tpData);
     // success: queue took ownership of tpFrame -> it deletes it after TX (no delete here)
     // printHex("  CEMI>: ", cemiFrame.data(), cemiFrame.dataLength());
     return true;
