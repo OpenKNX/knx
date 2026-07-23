@@ -328,7 +328,9 @@ bool IpTunnelServer::isSentToTunnel(uint16_t address, bool isGrpAddr)
 
 bool IpTunnelServer::HandleIpFrame(uint8_t* buffer, uint16_t length, uint32_t& src_addr, uint16_t& src_port)
 {
-
+    // The sole caller (ip_data_link_layer) already dropped datagrams shorter than the 6-byte KNXnet/IP
+    // header, so buffer[2..3] is safe here. The per-service length guards below (KNX 03_08_04 §5.4.6 p.31)
+    // are the ones that prevent the connection-header offset underflows.
     uint16_t code;
     popWord(code, buffer + 2);
     switch ((KnxIpServiceType)code)
@@ -339,11 +341,13 @@ bool IpTunnelServer::HandleIpFrame(uint8_t* buffer, uint16_t length, uint32_t& s
         }
 
         case ConnectionStateRequest: {
+            if (length < LEN_KNXIP_HEADER + 2) return true; // channel id + reserved byte at buffer[6..7]
             HandleConnectionStateRequest(buffer, length);
             break;
         }
 
         case DisconnectRequest: {
+            if (length < LEN_KNXIP_HEADER + 2) return true; // channel id + reserved byte at buffer[6..7]
             HandleDisconnectRequest(buffer, length);
             break;
         }
@@ -354,11 +358,13 @@ bool IpTunnelServer::HandleIpFrame(uint8_t* buffer, uint16_t length, uint32_t& s
         }
 
         case DeviceConfigurationRequest: {
+            if (length < LEN_KNXIP_HEADER + LEN_CH) return true; // header + connection header; else ctor underflows
             HandleDeviceConfigurationRequest(buffer, length);
             break;
         }
 
         case TunnelingRequest: {
+            if (length < LEN_KNXIP_HEADER + LEN_CH) return true; // header + connection header; else ctor underflows
             HandleTunnelingRequest(buffer, length);
             break;
         }
@@ -374,6 +380,10 @@ bool IpTunnelServer::HandleIpFrame(uint8_t* buffer, uint16_t length, uint32_t& s
             // println("got Ack");
             break;
         }
+        case DisconnectResponse:
+            // The client acked our own DISCONNECT_REQUEST (sent on timeout/busmon-takeover/retry-fail).
+            // Nothing to do -> consume it so it is not logged as an unhandled service.
+            break;
         default:
             return false;
             break;
@@ -638,6 +648,7 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
     }
 
     KnxIpTunnelConnection* tun = nullptr;
+    bool paNotUnique = false; // a free slot exists but its assignable tunnelling IA is already in use -> 0x25
     if (tunIdx != 0xFF)
     {
         tun = &tunnels[tunIdx];
@@ -662,6 +673,7 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
 #endif
                     tunIdx = 0xFF;
                     tun = nullptr;
+                    paNotUnique = true; // slot was free, but its IA is not unique -> report 0x25 not 0x24
                     break;
                 }
             if (tun)
@@ -671,8 +683,12 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
 
     if (tun == nullptr)
     {
-        println("no free tunnel availible");
-        KnxIpConnectResponse connRes(0x00, E_NO_MORE_CONNECTIONS);
+        // KNX 03_08_04 Tunnelling §2.2.2 p.6-7: a device offering >1 tunnelling connection must distinguish "no free slot"
+        // (E_NO_MORE_CONNECTIONS 0x24) from "slot free but the assignable tunnelling IA is not unique"
+        // (E_NO_MORE_UNIQUE_CONNECTIONS 0x25).
+        println(paNotUnique ? "tunnel connect rejected: no unique individual address available"
+                            : "no free tunnel availible");
+        KnxIpConnectResponse connRes(0x00, paNotUnique ? E_NO_MORE_UNIQUE_CONNECTIONS : E_NO_MORE_CONNECTIONS);
         _platform.sendBytesUniCast(connRequest.hpaiCtrl().ipAddress(), connRequest.hpaiCtrl().ipPortNumber(), connRes.data(), connRes.totalLength());
         return;
     }
@@ -683,7 +699,10 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
     {
         _lastChannelId++;
         channelIdInUse = false;
-        for (int x = 0; x < KNX_TUNNELING; x++)
+        // KNX 03_08_02 (Core) §5.3.3 p.13: the communication channel id must be unique across ALL
+        // connections, incl. the device-management slots (the busmon path already scans the full range) -
+        // otherwise a data tunnel and a devmgmt connection could share an id.
+        for (int x = 0; x < KNX_TUNNELING + KNX_TUNNELING_DEVMGMT; x++)
             if (tunnels[x].ChannelId == _lastChannelId)
                 channelIdInUse = true;
     } while (channelIdInUse);
@@ -843,10 +862,11 @@ void IpTunnelServer::HandleDeviceConfigurationRequest(uint8_t* buffer, uint16_t 
 
     if (tun == nullptr)
     {
+#ifdef KNX_LOG_TUNNELING
         print("Channel ID nicht gefunden: ");
         println(confReq.connectionHeader().channelId());
-        KnxIpStateResponse stateRes(0x00, E_CONNECTION_ID);
-        _platform.sendBytesUniCast(0, 0, stateRes.data(), stateRes.totalLength());
+#endif
+        // KNX 03_08_02 Core §5.5 p.14: unknown communication channel id -> silently ignore (no malformed reply to 0.0.0.0:0).
         return;
     }
 
@@ -882,8 +902,8 @@ void IpTunnelServer::HandleTunnelingRequest(uint8_t* buffer, uint16_t length)
         print("Channel ID nicht gefunden: ");
         println(tunnReq.connectionHeader().channelId());
 #endif
-        KnxIpStateResponse stateRes(0x00, E_CONNECTION_ID);
-        _platform.sendBytesUniCast(0, 0, stateRes.data(), stateRes.totalLength());
+        // KNX 03_08_02 Core §5.5 p.14: an unknown communication channel id is silently ignored (no reply). The previous
+        // code sent a malformed KnxIpStateResponse to 0.0.0.0:0 (wrong service type + null endpoint).
         return;
     }
 
@@ -924,6 +944,23 @@ void IpTunnelServer::HandleTunnelingRequest(uint8_t* buffer, uint16_t length)
     _platform.sendBytesUniCast(tun->IpAddress, tun->PortData, tunnAck.data(), tunnAck.totalLength());
 
     tun->SequenceCounter_R = tunnReq.connectionHeader().sequenceCounter();
+    tun->lastHeartbeat = millis(); // KNX 03_08_02 Core §5.4 p.14: any correctly received frame retriggers the 120s timer
+
+    // KNX 03_06_03 (cEMI) §4.1.5 p.19: validate the tunnelled cEMI before it is put on the TP bus. A malformed
+    // frame from an open tunnel (buggy or hostile client) would otherwise be parsed further down (OOB reads on
+    // apduLength/addInfo) and could emit garbage onto TP. The datagram itself is already ACK'd above (transport
+    // receipt per KNX 03_08_04 §2.6 p.9) and the R-counter advanced; we only drop the invalid L_Data payload.
+    // Order is load-bearing and mirrors the proven routing-indication gate (ip_data_link_layer.cpp): the
+    // totalLenght()!=0 test MUST short-circuit first, because valid()'s OOB bounds-check only self-bounds for
+    // _length!=0 -- on a zero-length cEMI valid() would itself OOB-read _data[_data[1]+8]. Validate BEFORE the
+    // source-address rewrite below so no cEMI field is read/written on an unvalidated frame.
+    if (tunnReq.frame().totalLenght() == 0 || !tunnReq.frame().valid())
+    {
+#ifdef KNX_LOG_TUNNELING
+        println("Tunnelling: dropping invalid cEMI frame (not forwarded to TP)");
+#endif
+        return;
+    }
 
     if (tunnReq.frame().sourceAddress() == 0)
         tunnReq.frame().sourceAddress(tun->IndividualAddress);

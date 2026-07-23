@@ -22,6 +22,7 @@ enum KnxIpConnectionRequestErrorCodes
   E_CONNECTION_TYPE = 0x22,
   E_CONNECTION_OPTION = 0x23,
   E_NO_MORE_CONNECTIONS = 0x24,
+  E_NO_MORE_UNIQUE_CONNECTIONS = 0x25, // free slot exists but assignable tunnelling IA not unique (KNX 03_08_04 Tunnelling §2.2.2 p.6-7)
   E_DATA_CONNECTION = 0x26,
   E_KNX_CONNECTION = 0x27,
   E_AUTHORISATION_ERROR = 0x28,
