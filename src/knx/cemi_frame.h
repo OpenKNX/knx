@@ -74,7 +74,10 @@ class CemiFrame
     bool valid() const;
 
   private:
-    uint8_t buffer[0xff + NPDU_LPDU_DIFF] = {0}; //only valid of add info is zero
+    // Sized with APDU_LPDU_DIFF (not NPDU_LPDU_DIFF): the CemiFrame(apduLength) ctor memsets and fills up to
+    // apduLength + APDU_LPDU_DIFF bytes. With the old NPDU_LPDU_DIFF size, apduLength==255 wrote 264 bytes into
+    // a 263-byte buffer (1-byte OOB write) and a max APDU did not fit. Valid only if additional info is zero.
+    uint8_t buffer[0xff + APDU_LPDU_DIFF] = {0};
     uint8_t* _data = 0;
     uint8_t* _ctrl1 = 0;
     NPDU _npdu;
