@@ -239,7 +239,7 @@ void TpUartDataLinkLayer::processRxFrame(TPUart::Frame &tpFrame)
 
     if (tpFrame.isTransmitted()) {
         dataConReceived(cemiFrame, tpFrame.isAck());
-        delete cemiData;
+        free(cemiData); // Frame::cemiData() returns a malloc()'d buffer -> must be free()'d, not delete'd
         return;
     }
 
@@ -252,7 +252,7 @@ void TpUartDataLinkLayer::processRxFrame(TPUart::Frame &tpFrame)
 #endif
 
     frameReceived(cemiFrame);
-    delete cemiData;
+    free(cemiData); // Frame::cemiData() returns a malloc()'d buffer -> must be free()'d, not delete'd
 }
 
 void TpUartDataLinkLayer::printMessage(const char *message, bool error)
