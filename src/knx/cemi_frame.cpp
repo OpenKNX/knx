@@ -196,6 +196,11 @@ uint8_t* CemiFrame::data()
     return _data;
 }
 
+const uint8_t* CemiFrame::data() const
+{
+    return _data;
+}
+
 uint16_t CemiFrame::dataLength()
 {
     return _length;

@@ -9,7 +9,7 @@ class KnxIpTunnelingRequest : public KnxIpFrame
 {
   public:
     KnxIpTunnelingRequest(uint8_t* data, uint16_t length);
-    KnxIpTunnelingRequest(CemiFrame frame);
+    KnxIpTunnelingRequest(const CemiFrame& frame); // by const ref: no per-frame CemiFrame copy on tunnel fan-out
     CemiFrame& frame();
     KnxIpCH& connectionHeader();
   private:

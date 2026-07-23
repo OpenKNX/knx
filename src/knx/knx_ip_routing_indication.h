@@ -8,7 +8,7 @@ class KnxIpRoutingIndication : public KnxIpFrame
 {
   public:
     KnxIpRoutingIndication(uint8_t* data, uint16_t length);
-    KnxIpRoutingIndication(CemiFrame frame);
+    KnxIpRoutingIndication(const CemiFrame& frame); // by const ref: no per-frame CemiFrame copy on routing fan-out
     CemiFrame& frame();
   private:
     CemiFrame _frame;

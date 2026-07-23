@@ -7,7 +7,7 @@ KnxIpTunnelingRequest::KnxIpTunnelingRequest(uint8_t* data,
 {
 }
 
-KnxIpTunnelingRequest::KnxIpTunnelingRequest(CemiFrame frame)
+KnxIpTunnelingRequest::KnxIpTunnelingRequest(const CemiFrame& frame)
     : KnxIpFrame(frame.totalLenght() + LEN_CH + LEN_KNXIP_HEADER), _ch(_data + LEN_KNXIP_HEADER), _frame(_data + LEN_CH + LEN_KNXIP_HEADER, frame.totalLenght())
 {
     serviceTypeIdentifier(TunnelingRequest);

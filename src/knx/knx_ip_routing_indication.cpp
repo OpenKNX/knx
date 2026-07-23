@@ -13,7 +13,7 @@ KnxIpRoutingIndication::KnxIpRoutingIndication(uint8_t* data,
 {
 }
 
-KnxIpRoutingIndication::KnxIpRoutingIndication(CemiFrame frame)
+KnxIpRoutingIndication::KnxIpRoutingIndication(const CemiFrame& frame)
     : KnxIpFrame(frame.totalLenght() + LEN_KNXIP_HEADER), _frame(_data + headerLength(), frame.totalLenght())
 {
     serviceTypeIdentifier(RoutingIndication);

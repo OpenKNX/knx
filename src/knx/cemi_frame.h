@@ -34,6 +34,7 @@ class CemiFrame
     uint16_t telegramLengthtRF() const;
     void fillTelegramRF(uint8_t* data);
     uint8_t* data();
+    const uint8_t* data() const; // read-only access for a const CemiFrame& (e.g. the IP encoders) -> lets them take the frame by const reference instead of by value (avoids a per-frame full-frame copy)
     uint16_t dataLength();
 
     FrameFormat frameType() const;
