@@ -27,6 +27,81 @@ IpTunnelServer::IpTunnelServer(DeviceObject& devObj, IpParameterObject& ipParam,
 {
 }
 
+uint8_t IpTunnelServer::tunnelCount() const
+{
+    uint8_t n = 0;
+    for (uint8_t i = 0; i < KNX_TUNNELING; i++)
+        if (tunnels[i].ChannelId != 0) n++;
+    return n;
+}
+
+const KnxIpTunnelConnection* IpTunnelServer::tunnelAt(uint8_t index) const
+{
+    uint8_t n = 0;
+    for (uint8_t i = 0; i < KNX_TUNNELING; i++)
+    {
+        if (tunnels[i].ChannelId == 0) continue;
+        if (n == index) return &tunnels[i];
+        n++;
+    }
+    return nullptr;
+}
+
+uint8_t IpTunnelServer::activeTunnels(TunnelEvent* out, uint8_t maxOut) const
+{
+    uint8_t n = 0;
+    for (int i = 0; i < KNX_TUNNELING + KNX_TUNNELING_DEVMGMT && n < maxOut; i++)
+    {
+        if (tunnels[i].ChannelId == 0) continue;
+        out[n].ip = tunnels[i].IpAddress;
+        out[n].pa = tunnels[i].IndividualAddress;
+        out[n].type = tunnels[i].IsConfig ? TUN_CONFIG : TUN_DATA;
+        out[n].reason = END_ACTIVE;
+        out[n].startMillis = tunnels[i].connectStart;
+        out[n].endMillis = 0;
+        n++;
+    }
+#ifdef OPENKNX_HW_BUSMON
+    if (n < maxOut && _busMonTunnel.ChannelId != 0)
+    {
+        out[n].ip = _busMonTunnel.IpAddress;
+        out[n].pa = 0;
+        out[n].type = TUN_BUSMON;
+        out[n].reason = END_ACTIVE;
+        out[n].startMillis = _busMonTunnel.connectStart;
+        out[n].endMillis = 0;
+        n++;
+    }
+#endif
+    return n;
+}
+
+void IpTunnelServer::recordTunnelSession(uint32_t ip, uint16_t pa, uint8_t type, unsigned long startMillis, uint8_t reason)
+{
+    TunnelEvent& e = _history[_historyHead];
+    e.ip = ip;
+    e.pa = pa;
+    e.type = type;
+    e.reason = reason;
+    e.startMillis = startMillis;
+    e.endMillis = millis();
+    _historyHead = (_historyHead + 1) % TUNNEL_HISTORY_SIZE;
+    if (_historyCount < TUNNEL_HISTORY_SIZE) _historyCount++;
+}
+
+uint8_t IpTunnelServer::tunnelHistoryCount() const
+{
+    return _historyCount;
+}
+
+const IpTunnelServer::TunnelEvent* IpTunnelServer::tunnelHistoryAt(uint8_t index) const
+{
+    if (index >= _historyCount) return nullptr;
+    // Newest first: the slot just before _historyHead is the most recent.
+    uint8_t slot = (uint8_t)((_historyHead + TUNNEL_HISTORY_SIZE - 1 - index) % TUNNEL_HISTORY_SIZE);
+    return &_history[slot];
+}
+
 void IpTunnelServer::loop()
 {
     for (int i = 0; i < KNX_TUNNELING + KNX_TUNNELING_DEVMGMT; i++)
@@ -47,6 +122,7 @@ void IpTunnelServer::loop()
                 discReq.hpaiCtrl().ipAddress(tunnels[i].IpAddress);
                 discReq.hpaiCtrl().ipPortNumber(tunnels[i].PortCtrl);
                 _platform.sendBytesUniCast(tunnels[i].IpAddress, tunnels[i].PortCtrl, discReq.data(), discReq.totalLength());
+                recordTunnelSession(tunnels[i].IpAddress, tunnels[i].IndividualAddress, tunnels[i].IsConfig ? TUN_CONFIG : TUN_DATA, tunnels[i].connectStart, END_TIMEOUT);
                 tunnels[i].Reset();
             }
 #ifndef KNX_FIXES_EC
@@ -716,6 +792,8 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
     tun->PortData = connRequest.hpaiData().ipPortNumber() ? connRequest.hpaiData().ipPortNumber() : srcPort;
     tun->PortCtrl = connRequest.hpaiCtrl().ipPortNumber() ? connRequest.hpaiCtrl().ipPortNumber() : srcPort;
 
+    tun->connectStart = millis(); // start of this session (for duration in the history)
+
     print("New Tunnel-Connection[");
     print(tunIdx);
     print("], Channel: 0x");
@@ -836,6 +914,7 @@ void IpTunnelServer::HandleDisconnectRequest(uint8_t* buffer, uint16_t length)
 
     KnxIpDisconnectResponse discRes(tun->ChannelId, E_NO_ERROR);
     _platform.sendBytesUniCast(discReq.hpaiCtrl().ipAddress(), discReq.hpaiCtrl().ipPortNumber(), discRes.data(), discRes.totalLength());
+    recordTunnelSession(tun->IpAddress, tun->IndividualAddress, tun->IsConfig ? TUN_CONFIG : TUN_DATA, tun->connectStart, END_CLOSED);
     tun->Reset();
 }
 
@@ -1001,6 +1080,7 @@ void IpTunnelServer::HandleBusMonitorConnect(KnxIpConnectRequest& connRequest, u
     _busMonTunnel.SequenceCounter_S = 0;
     _busMonTunnel.lastHeartbeat = millis();
     _busMonTunnel.ChannelId = _lastChannelId; // set last -> busMonitorActive() true only once fully set up
+    _busMonTunnel.connectStart = millis();
     _busMonExitPending = false;
 
     _hwBusMon->hwBusMonEnter(); // U_BUSMON_REQ -> chip passive, routing paused

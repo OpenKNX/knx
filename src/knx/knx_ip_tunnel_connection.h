@@ -15,6 +15,7 @@ class KnxIpTunnelConnection
     uint8_t SequenceCounter_S = 0;
     uint8_t SequenceCounter_R = 255;
     unsigned long lastHeartbeat = 0;
+    unsigned long connectStart = 0; // millis() when this connection was established (for session duration)
     bool IsConfig = false;
 
     void Reset();
