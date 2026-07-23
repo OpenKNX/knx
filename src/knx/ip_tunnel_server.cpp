@@ -163,7 +163,7 @@ void IpTunnelServer::loop()
         discReq.hpaiCtrl().ipAddress(_busMonTunnel.IpAddress);
         discReq.hpaiCtrl().ipPortNumber(_busMonTunnel.PortCtrl);
         _platform.sendBytesUniCast(_busMonTunnel.IpAddress, _busMonTunnel.PortCtrl, discReq.data(), discReq.totalLength());
-        busMonitorTeardown();
+        busMonitorTeardown(END_TIMEOUT);
     }
 
     // Bounded, non-blocking exit recovery: poll the chip back to CONNECTED after leaving monitor mode.
@@ -644,7 +644,7 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
     {
 #ifdef OPENKNX_HW_BUSMON
         // KNX Busmonitor tunnelling layer (0x80): put the TP chip into real HW monitor mode.
-        // NOTE (03_08_04 Tunnelling 2.2.4): busmonitor is not conformant on a routing device; this is a
+        // NOTE (KNX 03_08_04 Tunnelling §2.2.4 p.8): busmonitor is not conformant on a routing device; this is a
         // build-flag opt-in and routing is physically paused (chip passive) for the busmon session only.
         if (connRequest.cri().layer() == 0x80)
         {
@@ -660,6 +660,22 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
         _platform.sendBytesUniCast(connRequest.hpaiCtrl().ipAddress(), connRequest.hpaiCtrl().ipPortNumber(), connRes.data(), connRes.totalLength());
         return;
     }
+
+#ifdef OPENKNX_HW_BUSMON
+    // While the HW busmonitor is active the TP chip is passive (bus TX paused): a link-layer tunnel would
+    // connect but every telegram it sends would be silently dropped -> ETS times out with a meaningless
+    // error. Reject up front with the transient "no capacity" code E_NO_MORE_CONNECTIONS (KNX 03_08_02 Core
+    // Table 8 p.39; busmon exclusivity KNX 03_08_04 Tunnelling §2.2.4 p.8) so programming/device-info fails
+    // fast and deterministically. Device management (local interface
+    // object, no bus TX) stays allowed. Received frames still flow to existing tunnels (soft busmon RX).
+    if (busMonitorActive() && connRequest.cri().type() == TUNNEL_CONNECTION)
+    {
+        println("IP tunnel connect rejected: HW busmonitor active (bus TX paused) - close the KNX Busmonitor to program via this interface");
+        KnxIpConnectResponse connRes(0x00, E_NO_MORE_CONNECTIONS);
+        _platform.sendBytesUniCast(connRequest.hpaiCtrl().ipAddress(), connRequest.hpaiCtrl().ipPortNumber(), connRes.data(), connRes.totalLength());
+        return;
+    }
+#endif
 
     // data preparation
 
@@ -1175,6 +1191,22 @@ void IpTunnelServer::HandleBusMonitorConnect(KnxIpConnectRequest& connRequest, u
         return;
     }
 
+    // KNX 03_08_04 Tunnelling §2.2.4 p.8: a busmonitor connection is exclusive per subnetwork. Close any
+    // open data/config tunnels (e.g. a running group monitor) so the busmonitor becomes the only connection.
+    for (int i = 0; i < KNX_TUNNELING + KNX_TUNNELING_DEVMGMT; i++)
+    {
+        if (tunnels[i].ChannelId == 0) continue;
+        KnxIpDisconnectRequest discReq;
+        discReq.channelId(tunnels[i].ChannelId);
+        discReq.hpaiCtrl().length(LEN_IPHPAI);
+        discReq.hpaiCtrl().code(IPV4_UDP);
+        discReq.hpaiCtrl().ipAddress(tunnels[i].IpAddress);
+        discReq.hpaiCtrl().ipPortNumber(tunnels[i].PortCtrl);
+        _platform.sendBytesUniCast(tunnels[i].IpAddress, tunnels[i].PortCtrl, discReq.data(), discReq.totalLength());
+        recordTunnelSession(tunnels[i].IpAddress, tunnels[i].IndividualAddress, tunnels[i].IsConfig ? TUN_CONFIG : TUN_DATA, tunnels[i].connectStart, END_BUSMON);
+        tunnels[i].Reset();
+    }
+
     // Unique channel id across all normal tunnels and the busmon connection.
     bool channelIdInUse;
     do
@@ -1207,11 +1239,12 @@ void IpTunnelServer::HandleBusMonitorConnect(KnxIpConnectRequest& connRequest, u
     _platform.sendBytesUniCast(_busMonTunnel.IpAddress, _busMonTunnel.PortCtrl, connRes.data(), connRes.totalLength());
 }
 
-void IpTunnelServer::busMonitorTeardown()
+void IpTunnelServer::busMonitorTeardown(uint8_t reason)
 {
     if (_busMonTunnel.ChannelId == 0)
         return;
 
+    recordTunnelSession(_busMonTunnel.IpAddress, 0, TUN_BUSMON, _busMonTunnel.connectStart, reason);
     _busMonTunnel.Reset(); // stop forwarding at once (busMonitorActive() -> false)
     if (_hwBusMon)
     {
@@ -1227,7 +1260,7 @@ void IpTunnelServer::busMonitorFrame(uint8_t* lpdu, uint16_t len)
         return;
 
     // cEMI L_Busmon.ind: [0x2B][AI len=3][AI type 0x03, len 0x01, status/seq][raw LPDU incl FCS].
-    // CemiFrame carries a fixed (0xFF + NPDU_LPDU_DIFF)=263 byte buffer -> length-guard the copy.
+    // Bound the 5-byte header + raw LPDU to this local (0xFF + NPDU_LPDU_DIFF)-byte buffer.
     if ((uint16_t)(5 + len) > (0xFF + NPDU_LPDU_DIFF))
         return;
 
@@ -1236,7 +1269,7 @@ void IpTunnelServer::busMonitorFrame(uint8_t* lpdu, uint16_t len)
     buf[1] = 0x03;         // additional info length
     buf[2] = 0x03;         // AI type: bus monitor status
     buf[3] = 0x01;         // AI value length
-    buf[4] = _busMonSeq++ & 0x0F; // low nibble = rolling frame sequence
+    buf[4] = _busMonSeq++ & 0x07; // KNX 03_06_03 EMI §3.3.3.2 p.19-20: busmon status bits 0-2 = seq (mod 8), bit 3 = "lost" (keep 0)
     memcpy(buf + 5, lpdu, len);
 
     CemiFrame frame(buf, 5 + len);

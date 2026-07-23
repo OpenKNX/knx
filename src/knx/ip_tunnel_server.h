@@ -120,7 +120,7 @@ class IpTunnelServer
 
 #ifdef OPENKNX_HW_BUSMON
     void HandleBusMonitorConnect(KnxIpConnectRequest& connRequest, uint32_t src_addr, uint16_t src_port);
-    void busMonitorTeardown();
+    void busMonitorTeardown(uint8_t reason = END_CLOSED);
 
     KnxIpTunnelConnection _busMonTunnel;      // dedicated busmon connection (kept out of the L_Data fan-out)
     IHwBusMonitorDll* _hwBusMon = nullptr;    // TP chip bridge (null on non-router BAUs)
