@@ -78,14 +78,13 @@ void CemiServer::dataConfirmationToTunnel(CemiFrame& frame)
 
 void CemiServer::dataIndicationToTunnel(CemiFrame& frame)
 {
-#ifdef USE_RF
+#ifdef USE_USB
+    // Only the USB tunnel needs a re-serialized cEMI copy (incl. RF add-info). The IP path forwards the
+    // frame as-is (see below), so this build + full-frame stack copy no longer runs on every received
+    // telegram just to be discarded on the IP fan-out (the original code forwarded `frame`, never tmpFrame).
+    #ifdef USE_RF
     bool isRf = _dataLinkLayer->mediumType() == DptMedium::KNX_RF;
     uint8_t data[frame.dataLength() + (isRf ? 10 : 0)];
-#else
-    uint8_t data[frame.dataLength()];
-#endif
-
-#ifdef USE_RF
     if (isRf)
     {
         data[0] = L_data_ind;     // Message Code
@@ -93,32 +92,26 @@ void CemiServer::dataIndicationToTunnel(CemiFrame& frame)
         data[2] = 0x02;           // RF add. info: type
         data[3] = 0x08;           // RF add. info: length
         data[4] = frame.rfInfo(); // RF add. info: info field (batt ok, bidir)
-        pushByteArray(frame.rfSerialOrDoA(), 6, &data[5]); // RF add. info:Serial or Domain Address
+        pushByteArray(frame.rfSerialOrDoA(), 6, &data[5]); // RF add. info: Serial or Domain Address
         data[11] = frame.rfLfn(); // RF add. info: link layer frame number
         memcpy(&data[12], &((frame.data())[2]), frame.dataLength() - 2);
     }
     else
-    {
-#endif
         memcpy(&data[0], frame.data(), frame.dataLength());
-#ifdef USE_RF
-    }
-#endif
+    #else
+    uint8_t data[frame.dataLength()];
+    memcpy(&data[0], frame.data(), frame.dataLength());
+    #endif
 
     CemiFrame tmpFrame(data, sizeof(data));
-
-#ifdef KNX_LOG_TUNNELING
-    print("ToTunnel ");
-    print("L_data_ind: src: ");
+    #ifdef KNX_LOG_TUNNELING
+    print("ToTunnel L_data_ind: src: ");
     print(tmpFrame.sourceAddress(), HEX);
     print(" dst: ");
     print(tmpFrame.destinationAddress(), HEX);
-
     printHex(" frame: ", tmpFrame.data(), tmpFrame.dataLength());
-#endif
+    #endif
     tmpFrame.apdu().type();
-
-#ifdef USE_USB
     _usbTunnelInterface.sendCemiFrame(tmpFrame);
 #elif defined(KNX_TUNNELING)
     _ipTunnelServer.dataIndicationToTunnel(frame);
