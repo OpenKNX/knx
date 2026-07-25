@@ -108,7 +108,8 @@ class IpTunnelServer
     uint8_t _lastChannelId = 0;
 
     // Rolling connect/disconnect history (newest overwrites oldest).
-    static const uint8_t TUNNEL_HISTORY_SIZE = 10;
+    // 32 = 16 tunnels each connecting + disconnecting once, so a full round is retained.
+    static const uint8_t TUNNEL_HISTORY_SIZE = 32;
     TunnelEvent _history[TUNNEL_HISTORY_SIZE];
     uint8_t _historyHead = 0;  // next write slot
     uint8_t _historyCount = 0;
