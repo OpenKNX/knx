@@ -1259,12 +1259,15 @@ void IpTunnelServer::busMonitorFrame(uint8_t* lpdu, uint16_t len)
     if (_busMonTunnel.ChannelId == 0 || len == 0)
         return;
 
-    // cEMI L_Busmon.ind: [0x2B][AI len=3][AI type 0x03, len 0x01, status/seq][raw LPDU incl FCS].
-    // Bound the 5-byte header + raw LPDU to this local (0xFF + NPDU_LPDU_DIFF)-byte buffer.
-    if ((uint16_t)(5 + len) > (0xFF + NPDU_LPDU_DIFF))
+    // Max raw TP1 LPDU incl. FCS: extended frame = 9 metadata bytes (incl. FCS) + up to 255 LSDU = 264.
+    // Compare len DIRECTLY (never (uint16_t)(5+len), which wraps for a corrupt oversize len) and size the
+    // buffer to the 5-byte cEMI header + that max, so the largest legal frame fits and no overrun is possible.
+    constexpr uint16_t MAX_LPDU = 264;
+    if (len > MAX_LPDU)
         return;
 
-    uint8_t buf[0xFF + NPDU_LPDU_DIFF];
+    // cEMI L_Busmon.ind: [0x2B][AI len=3][AI type 0x03, len 0x01, status/seq][raw LPDU incl FCS].
+    uint8_t buf[5 + MAX_LPDU];
     buf[0] = L_busmon_ind; // 0x2B
     buf[1] = 0x03;         // additional info length
     buf[2] = 0x03;         // AI type: bus monitor status
