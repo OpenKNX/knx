@@ -234,28 +234,13 @@ void IpTunnelServer::dataRequestToTunnel(CemiFrame& frame)
     KnxIpTunnelConnection* tun = nullptr;
     for (int i = 0; i < KNX_TUNNELING; i++)
     {
-        if (tunnels[i].IndividualAddress == frame.sourceAddress())
+        if (tunnels[i].ChannelId == 0 || tunnels[i].IndividualAddress == frame.sourceAddress())
             continue;
 
         if (tunnels[i].IndividualAddress == frame.destinationAddress())
         {
             tun = &tunnels[i];
             break;
-        }
-    }
-
-    if (tun == nullptr)
-    {
-        for (int i = 0; i < KNX_TUNNELING; i++)
-        {
-            if (tunnels[i].IsConfig)
-            {
-#ifdef KNX_LOG_TUNNELING
-                println("Found config Channel");
-#endif
-                tun = &tunnels[i];
-                break;
-            }
         }
     }
 
@@ -285,28 +270,13 @@ void IpTunnelServer::dataConfirmationToTunnel(CemiFrame& frame)
     KnxIpTunnelConnection* tun = nullptr;
     for (int i = 0; i < KNX_TUNNELING; i++)
     {
-        if (tunnels[i].IndividualAddress == frame.destinationAddress())
+        if (tunnels[i].ChannelId == 0 || tunnels[i].IndividualAddress == frame.destinationAddress())
             continue;
 
         if (tunnels[i].IndividualAddress == frame.sourceAddress())
         {
             tun = &tunnels[i];
             break;
-        }
-    }
-
-    if (tun == nullptr)
-    {
-        for (int i = 0; i < KNX_TUNNELING; i++)
-        {
-            if (tunnels[i].IsConfig)
-            {
-#ifdef KNX_LOG_TUNNELING
-                println("Found config Channel");
-#endif
-                tun = &tunnels[i];
-                break;
-            }
         }
     }
 
@@ -342,21 +312,6 @@ void IpTunnelServer::dataIndicationToTunnel(CemiFrame& frame)
         {
             tun = &tunnels[i];
             break;
-        }
-    }
-
-    if (tun == nullptr)
-    {
-        for (int i = 0; i < KNX_TUNNELING; i++)
-        {
-            if (tunnels[i].IsConfig)
-            {
-#ifdef KNX_LOG_TUNNELING
-                println("Found config Channel");
-#endif
-                tun = &tunnels[i];
-                break;
-            }
         }
     }
 
