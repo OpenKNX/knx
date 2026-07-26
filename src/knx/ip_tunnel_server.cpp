@@ -735,6 +735,7 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
 #endif
 
     uint8_t tunIdx = 0xff;
+    bool tunReservedAssign = false; // true = tunIdx is a RESERVED slot (fixed slot->IA); false = free pool
     if (connRequest.cri().type() == DEVICE_MGMT_CONNECTION)
     {
         for (int i = KNX_TUNNELING; i < KNX_TUNNELING + KNX_TUNNELING_DEVMGMT; i++)
@@ -810,6 +811,7 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
             if (firstResAndFreeTunnel >= 0)
             {
                 tunIdx = firstResAndFreeTunnel;
+                tunReservedAssign = true; // reserved slot -> keep its fixed designated IA
             }
             else if (firstResAndOccTunnel >= 0)
             {
@@ -829,6 +831,7 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
                     tunnels[firstResAndOccTunnel].Reset();
 
                     tunIdx = firstResAndOccTunnel;
+                    tunReservedAssign = true; // reserved slot -> keep its fixed designated IA
                 }
                 else if (tunnelResOptions[firstResAndOccTunnel] == 3) // use the first unreserved tunnel (if one)
                 {
@@ -865,8 +868,9 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
             tun->IsConfig = true;
             tun->IndividualAddress = 0; // not relevant
         }
-        else
+        else if (tunReservedAssign)
         {
+            // Reserved tunnel: keep the fixed slot->IA mapping (behaviour unchanged).
             tun->IsConfig = false;  // default
             uint16_t tunPa = 0;
             popWord(tunPa, addresses + (tunIdx * 2));
@@ -884,6 +888,46 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
                     break;
                 }
             if (tun)
+                tun->IndividualAddress = tunPa;
+        }
+        else
+        {
+            // Non-reserved: assign the FIRST Additional IA that is unique among the OPEN connections
+            // (KNX 03_08_04 Tunnelling §2.2.2). Scan the WHOLE pool -- not just addresses[slot] -- so gaps,
+            // duplicate/unassigned entries and partial ETS assignment are handled; a free unique IA at any
+            // index is used. 0x25 (paNotUnique) only when the list is truly depleted.
+            tun->IsConfig = false;  // default
+            uint16_t tunPa = 0;
+            bool found = false;
+            for (int a = 0; a < KNX_TUNNELING && !found; a++)
+            {
+                uint16_t cand = 0;
+                popWord(cand, addresses + a * 2);
+                if (cand == 0) continue;                                             // empty / invalid entry
+                if (resTunActive && tunCtrlBytes && (*(tunCtrlBytes + a) & 0x80)) continue; // don't steal a reserved slot's IA
+                bool inUse = false;
+                for (int x = 0; x < KNX_TUNNELING; x++)
+                    if (tunnels[x].ChannelId != 0 && tunnels[x].IndividualAddress == cand)
+                    {
+                        inUse = true;
+                        break;
+                    }
+                if (!inUse)
+                {
+                    tunPa = cand;
+                    found = true;
+                }
+            }
+            if (!found)
+            {
+#ifdef KNX_LOG_TUNNELING
+                println("no free unique tunnelling IA available");
+#endif
+                tunIdx = 0xFF;
+                tun = nullptr;
+                paNotUnique = true; // list depleted -> report 0x25 (E_NO_MORE_UNIQUE_CONNECTIONS)
+            }
+            else
                 tun->IndividualAddress = tunPa;
         }
     }
