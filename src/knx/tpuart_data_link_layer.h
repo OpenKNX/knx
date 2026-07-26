@@ -87,6 +87,10 @@ class TpUartDataLinkLayer : public DataLinkLayer
     volatile bool _monitoring = false;
     // True only while a console-initiated busmon (`bcu mon`) is active -> echo raw frames to console.
     volatile bool _monitorConsoleLog = false;
+#if defined(OPENKNX_HW_BUSMON) && defined(KNX_TUNNELING)
+    // Last-seen combined RX overflow count; edge-detects loss for the busmon status "lost" bit.
+    uint32_t _lastBusMonRxOverflow = 0;
+#endif
     volatile bool _busy = false;
     volatile bool _initialized = false;
     uint16_t _individualAddress = 0;

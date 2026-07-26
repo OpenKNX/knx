@@ -85,7 +85,7 @@ class IpTunnelServer
     /** @brief True while a KNX-Busmonitor tunnel is open (chip in HW monitor mode). */
     bool busMonitorActive() { return _busMonTunnel.ChannelId != 0; }
     /** @brief Forward one raw monitor-mode LPDU (incl. FCS) to the busmon tunnel as cEMI L_Busmon.ind. */
-    void busMonitorFrame(uint8_t* lpdu, uint16_t len);
+    void busMonitorFrame(uint8_t* lpdu, uint16_t len, uint8_t status = 0);
 #endif
 
   private:

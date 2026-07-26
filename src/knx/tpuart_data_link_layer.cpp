@@ -106,6 +106,11 @@ void TpUartDataLinkLayer::monitor()
         return;
 
     _tpuart.startMonitoring();
+#if defined(OPENKNX_HW_BUSMON) && defined(KNX_TUNNELING)
+    // Baseline the loss counter at monitor entry so pre-existing overflows don't set a spurious "lost" bit.
+    _lastBusMonRxOverflow = _tpuart.getStatistics().getRxUartOverflow()
+                          + _tpuart.getStatistics().getRxSearchBufferOverflow();
+#endif
 }
 
 void TpUartDataLinkLayer::monitorWithConsoleLog()
@@ -228,6 +233,22 @@ TPUart::AcknowledgeType TpUartDataLinkLayer::checkAcknowledge(unsigned short des
 
 void TpUartDataLinkLayer::processRxFrame(TPUart::Frame &tpFrame)
 {
+#if defined(OPENKNX_HW_BUSMON) && defined(KNX_TUNNELING)
+    // Build the cEMI busmon status octet: bit 3 "lost" when RX overflow(s) happened since the last
+    // reported frame, bit 7 "frame error" for an FCS-failed frame (03_06_03 EMI §3.3.3.2).
+    auto busMonStatus = [&](bool frameError) -> uint8_t {
+        uint8_t status = frameError ? 0x80 : 0x00;
+        uint32_t rxOvf = _tpuart.getStatistics().getRxUartOverflow()
+                       + _tpuart.getStatistics().getRxSearchBufferOverflow();
+        if (rxOvf != _lastBusMonRxOverflow)
+        {
+            status |= 0x08; // lost
+            _lastBusMonRxOverflow = rxOvf;
+        }
+        return status;
+    };
+#endif
+
     // Busmon-only carriers (produced by the receiver only while monitoring): a 1-byte standalone L2
     // acknowledge (isAckOnly, BUG E) or a full FCS-failed frame (isErrored, BUG B). Forward the raw bytes
     // to the busmon and return before any cEMI conversion. Handled unconditionally (not under
@@ -239,7 +260,7 @@ void TpUartDataLinkLayer::processRxFrame(TPUart::Frame &tpFrame)
         if (_ipTunnelServer.busMonitorActive())
         {
             uint16_t len = tpFrame.isAckOnly() ? 1 : tpFrame.size();
-            _ipTunnelServer.busMonitorFrame((uint8_t*)tpFrame.data(), len);
+            _ipTunnelServer.busMonitorFrame((uint8_t*)tpFrame.data(), len, busMonStatus(tpFrame.isErrored()));
         }
 #endif
         return;
@@ -252,9 +273,9 @@ void TpUartDataLinkLayer::processRxFrame(TPUart::Frame &tpFrame)
         if (_monitorConsoleLog)
             printMessage(tpFrame.printFrame().c_str(), false);
 #if defined(OPENKNX_HW_BUSMON) && defined(KNX_TUNNELING)
-        // Forward every raw monitor-mode frame (incl. error/un-ACKed frames, FCS) to the ETS busmon tunnel.
+        // Forward every raw monitor-mode frame (incl. un-ACKed frames, incl. FCS) to the ETS busmon tunnel.
         if (_ipTunnelServer.busMonitorActive())
-            _ipTunnelServer.busMonitorFrame((uint8_t*)tpFrame.data(), tpFrame.size());
+            _ipTunnelServer.busMonitorFrame((uint8_t*)tpFrame.data(), tpFrame.size(), busMonStatus(false));
 #endif
     }
 

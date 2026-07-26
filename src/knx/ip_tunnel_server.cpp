@@ -1254,7 +1254,7 @@ void IpTunnelServer::busMonitorTeardown(uint8_t reason)
     }
 }
 
-void IpTunnelServer::busMonitorFrame(uint8_t* lpdu, uint16_t len)
+void IpTunnelServer::busMonitorFrame(uint8_t* lpdu, uint16_t len, uint8_t status)
 {
     if (_busMonTunnel.ChannelId == 0 || len == 0)
         return;
@@ -1272,7 +1272,9 @@ void IpTunnelServer::busMonitorFrame(uint8_t* lpdu, uint16_t len)
     buf[1] = 0x03;         // additional info length
     buf[2] = 0x03;         // AI type: bus monitor status
     buf[3] = 0x01;         // AI value length
-    buf[4] = _busMonSeq++ & 0x07; // KNX 03_06_03 EMI §3.3.3.2 p.19-20: busmon status bits 0-2 = seq (mod 8), bit 3 = "lost" (keep 0)
+    // KNX 03_06_03 EMI §3.3.3.2: status octet F B P x L sss -- bits 0-2 = seq (mod 8), bit 3 = lost,
+    // bit 5 = parity error, bit 6 = bit error, bit 7 = frame error. seq is ours; error/lost bits from caller.
+    buf[4] = (uint8_t)((_busMonSeq++ & 0x07) | (status & 0xF8));
     memcpy(buf + 5, lpdu, len);
 
     CemiFrame frame(buf, 5 + len);
