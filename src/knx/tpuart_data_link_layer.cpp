@@ -228,6 +228,19 @@ TPUart::AcknowledgeType TpUartDataLinkLayer::checkAcknowledge(unsigned short des
 
 void TpUartDataLinkLayer::processRxFrame(TPUart::Frame &tpFrame)
 {
+    // Busmon-only carrier (produced by the receiver only while monitoring): a full FCS-failed frame
+    // (isErrored, BUG B). Forward the raw bytes to the busmon and return before any cEMI conversion.
+    // Handled unconditionally (not under isMonitoring) so a monitor-teardown race cannot leak the carrier
+    // into cemiData()/frameReceived, which would read past its buffer; never delivered up to the link layer.
+    if (tpFrame.isErrored())
+    {
+#if defined(OPENKNX_HW_BUSMON) && defined(KNX_TUNNELING)
+        if (_ipTunnelServer.busMonitorActive())
+            _ipTunnelServer.busMonitorFrame((uint8_t*)tpFrame.data(), tpFrame.size());
+#endif
+        return;
+    }
+
     if (isMonitoring())
     {
         // Echo raw frames to the console only for a console-initiated busmon (`bcu mon`);
