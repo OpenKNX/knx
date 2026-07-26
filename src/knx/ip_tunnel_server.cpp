@@ -379,13 +379,14 @@ void IpTunnelServer::sendFrameToTunnel(KnxIpTunnelConnection* tunnel, CemiFrame&
     println(tunnel->ChannelId, 16);
 #endif
 
-    const uint16_t cemiLen = frame.totalLenght();
-    const uint16_t totalLen = cemiLen + LEN_CH + LEN_KNXIP_HEADER;
     // L_Data goes as a TUNNELLING_REQUEST; everything else (M_Prop*/cEMI mgmt) as DEVICE_CONFIGURATION_REQUEST.
     const uint16_t svc = (frame.messageCode() == L_data_req || frame.messageCode() == L_data_con
                           || frame.messageCode() == L_data_ind) ? TunnelingRequest : DeviceConfigurationRequest;
 
 #ifdef KNX_TUNNEL_RESEND
+    const uint16_t cemiLen = frame.totalLenght();
+    const uint16_t totalLen = cemiLen + LEN_CH + LEN_KNXIP_HEADER;
+    
     // Enqueue the datagram; pumpTunnel() keeps exactly one on the wire. The sequence counter is stamped at
     // pump time (offset 8), so an overflow-dropped frame consumes no seq -> the on-wire sequence stays gap-free.
     if (totalLen > KNX_TUNNEL_RESEND_BUF)
