@@ -333,7 +333,17 @@ void BauSystemB::propertyValueReadIndication(Priority priority, HopCountType hop
     {
         uint8_t elementSize = obj->propertySize((PropertyID)propertyId);
         if (startIndex > 0)
-            size = elementSize * numberOfElements;
+        {
+            // EC: clamp count so elementSize*count fits the uint8 buffer -> no size truncation mismatch and no
+            // oversized stack VLA (a PropertyValueRead with a large count would otherwise overflow data[]).
+            uint16_t total = (uint16_t)elementSize * numberOfElements;
+            if (total > 255)
+            {
+                elementCount = elementSize ? (uint8_t)(255 / elementSize) : 0;
+                total = (uint16_t)elementSize * elementCount;
+            }
+            size = (uint8_t)total;
+        }
         else
             size = sizeof(uint16_t); // size of property array entry 0 which contains the current number of elements
     }
@@ -343,7 +353,7 @@ void BauSystemB::propertyValueReadIndication(Priority priority, HopCountType hop
     uint8_t data[size];
     if(obj)
         obj->readProperty((PropertyID)propertyId, startIndex, elementCount, data);
-    
+
     if (elementCount == 0)
         size = 0;
     
@@ -361,7 +371,18 @@ void BauSystemB::propertyValueExtReadIndication(Priority priority, HopCountType 
     {
         uint8_t elementSize = obj->propertySize((PropertyID)propertyId);
         if (startIndex > 0)
-            size = elementSize * numberOfElements;
+        {
+            // EC: clamp count so elementSize*count fits the uint8 buffer -> no size truncation mismatch and no
+            // oversized stack VLA (a PropertyValueExtRead with numberOfElements up to 255 over the tunnel would
+            // otherwise overflow data[]).
+            uint16_t total = (uint16_t)elementSize * numberOfElements;
+            if (total > 255)
+            {
+                elementCount = elementSize ? (uint8_t)(255 / elementSize) : 0;
+                total = (uint16_t)elementSize * elementCount;
+            }
+            size = (uint8_t)total;
+        }
         else
             size = sizeof(uint16_t); // size of propert array entry 0 which is the size
     }

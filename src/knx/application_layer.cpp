@@ -1140,6 +1140,7 @@ void ApplicationLayer::individualIndication(HopCountType hopType, Priority prior
         }
         case PropertyValueWrite:
         {
+            if (apdu.length() < 5) break; // obj/pid/startindex at data[1..4] + payload at data+5; else length-5 underflows
             uint16_t startIndex;
             popWord(startIndex, data + 3);
             startIndex &= 0xfff;
@@ -1227,6 +1228,7 @@ void ApplicationLayer::individualIndication(HopCountType hopType, Priority prior
                 (data[4] & 0x80) > 0, data[4] & 0x3f, getWord(data + 5) & 0xfff, data[7]);
             break;
         case MemoryRead:
+            if (apdu.length() < 3) break; // count + 2-byte address at data[0..2]; the read count is bounded downstream (memory.cpp)
             _bau.memoryReadIndication(priority, hopType, tsap, secCtrl, data[0] & 0x3f, getWord(data + 1));
             break;
         case MemoryResponse:
@@ -1234,32 +1236,41 @@ void ApplicationLayer::individualIndication(HopCountType hopType, Priority prior
             _bau.memoryReadAppLayerConfirm(priority, hopType, tsap, secCtrl, data[0] & 0x3f, getWord(data + 1), data + 3);
             break;
         case MemoryWrite:
+            if (apdu.length() < 3 || (data[0] & 0x3f) > apdu.length() - 3) break; // EC: count must fit the frame -> no over-read persisted to NVM (mirrors the MemoryResponse guard)
             _bau.memoryWriteIndication(priority, hopType, tsap, secCtrl, data[0] & 0x3f, getWord(data + 1), data + 3);
             break;
 
-        // EC 
+        // EC -- these router-table opcodes carry a byte count in data[1] and payload at data+4; guard the
+        // count against the frame so writeMemory/printHex do not read `number` bytes past the APDU (header = 4:
+        // apci + count + 2-byte address). The read variants only need the header present.
         case MemoryRouterWrite:
+            if (apdu.length() < 4 || data[1] > apdu.length() - 4) break;
             print("MemoryRouterWrite: ");
             _bau.memoryRouterWriteIndication(priority, hopType, tsap, secCtrl, data[1], getWord(data + 2), data + 4);
             break;
         case MemoryRouterReadResponse:
+            if (apdu.length() < 4 || data[1] > apdu.length() - 4) break;
             _bau.memoryRouterReadAppLayerConfirm(priority, hopType, tsap, secCtrl, data[1], getWord(data + 2), data + 4);
             break;
         case RoutingTableOpen:
             println("Received OpenRoutingTable APDU, doing nothing");
             break;
         case RoutingTableRead:
+            if (apdu.length() < 4) break; // reads count + 2-byte address at data[1..3]
             _bau.memoryRoutingTableReadIndication(priority, hopType, tsap, secCtrl, data[1], getWord(data + 2));
             break;
         case RoutingTableReadResponse:
+            if (apdu.length() < 4 || data[1] > apdu.length() - 4) break;
             _bau.memoryRoutingTableReadAppLayerConfirm(priority, hopType, tsap, secCtrl, data[1], getWord(data + 2), data + 4);
             break;
         case RoutingTableWrite:
+            if (apdu.length() < 4 || data[1] > apdu.length() - 4) break;
             _bau.memoryRoutingTableWriteIndication(priority, hopType, tsap, secCtrl, data[1], getWord(data + 2), data + 4);
             break;
         // end EC
 
         case MemoryExtRead: {
+            if (apdu.length() < 5) break; // count + 3-byte address at data[1..4]; the read count is bounded downstream (memory.cpp)
             uint8_t number = data[1];
             uint32_t memoryAddress =  ((data[2] & 0xff) << 16) | ((data[3] & 0xff) << 8) | (data[4] & 0xff);
             _bau.memoryExtReadIndication(priority, hopType, tsap, secCtrl, number, memoryAddress);
@@ -1270,6 +1281,7 @@ void ApplicationLayer::individualIndication(HopCountType hopType, Priority prior
         //    break;
         case MemoryExtWrite:
         {
+            if (apdu.length() < 5 || data[1] > apdu.length() - 5) break; // EC: count must fit the frame -> no over-read persisted to NVM
             uint8_t number = data[1];
             uint32_t memoryAddress =  ((data[2] & 0xff) << 16) | ((data[3] & 0xff) << 8) | (data[4] & 0xff);
             _bau.memoryExtWriteIndication(priority, hopType, tsap, secCtrl, number, memoryAddress, data + 5);
@@ -1292,6 +1304,7 @@ void ApplicationLayer::individualIndication(HopCountType hopType, Priority prior
         }
         case UserMemoryWrite:
         {
+            if (apdu.length() < 4 || (data[1] & 0xf) > apdu.length() - 4) break; // EC: count must fit the frame -> no over-read persisted to NVM
             uint32_t address = ((data[1] & 0xf0) << 12) + (data[2] << 8) + data[3];
             _bau.userMemoryWriteIndication(priority, hopType, tsap, secCtrl, data[1] & 0xf, address, data + 4);
             break;
@@ -1361,6 +1374,7 @@ void ApplicationLayer::individualConfirm(AckType ack, HopCountType hopType, Prio
         }
         case PropertyValueWrite:
         {
+            if (apdu.length() < 5) break; // obj/pid/startindex at data[1..4] + payload at data+5; else length-5 underflows
             uint16_t startIndex;
             popWord(startIndex, data + 3);
             startIndex &= 0xfff;

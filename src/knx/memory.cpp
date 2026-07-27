@@ -298,6 +298,11 @@ void Memory::freeMemory(uint8_t* ptr)
 
 void Memory::writeMemory(uint32_t relativeAddress, size_t size, uint8_t* data)
 {
+    // EC: bounds-check against the NVM size (wrap-safe) -> a management write (Memory/User/Ext-MemoryWrite),
+    // now reachable over the IP tunnel, must never write outside NVM (flash corruption / eeprom-buffer OOB).
+    const size_t nvmSize = _platform.getNonVolatileMemorySize();
+    if (size > nvmSize || relativeAddress > nvmSize - size)
+        return;
     if(_saveTimeout != 0)
     {
         _saveTimeout = millis();
@@ -309,6 +314,10 @@ void Memory::writeMemory(uint32_t relativeAddress, size_t size, uint8_t* data)
 
 void Memory::readMemory(uint32_t relativeAddress, size_t size, uint8_t* data)
 {
+    // EC: same wrap-safe bounds check on the read side (no OOB read of NVM).
+    const size_t nvmSize = _platform.getNonVolatileMemorySize();
+    if (size > nvmSize || relativeAddress > nvmSize - size)
+        return;
     _platform.readNonVolatileMemory(relativeAddress, data, size);
 }
 

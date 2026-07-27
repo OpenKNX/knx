@@ -7,7 +7,15 @@
 #define ASSERT_PAYLOAD(x)      \
     if (payload_length != (x)) \
     return false
-#define ENSURE_PAYLOAD(x) 
+// EC: ENSURE_PAYLOAD was a no-op -> the encode path had NO buffer-size guard (a KO written with a DPT larger
+// than its configured data length overran the output buffer). Now it actually checks. Two variants because the
+// encoders (valueToBusValue*) return int/bool while the low-level *ToPayload helpers return void.
+#define ENSURE_PAYLOAD(x)      \
+    if (payload_length < (x))  \
+    return false
+#define ENSURE_PAYLOAD_V(x)    \
+    if (payload_length < (x))  \
+    return
 
 
 int KNX_Decode_Value(uint8_t* payload, size_t payload_length, const Dpt& datatype, KNXValue& value)
@@ -1699,34 +1707,34 @@ uint8_t bcdFromPayload(const uint8_t* payload, int index)
 
 void bitToPayload(uint8_t* payload, size_t payload_length, int index, bool value)
 {
-    ENSURE_PAYLOAD(index / 8 + 1);
+    ENSURE_PAYLOAD_V(index / 8 + 1);
     payload[index / 8] = (payload[index / 8] & ~(1 << (7 - (index % 8)))) | (value ? (1 << (7 - (index % 8))) : 0);
 }
 void unsigned8ToPayload(uint8_t* payload, size_t payload_length, int index, uint8_t value, uint8_t mask)
 {
-    ENSURE_PAYLOAD(index + 1);
+    ENSURE_PAYLOAD_V(index + 1);
     payload[index] = (payload[index] & ~mask) | (value & mask);
 }
 void signed8ToPayload(uint8_t* payload, size_t payload_length, int index, int8_t value, uint8_t mask)
 {
-    ENSURE_PAYLOAD(index + 1);
+    ENSURE_PAYLOAD_V(index + 1);
     payload[index] = (payload[index] & ~mask) | (value & mask);
 }
 void unsigned16ToPayload(uint8_t* payload, size_t payload_length, int index, uint16_t value, uint16_t mask)
 {
-    ENSURE_PAYLOAD(index + 2);
+    ENSURE_PAYLOAD_V(index + 2);
     payload[index] = (payload[index] & (~mask >> 8)) | ((value >> 8) & (mask >> 8));
     payload[index + 1] = (payload[index + 1] & ~mask) | (value & mask);
 }
 void signed16ToPayload(uint8_t* payload, size_t payload_length, int index, int16_t value, uint16_t mask)
 {
-    ENSURE_PAYLOAD(index + 2);
+    ENSURE_PAYLOAD_V(index + 2);
     payload[index] = (payload[index] & (~mask >> 8)) | ((value >> 8) & (mask >> 8));
     payload[index + 1] = (payload[index + 1] & ~mask) | (value & mask);
 }
 void unsigned32ToPayload(uint8_t* payload, size_t payload_length, int index, uint32_t value, uint32_t mask)
 {
-    ENSURE_PAYLOAD(index + 4);
+    ENSURE_PAYLOAD_V(index + 4);
     payload[index] = (payload[index] & (~mask >> 24)) | ((value >> 24) & (mask >> 24));
     payload[index + 1] = (payload[index + 1] & (~mask >> 16)) | ((value >> 16) & (mask >> 16));
     payload[index + 2] = (payload[index + 2] & (~mask >> 8)) | ((value >> 8) & (mask >> 8));
@@ -1734,7 +1742,7 @@ void unsigned32ToPayload(uint8_t* payload, size_t payload_length, int index, uin
 }
 void signed32ToPayload(uint8_t* payload, size_t payload_length, int index, int32_t value, uint32_t mask)
 {
-    ENSURE_PAYLOAD(index + 4);
+    ENSURE_PAYLOAD_V(index + 4);
     payload[index] = (payload[index] & (~mask >> 24)) | ((value >> 24) & (mask >> 24));
     payload[index + 1] = (payload[index + 1] & (~mask >> 16)) | ((value >> 16) & (mask >> 16));
     payload[index + 2] = (payload[index + 2] & (~mask >> 8)) | ((value >> 8) & (mask >> 8));
@@ -1780,7 +1788,7 @@ void float32ToPayload(uint8_t* payload, size_t payload_length, int index, double
 }
 void signed64ToPayload(uint8_t* payload, size_t payload_length, int index, int64_t value, uint64_t mask)
 {
-    ENSURE_PAYLOAD(index + 8);
+    ENSURE_PAYLOAD_V(index + 8);
     payload[index] = (payload[index] & (~mask >> 56)) | ((value >> 56) & (mask >> 56));
     payload[index + 1] = (payload[index + 1] & (~mask >> 48)) | ((value >> 48) & (mask >> 48));
     payload[index + 2] = (payload[index + 2] & (~mask >> 40)) | ((value >> 40) & (mask >> 40));
@@ -1792,7 +1800,7 @@ void signed64ToPayload(uint8_t* payload, size_t payload_length, int index, int64
 }
 void bcdToPayload(uint8_t* payload, size_t payload_length, int index, uint8_t value)
 {
-    ENSURE_PAYLOAD(index / 2 + 1);
+    ENSURE_PAYLOAD_V(index / 2 + 1);
     if (index % 2)
         payload[index / 2] = (payload[index / 2] & 0xF0) | (value & 0x0F);
     else
