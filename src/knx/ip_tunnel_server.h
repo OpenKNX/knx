@@ -26,8 +26,9 @@ class IHwBusMonitorDll
 {
   public:
     virtual void hwBusMonEnter() = 0;     // U_BUSMON_REQ: chip goes passive, routing pauses
-    virtual void hwBusMonExit() = 0;      // reset() -> BCU_CONNECTED (routing returns)
+    virtual bool hwBusMonExit() = 0;      // leave monitor mode -> BCU_CONNECTED; returns true if it actually reset (false if a local console busmon still owns the chip)
     virtual bool hwBusMonConnected() = 0; // chip back to normal operation?
+    virtual bool hwBusMonActive() = 0;    // chip currently in monitor mode (any owner: ETS tunnel or local `bcu mon`)
 };
 #endif
 

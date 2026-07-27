@@ -177,8 +177,8 @@ void IpTunnelServer::loop()
         {
             _busMonExitPending = false;
             if (_hwBusMon)
-                _hwBusMon->hwBusMonExit(); // one more reset; NCN may need a power-cycle (plan 6)
-            println("HW-Busmon: chip did not return to CONNECTED within 3s (possible NCN latch, see plan 6)");
+                _hwBusMon->hwBusMonExit(); // one more reset; a truly latched NCN may need a power-cycle
+            println("HW-Busmon: chip did not return to CONNECTED within 3s (possible NCN latch)");
         }
     }
 #endif
@@ -629,7 +629,11 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
     // Table 8 p.39; busmon exclusivity KNX 03_08_04 Tunnelling §2.2.4 p.8) so programming/device-info fails
     // fast and deterministically. Device management (local interface
     // object, no bus TX) stays allowed. Received frames still flow to existing tunnels (soft busmon RX).
-    if (busMonitorActive() && connRequest.cri().type() == TUNNEL_CONNECTION)
+    // Reject a LinkLayer/group-monitor tunnel whenever the HW chip is in monitor mode -- from an ETS busmon
+    // tunnel OR a local `bcu mon` (dual owner). A busmon tunnel (0x80) returned above; DEVICE_MGMT is not a
+    // TUNNEL_CONNECTION so it stays allowed. hwBusMonActive() covers both owners; busMonitorActive() alone
+    // would miss the local-console case.
+    if (_hwBusMon != nullptr && _hwBusMon->hwBusMonActive() && connRequest.cri().type() == TUNNEL_CONNECTION)
     {
         println("IP tunnel connect rejected: HW busmonitor active (bus TX paused) - close the KNX Busmonitor to program via this interface");
         KnxIpConnectResponse connRes(0x00, E_NO_MORE_CONNECTIONS);
@@ -1277,9 +1281,16 @@ void IpTunnelServer::busMonitorTeardown(uint8_t reason)
     _busMonTunnel.Reset(); // stop forwarding at once (busMonitorActive() -> false)
     if (_hwBusMon)
     {
-        _hwBusMon->hwBusMonExit();     // reset() -> BCU_CONNECTED
-        _busMonExitPending = true;     // bounded, non-blocking recovery poll in loop()
-        _busMonExitStart = millis();
+        // hwBusMonExit() returns true only if it ACTUALLY left monitor mode (reset the chip). If a local
+        // console busmon (`bcu mon`) still owns it, it keeps the chip monitoring and returns false -> no
+        // recovery is due, so we must not arm the "did the chip come back?" watchdog (it would fire a false
+        // "NCN latch" warning while the console busmon legitimately keeps the chip passive). A genuine
+        // ETS-only teardown returns true, so a real latch is still caught by the poll below.
+        if (_hwBusMon->hwBusMonExit())
+        {
+            _busMonExitPending = true; // bounded, non-blocking recovery poll in loop()
+            _busMonExitStart = millis();
+        }
     }
 }
 

@@ -119,6 +119,34 @@ void TpUartDataLinkLayer::monitorWithConsoleLog()
     monitor();
 }
 
+// `bcu mon` toggle. Universal on every TPUart device: 1st call starts the local console busmon (raw echo),
+// 2nd stops it. On the interface it additionally coexists with an ETS busmon tunnel (dual owner): the HW
+// monitor stays up while EITHER the console (_localBusmon) or an ETS tunnel owns it, and the console echo
+// is independent of the ETS stream.
+void TpUartDataLinkLayer::toggleConsoleMonitor()
+{
+    bool etsOn = false;
+#if defined(OPENKNX_HW_BUSMON) && defined(KNX_TUNNELING)
+    etsOn = _ipTunnelServer.busMonitorActive(); // interface only: an ETS busmon tunnel co-owns the HW monitor
+#endif
+    if (_localBusmon)
+    {
+        // local owner OFF: stop the console echo; leave HW busmon only if an ETS tunnel isn't still holding it.
+        _localBusmon = false;
+        _monitorConsoleLog = false;
+        if (!etsOn) reset();
+        printMessage("BCU monitor: off", false);
+    }
+    else
+    {
+        // local owner ON: echo raw frames; start the HW busmon only if it isn't already running (ETS or fresh).
+        _localBusmon = true;
+        _monitorConsoleLog = true;
+        if (!isMonitoring()) monitor();
+        printMessage("BCU monitor: on (raw)", false);
+    }
+}
+
 void TpUartDataLinkLayer::initialize()
 {
     if (_initialized)
