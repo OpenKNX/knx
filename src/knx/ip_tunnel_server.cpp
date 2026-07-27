@@ -480,29 +480,34 @@ bool IpTunnelServer::HandleIpFrame(uint8_t* buffer, uint16_t length, uint32_t& s
     switch ((KnxIpServiceType)code)
     {
         case ConnectRequest: {
+            // header + control HPAI + data HPAI + CRI (length+type) must be present, else the HPAI/CRI reads in
+            // HandleConnectRequest run on stale bytes (03_08_02 Core). The layer byte is read only for a TUNNEL
+            // type whose CRI is longer, so guarding the CRI type byte is enough here.
+            if (length < LEN_KNXIP_HEADER + 2 * LEN_IPHPAI + 2) return true;
             HandleConnectRequest(buffer, length, src_addr, src_port);
             break;
         }
 
         case ConnectionStateRequest: {
-            if (length < LEN_KNXIP_HEADER + 2) return true; // channel id + reserved byte at buffer[6..7]
+            if (length < LEN_KNXIP_HEADER + 2 + LEN_IPHPAI) return true; // channel id + reserved + the reply HPAI at buffer[8..]; else the reply endpoint is stale
             HandleConnectionStateRequest(buffer, length);
             break;
         }
 
         case DisconnectRequest: {
-            if (length < LEN_KNXIP_HEADER + 2) return true; // channel id + reserved byte at buffer[6..7]
+            if (length < LEN_KNXIP_HEADER + 2 + LEN_IPHPAI) return true; // channel id + reserved + the reply HPAI at buffer[8..]; else the reply endpoint is stale
             HandleDisconnectRequest(buffer, length);
             break;
         }
 
         case DescriptionRequest: {
+            if (length < LEN_KNXIP_HEADER + LEN_IPHPAI) return true; // header + control HPAI; else hpaiCtrl() is stale
             HandleDescriptionRequest(buffer, length);
             break;
         }
 
         case DeviceConfigurationRequest: {
-            if (length < LEN_KNXIP_HEADER + LEN_CH) return true; // header + connection header; else ctor underflows
+            if (length < LEN_KNXIP_HEADER + LEN_CH + 1) return true; // header + conn header + >=1 cEMI byte (messageCode); the M_Prop path has no L_Data valid() gate, so guard the messageCode read here
             HandleDeviceConfigurationRequest(buffer, length);
             break;
         }
@@ -1079,14 +1084,38 @@ void IpTunnelServer::HandleDeviceConfigurationRequest(uint8_t* buffer, uint16_t 
         return;
     }
 
+    // KNX 03_08_03 Management p.7 + 03_08_02 Core §5.3.4/§5.4: evaluate the sequence counter exactly like the
+    // tunnelling path. A duplicate (client retransmit after a lost ACK) must be re-ACK'd but NOT re-processed --
+    // otherwise an M_PropWrite (e.g. ETS writing the IP config) runs twice; an unexpected sequence must be
+    // discarded WITHOUT an ACK and WITHOUT retriggering the 120 s timeout.
+    uint8_t sequence = confReq.connectionHeader().sequenceCounter();
+    if (sequence == tun->SequenceCounter_R)
+    {
+        // already received -> just re-ACK, no reprocess, no heartbeat retrigger
+        KnxIpTunnelingAck dupAck;
+        dupAck.serviceTypeIdentifier(DeviceConfigurationAck);
+        dupAck.connectionHeader().length(4);
+        dupAck.connectionHeader().channelId(tun->ChannelId);
+        dupAck.connectionHeader().sequenceCounter(sequence);
+        dupAck.connectionHeader().status(E_NO_ERROR);
+        _platform.sendBytesUniCast(tun->IpAddress, tun->PortData, dupAck.data(), dupAck.totalLength());
+        return;
+    }
+    else if ((uint8_t)(sequence - 1) != tun->SequenceCounter_R)
+    {
+        // unexpected sequence -> discard, no ACK, no heartbeat retrigger
+        return;
+    }
+
     KnxIpTunnelingAck tunnAck;
     tunnAck.serviceTypeIdentifier(DeviceConfigurationAck);
     tunnAck.connectionHeader().length(4);
     tunnAck.connectionHeader().channelId(tun->ChannelId);
-    tunnAck.connectionHeader().sequenceCounter(confReq.connectionHeader().sequenceCounter());
+    tunnAck.connectionHeader().sequenceCounter(sequence);
     tunnAck.connectionHeader().status(E_NO_ERROR);
     _platform.sendBytesUniCast(tun->IpAddress, tun->PortData, tunnAck.data(), tunnAck.totalLength());
 
+    tun->SequenceCounter_R = sequence;
     tun->lastHeartbeat = millis();
     _cemiServer.frameReceived(confReq.frame(), tun->ChannelId);
 }
