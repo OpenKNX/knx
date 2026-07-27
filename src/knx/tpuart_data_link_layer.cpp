@@ -275,7 +275,20 @@ void TpUartDataLinkLayer::processRxFrame(TPUart::Frame &tpFrame)
 #if defined(OPENKNX_HW_BUSMON) && defined(KNX_TUNNELING)
         // Forward every raw monitor-mode frame (incl. un-ACKed frames, incl. FCS) to the ETS busmon tunnel.
         if (_ipTunnelServer.busMonitorActive())
+        {
             _ipTunnelServer.busMonitorFrame((uint8_t*)tpFrame.data(), tpFrame.size(), busMonStatus(false));
+            // 03_06_03 EMI/IMI §4.1.5.8.1 (p.96): a busmonitor SHALL also transfer the DLL acknowledge
+            // (this is the defining difference from L_Raw.ind, §4.1.5.7.5 p.95). The receiver folds the
+            // frame-trailing ACK/NACK/BUSY into this frame's flags and consumes the octet, so it never
+            // reaches the monitor on its own. Re-emit it here as its own 1-byte L_Busmon.ind right AFTER
+            // its telegram (ascending in the ETS trace), rebuilding the raw L2 octet from the flags
+            // (ACK 0xCC / NACK 0x0C / BUSY 0xC0 -- exactly the values seen on the bus).
+            if (tpFrame.isAck())
+            {
+                uint8_t ackByte = tpFrame.isBusy() ? 0xC0 : (tpFrame.isNack() ? 0x0C : 0xCC);
+                _ipTunnelServer.busMonitorFrame(&ackByte, 1, busMonStatus(false));
+            }
+        }
 #endif
     }
 

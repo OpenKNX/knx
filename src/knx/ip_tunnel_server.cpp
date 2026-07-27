@@ -1289,24 +1289,38 @@ void IpTunnelServer::busMonitorFrame(uint8_t* lpdu, uint16_t len, uint8_t status
         return;
 
     // Max raw TP1 LPDU incl. FCS: extended frame = 9 metadata bytes (incl. FCS) + up to 255 LSDU = 264.
-    // Compare len DIRECTLY (never (uint16_t)(5+len), which wraps for a corrupt oversize len) and size the
-    // buffer to the 5-byte cEMI header + that max, so the largest legal frame fits and no overrun is possible.
+    // Compare len DIRECTLY (never (uint16_t)(9+len), which wraps for a corrupt oversize len) and size the
+    // buffer to the 9-byte cEMI header + that max, so the largest legal frame fits and no overrun is possible.
     constexpr uint16_t MAX_LPDU = 264;
+    constexpr uint16_t HDR = 11; // MC(1) + AddIL(1) + status AI(3) + extended-timestamp AI(6)
     if (len > MAX_LPDU)
         return;
 
-    // cEMI L_Busmon.ind: [0x2B][AI len=3][AI type 0x03, len 0x01, status/seq][raw LPDU incl FCS].
-    uint8_t buf[5 + MAX_LPDU];
+    // cEMI L_Busmon.ind (03_06_03 §4.1.5.8.1, p.96): [0x2B][AddIL=9][AI 0x03,len1,status/seq]
+    // [AI 0x06,len4,ext-rel-timestamp][raw LPDU incl FCS]. AddIL 9 = status AI(3) + ext-timestamp AI(6);
+    // AI fields ascending by type ID (§4.1.4.3.1). We use the EXTENDED relative timestamp (type 0x06,
+    // 4 octets, §4.1.4.3.3) rather than the legacy 2-octet 0x04: 0x06 pairs with PID_TIME_BASE (ns/tick)
+    // on the cEMI server object, so the client computes real inter-frame times instead of raw ticks
+    // (§4.1.4.3.3 calls out that 0x04 forces the tool to guess the clock). Counter = micros() latched at
+    // forward time -> 1 tick = 1 us -> PID_TIME_BASE = 1000 ns.
+    const uint32_t ts = micros();
+    uint8_t buf[HDR + MAX_LPDU];
     buf[0] = L_busmon_ind; // 0x2B
-    buf[1] = 0x03;         // additional info length
+    buf[1] = 0x09;         // additional info length (status AI + extended-timestamp AI)
     buf[2] = 0x03;         // AI type: bus monitor status
     buf[3] = 0x01;         // AI value length
     // KNX 03_06_03 EMI §3.3.3.2: status octet F B P x L sss -- bits 0-2 = seq (mod 8), bit 3 = lost,
     // bit 5 = parity error, bit 6 = bit error, bit 7 = frame error. seq is ours; error/lost bits from caller.
     buf[4] = (uint8_t)((_busMonSeq++ & 0x07) | (status & 0xF8));
-    memcpy(buf + 5, lpdu, len);
+    buf[5] = 0x06;                 // AI type: extended relative timestamp
+    buf[6] = 0x04;                 // AI value length (4 octets)
+    buf[7]  = (uint8_t)(ts >> 24); // big-endian (network order)
+    buf[8]  = (uint8_t)(ts >> 16);
+    buf[9]  = (uint8_t)(ts >> 8);
+    buf[10] = (uint8_t)(ts & 0xFF);
+    memcpy(buf + HDR, lpdu, len);
 
-    CemiFrame frame(buf, 5 + len);
+    CemiFrame frame(buf, HDR + len);
     KnxIpTunnelingRequest req(frame); // ctor sets serviceTypeIdentifier(TunnelingRequest)
     req.connectionHeader().sequenceCounter(_busMonTunnel.SequenceCounter_S++);
     req.connectionHeader().length(LEN_CH);
