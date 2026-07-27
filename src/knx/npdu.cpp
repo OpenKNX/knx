@@ -18,9 +18,9 @@ void NPDU::octetCount(uint8_t value)
     _data[0] = value;
 }
 
-uint8_t NPDU::length() const
+uint16_t NPDU::length() const
 {
-    return _data[0] + 2; // +1 for length field, +1 for TCPI
+    return (uint16_t)_data[0] + 2; // +1 for length field, +1 for TCPI; uint16 so octetCount 254 -> 256 (no uint8 wrap to 0)
 }
 
 uint8_t NPDU::hopCount() const

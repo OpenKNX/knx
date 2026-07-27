@@ -620,13 +620,15 @@ void BauSystemB::functionPropertyStateResponseIndication(Priority priority, HopC
 bool BauSystemB::ftcSendCommand(uint16_t asap, const SecurityControl secCtrl, uint8_t objectIndex, uint8_t propertyId, uint8_t* data, uint8_t length)
 {
     // Stack-overflow guard: functionPropertyCommandRequest() memcpy's `length` (caller-controlled) bytes to
-    // offset 13 of the CemiFrame stack buffer (0xFF + APDU_LPDU_DIFF = 264) -> payload fits 264-13 = 251; the
-    // 250 bound is kept (conservative) and also avoids the uint8_t wrap (3 + length) at length >= 253. Bound hard.
-    if (length > 250)
+    // offset 13 of the CemiFrame stack buffer (0xFF + APDU_LPDU_DIFF = 264) -> payload fits 264-13 = 251 (exact
+    // fill). 251 is the true max: octetCount = length+3 -> 254 (the last valid value; 255=0xFF is the reserved
+    // escape and valid() drops it), and 3+251=254 does not wrap uint8. Needs NPDU::length() as uint16 (octetCount
+    // 254 -> 256). Bound hard at 251.
+    if (length > 251)
     {
         print("ftcSendCommand: length ");
         print(length);
-        println(" > 250 -- rejected (would overflow the CemiFrame buffer)");
+        println(" > 251 -- rejected (would overflow the CemiFrame buffer)");
         return false;
     }
 
