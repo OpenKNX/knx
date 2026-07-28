@@ -142,6 +142,12 @@ void TpUartDataLinkLayer::toggleConsoleMonitor()
         // local owner ON: echo raw frames; start the HW busmon only if it isn't already running (ETS or fresh).
         _localBusmon = true;
         _monitorConsoleLog = true;
+#if defined(OPENKNX_HW_BUSMON) && defined(KNX_TUNNELING)
+        // Make the console busmon exclusive too (like the ETS busmon connect): drop any open data/config
+        // tunnels so the monitor is the only connection. In HW monitor mode the chip is passive anyway, so an
+        // "active" tunnel could no longer pass traffic. No-op if none are open (e.g. an ETS busmon co-owns it).
+        _ipTunnelServer.closeTunnelsForBusmon();
+#endif
         if (!isMonitoring()) monitor();
         printMessage("BCU monitor: on (raw)", false);
     }

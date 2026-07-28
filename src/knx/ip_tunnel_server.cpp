@@ -1211,21 +1211,11 @@ void IpTunnelServer::HandleTunnelingRequest(uint8_t* buffer, uint16_t length)
 }
 
 #ifdef OPENKNX_HW_BUSMON
-void IpTunnelServer::HandleBusMonitorConnect(KnxIpConnectRequest& connRequest, uint32_t src_addr, uint16_t src_port)
+void IpTunnelServer::closeTunnelsForBusmon()
 {
-    uint32_t srcIP = connRequest.hpaiCtrl().ipAddress() ? connRequest.hpaiCtrl().ipAddress() : src_addr;
-    uint16_t srcPort = connRequest.hpaiCtrl().ipPortNumber() ? connRequest.hpaiCtrl().ipPortNumber() : src_port;
-
-    // Single busmonitor connection only.
-    if (_busMonTunnel.ChannelId != 0 || _hwBusMon == nullptr)
-    {
-        KnxIpConnectResponse connRes(0x00, _hwBusMon == nullptr ? E_TUNNELING_LAYER : E_NO_MORE_CONNECTIONS);
-        _platform.sendBytesUniCast(connRequest.hpaiCtrl().ipAddress(), connRequest.hpaiCtrl().ipPortNumber(), connRes.data(), connRes.totalLength());
-        return;
-    }
-
-    // KNX 03_08_04 Tunnelling §2.2.4 p.8: a busmonitor connection is exclusive per subnetwork. Close any
-    // open data/config tunnels (e.g. a running group monitor) so the busmonitor becomes the only connection.
+    // Disconnect every open data/config tunnel and record it as ended-by-busmon. Idempotent: with no open
+    // tunnels (e.g. an ETS busmon already cleared them) the loop is a no-op. Shared by the ETS busmon connect
+    // and the local console `bcu mon` toggle so both make the busmonitor equally exclusive.
     for (int i = 0; i < KNX_TUNNELING + KNX_TUNNELING_DEVMGMT; i++)
     {
         if (tunnels[i].ChannelId == 0) continue;
@@ -1239,6 +1229,24 @@ void IpTunnelServer::HandleBusMonitorConnect(KnxIpConnectRequest& connRequest, u
         recordTunnelSession(tunnels[i].IpAddress, tunnels[i].IndividualAddress, tunnels[i].IsConfig ? TUN_CONFIG : TUN_DATA, tunnels[i].connectStart, END_BUSMON);
         tunnels[i].Reset();
     }
+}
+
+void IpTunnelServer::HandleBusMonitorConnect(KnxIpConnectRequest& connRequest, uint32_t src_addr, uint16_t src_port)
+{
+    uint32_t srcIP = connRequest.hpaiCtrl().ipAddress() ? connRequest.hpaiCtrl().ipAddress() : src_addr;
+    uint16_t srcPort = connRequest.hpaiCtrl().ipPortNumber() ? connRequest.hpaiCtrl().ipPortNumber() : src_port;
+
+    // Single busmonitor connection only.
+    if (_busMonTunnel.ChannelId != 0 || _hwBusMon == nullptr)
+    {
+        KnxIpConnectResponse connRes(0x00, _hwBusMon == nullptr ? E_TUNNELING_LAYER : E_NO_MORE_CONNECTIONS);
+        _platform.sendBytesUniCast(connRequest.hpaiCtrl().ipAddress(), connRequest.hpaiCtrl().ipPortNumber(), connRes.data(), connRes.totalLength());
+        return;
+    }
+
+    // KNX 03_08_04 Tunnelling §2.2.4 p.8: a busmonitor connection is exclusive per subnetwork -> close any
+    // open data/config tunnels (e.g. a running group monitor) so the busmonitor becomes the only connection.
+    closeTunnelsForBusmon();
 
     // Unique channel id across all normal tunnels and the busmon connection.
     bool channelIdInUse;

@@ -87,6 +87,9 @@ class IpTunnelServer
     bool busMonitorActive() { return _busMonTunnel.ChannelId != 0; }
     /** @brief Forward one raw monitor-mode LPDU (incl. FCS) to the busmon tunnel as cEMI L_Busmon.ind. */
     void busMonitorFrame(uint8_t* lpdu, uint16_t len, uint8_t status = 0);
+    /** @brief Close every open data/config tunnel so a busmonitor is the only connection (03_08_04 §2.2.4).
+     *  Used by the ETS busmon connect AND the local console `bcu mon` toggle so both are equally exclusive. */
+    void closeTunnelsForBusmon();
 #endif
 
   private:
