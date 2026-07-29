@@ -61,6 +61,12 @@ class BauSystemB : protected BusAccessUnit
     // FTC fast-transfer flow control: current TP transmit-FIFO depth. Base has no TP link -> 0; the
     // coupler/device bau overrides it (Transmitter::queueSize()) so the pump paces against the driver.
     virtual uint16_t ftcTxQueueSize() { return 0; }
+    // FTC fast-transfer pacing feedback (delivery-rate / BBR-style). Per report the client reports the
+    // MEASURED delivered rate over the window (bytes the target confirmed / elapsed) plus whether the window
+    // was clean (0 missing). The IP host pacer uses it: clean -> probe higher; a lossy window -> snap the send
+    // rate to the measured delivered rate (the true wire ceiling, not a guess); deliveredBps==0 && !clean = a
+    // report-timeout kick -> back off. Base/embedded is a no-op (the real TP FIFO back-pressures the pump).
+    virtual void ftcPacingRate(uint32_t deliveredBps, bool clean) { (void)deliveredBps; (void)clean; }
 #endif
 
     uint8_t checkmasterResetValidity(EraseCode eraseCode, uint8_t channel);
