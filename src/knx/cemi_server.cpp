@@ -301,7 +301,6 @@ void CemiServer::handleMPropRead(CemiFrame& frame, uint8_t channelId)
 #elif defined(KNX_TUNNELING)
         _ipTunnelServer.dataRequestToChannelId(responseFrame, channelId);
 #endif
-        delete[] data;
     }
     else
     {
@@ -322,6 +321,8 @@ void CemiServer::handleMPropRead(CemiFrame& frame, uint8_t channelId)
         _ipTunnelServer.dataRequestToChannelId(responseFrame, channelId);
 #endif
     }
+
+    delete[] data;
 }
 
 void CemiServer::handleMPropWrite(CemiFrame& frame, uint8_t channelId)
