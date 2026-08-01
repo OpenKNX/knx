@@ -25,6 +25,7 @@ bool TpUartDataLinkLayer::sendFrame(CemiFrame &cemiFrame)
     if (!_tpuart.isConnected() || _tpuart.isMonitoring())
     {
         free(tpData);
+        delete tpFrame;
         dataConReceived(cemiFrame, false);
         return false;
     }
@@ -33,6 +34,7 @@ bool TpUartDataLinkLayer::sendFrame(CemiFrame &cemiFrame)
     if (!_tpuart.pushTransmitQueue(tpFrame))
     {
         free(tpData);
+        delete tpFrame;
         printMessage("Ignore frame because transmit queue is full!", true);
         dataConReceived(cemiFrame, false);
         return false;
