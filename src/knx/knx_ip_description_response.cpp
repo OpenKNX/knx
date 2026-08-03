@@ -17,9 +17,15 @@
 #endif
 
 KnxIpDescriptionResponse::KnxIpDescriptionResponse(IpParameterObject& parameters, DeviceObject& deviceObject)
-    : KnxIpFrame(LEN_KNXIP_HEADER + LEN_DEVICE_INFORMATION_DIB + LEN_SERVICE_DIB),
+    // EXTENDED_DEVICE_INFO (0x08) is NOT allowed in a DESCRIPTION_RESPONSE (03_08_02 Core Table 5) -- it is only
+    // permitted in SEARCH_RESPONSE_EXTENDED. Disabled here (allocation term, init and fill all commented out) so
+    // the frame stays conformant; re-enable it ONLY on the extended-search path, not here (transport/TCP is irrelevant).
+    : KnxIpFrame(LEN_KNXIP_HEADER + LEN_DEVICE_INFORMATION_DIB + LEN_SERVICE_DIB
+                 + LEN_IP_CURRENT_CONFIG_DIB /* + LEN_EXTENDED_DEVICE_INFORMATION_DIB */),
       _deviceInfo(_data + LEN_KNXIP_HEADER),
-      _supportedServices(_data + LEN_KNXIP_HEADER + LEN_DEVICE_INFORMATION_DIB)
+      _supportedServices(_data + LEN_KNXIP_HEADER + LEN_DEVICE_INFORMATION_DIB),
+      _ipCurrentConfig(_data + LEN_KNXIP_HEADER + LEN_DEVICE_INFORMATION_DIB + LEN_SERVICE_DIB, true)
+      // _extendedDeviceInfo(_data + LEN_KNXIP_HEADER + LEN_DEVICE_INFORMATION_DIB + LEN_SERVICE_DIB + LEN_IP_CURRENT_CONFIG_DIB)
 {
     serviceTypeIdentifier(DescriptionResponse);
 
@@ -57,6 +63,27 @@ KnxIpDescriptionResponse::KnxIpDescriptionResponse(IpParameterObject& parameters
 #if MASK_VERSION == 0x091A
     _supportedServices.serviceVersion(Routing, 1);
 #endif
+
+    // IP Current Config DIB (0x04) — current IP address / subnet / gateway / assignment method. Mirrors
+    // KnxIpSearchResponseExtended::setIpCurrentConfig so a plain DESCRIPTION_RESPONSE also carries the network
+    // config (previously only the extended search response did).
+    _ipCurrentConfig.length(LEN_IP_CURRENT_CONFIG_DIB);
+    _ipCurrentConfig.code(IP_CUR_CONFIG);
+    _ipCurrentConfig.address(parameters.propertyValue<uint32_t>(PID_CURRENT_IP_ADDRESS));
+    _ipCurrentConfig.subnet(parameters.propertyValue<uint32_t>(PID_CURRENT_SUBNET_MASK));
+    _ipCurrentConfig.gateway(parameters.propertyValue<uint32_t>(PID_CURRENT_DEFAULT_GATEWAY));
+    _ipCurrentConfig.dhcp(0);
+    _ipCurrentConfig.info1(parameters.propertyValue<uint8_t>(PID_CURRENT_IP_ASSIGNMENT_METHOD));
+    _ipCurrentConfig.info2(0x00); // reserved
+
+    // Extended Device Information DIB (0x08) — DISABLED: not allowed in a DESCRIPTION_RESPONSE (03_08_02 Core
+    // Table 5; permitted only in SEARCH_RESPONSE_EXTENDED). Kept for reference; move to the extended-search path
+    // if mask + max-local-APDU must be exposed without a device-management connection.
+    // _extendedDeviceInfo.length(LEN_EXTENDED_DEVICE_INFORMATION_DIB);
+    // _extendedDeviceInfo.code(EXTENDED_DEVICE_INFO);
+    // _extendedDeviceInfo.status(0x01);
+    // _extendedDeviceInfo.localMaxApdu(deviceObject.maxApduLength());
+    // _extendedDeviceInfo.deviceDescriptor(MASK_VERSION);
 }
 
 KnxIpDeviceInformationDIB& KnxIpDescriptionResponse::deviceInfo()
