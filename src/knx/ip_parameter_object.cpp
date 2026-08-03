@@ -39,9 +39,9 @@ IpParameterObject::IpParameterObject(DeviceObject& deviceObject, Platform& platf
         new DataProperty(PID_CUSTOM_RESERVED_TUNNELS_CTRL, true, PDT_UNSIGNED_CHAR, KNX_TUNNELING, ReadLv3 | WriteLv3), // custom propertiy to control the stacks behaviour for reserverd tunnels, not in Spec (PID >= 200)
         new DataProperty(PID_CUSTOM_RESERVED_TUNNELS_IP, true, PDT_UNSIGNED_LONG, KNX_TUNNELING, ReadLv3 | WriteLv3), // custom propertiy to control the stacks behaviour for reserverd tunnels, not in Spec (PID >= 200)
 #endif
-        new DataProperty(PID_CURRENT_IP_ASSIGNMENT_METHOD, false, PDT_UNSIGNED_CHAR, 0, ReadLv3 | WriteLv3),
+        new DataProperty(PID_CURRENT_IP_ASSIGNMENT_METHOD, false, PDT_UNSIGNED_CHAR, 1, ReadLv3 | WriteLv3), // maxElements 1: must hold 1 octet so the resolved method (03_08_03 2.5.5) can be stored; 0 rejected every write
         new DataProperty(PID_IP_ASSIGNMENT_METHOD, true, PDT_UNSIGNED_CHAR, 1, ReadLv3 | WriteLv3),
-        new DataProperty(PID_IP_CAPABILITIES, true, PDT_BITSET8, 0, ReadLv3 | WriteLv1),    // must be set by application due to capabilities of the used ip stack
+        new DataProperty(PID_IP_CAPABILITIES, true, PDT_BITSET8, 1, ReadLv3 | WriteLv1),    // maxElements 1: must hold 1 octet so the application can store the IP capabilities (0 rejected every write)
         new CallbackProperty<IpParameterObject>(this, PID_CURRENT_IP_ADDRESS, false, PDT_UNSIGNED_LONG, 1, ReadLv3 | WriteLv0,
             [](IpParameterObject* io, uint16_t start, uint8_t count, uint8_t* data) -> uint8_t 
             { 
