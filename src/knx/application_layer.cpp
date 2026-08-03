@@ -662,6 +662,22 @@ void ApplicationLayer::adcReadResponse(AckType ack, Priority priority, HopCountT
         dataIndividualRequest(ack, hopType, priority, asap, apdu, secCtrl);
 }
 
+void ApplicationLayer::adcReadRequest(AckType ack, Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl& secCtrl,
+                                      uint8_t channelNr, uint8_t readCount)
+{
+    CemiFrame frame(2);
+    APDU& apdu = frame.apdu();
+    apdu.type(ADCRead);
+    uint8_t* data = apdu.data();
+    data[0] |= (channelNr & 0b111111);
+    data[1] = readCount;
+
+    if (asap == _connectedTsap)
+        dataConnectedRequest(asap, priority, apdu, secCtrl);
+    else
+        dataIndividualRequest(ack, hopType, priority, asap, apdu, secCtrl);
+}
+
 void ApplicationLayer::functionPropertyStateResponse(AckType ack, Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl& secCtrl,
                                                      uint8_t objectIndex, uint8_t propertyId, uint8_t* resultData, uint8_t resultLength)
 {
@@ -1234,6 +1250,10 @@ void ApplicationLayer::individualIndication(HopCountType hopType, Priority prior
         case MemoryResponse:
             if (apdu.length() < 3 || (data[0] & 0x3f) > apdu.length() - 3) break; // EC: count must fit the frame -> no over-read (only forwarded now that FTC overrides memoryReadAppLayerConfirm)
             _bau.memoryReadAppLayerConfirm(priority, hopType, tsap, secCtrl, data[0] & 0x3f, getWord(data + 1), data + 3);
+            break;
+        case ADCResponse:
+            if (apdu.length() < 4) break; // channel + count + 2-byte value (client side, e.g. FTC bus-voltage read)
+            _bau.adcReadAppLayerConfirm(priority, hopType, tsap, secCtrl, data[0] & 0x3f, data[1], (int16_t)getWord(data + 2));
             break;
         case MemoryWrite:
             if (apdu.length() < 3 || (data[0] & 0x3f) > apdu.length() - 3) break; // EC: count must fit the frame -> no over-read persisted to NVM (mirrors the MemoryResponse guard)

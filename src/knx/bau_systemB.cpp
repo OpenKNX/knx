@@ -699,6 +699,21 @@ void BauSystemB::memoryReadAppLayerConfirm(Priority priority, HopCountType hopTy
         _ftcMemCb(asap, memoryAddress, data, number);
 }
 
+bool BauSystemB::ftcSendAdcRead(uint16_t asap, const SecurityControl secCtrl, uint8_t channelNr, uint8_t readCount)
+{
+    // Same connectionless, AckRequested, LowPriority path as the other ftc reads.
+    applicationLayer().adcReadRequest(AckRequested, LowPriority, NetworkLayerParameter, asap, secCtrl, channelNr, readCount);
+    return true;
+}
+
+void BauSystemB::adcReadAppLayerConfirm(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl& secCtrl,
+                                        uint8_t channelNr, uint8_t readCount, int16_t value)
+{
+    // Park only -- the device-info state machine reads it back in loop() (bus-voltage read).
+    if (_ftcAdcCb != nullptr)
+        _ftcAdcCb(asap, channelNr, readCount, value);
+}
+
 // --- CO scan shims (thin, because _connectedTsap is private to ApplicationLayer). Inherited by Bau091A. ---
 bool BauSystemB::ftcScanConnect(uint16_t pa)
 {

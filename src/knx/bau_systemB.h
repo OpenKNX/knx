@@ -52,10 +52,16 @@ class BauSystemB : protected BusAccessUnit
     // Device diagnosis: A_Memory_Read (ETS path to the GA + association tables, `ftc <pa> info ga`). Answer via the callback.
     bool ftcSendMemoryRead(uint16_t asap, const SecurityControl secCtrl, uint8_t number, uint16_t memoryAddress);
     void ftcSetMemoryCallback(void (*cb)(uint16_t pa, uint16_t addr, const uint8_t* data, uint8_t len)) { _ftcMemCb = cb; }
+    // A_ADC_Read client (e.g. reading a BCU's bus-voltage ADC). The response lands on _ftcAdcCb.
+    void ftcSetAdcCallback(void (*cb)(uint16_t pa, uint8_t channel, uint8_t count, int16_t value)) { _ftcAdcCb = cb; }
+    bool ftcSendAdcRead(uint16_t asap, const SecurityControl secCtrl, uint8_t channelNr, uint8_t readCount);
+    void adcReadAppLayerConfirm(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl& secCtrl,
+                                uint8_t channelNr, uint8_t readCount, int16_t value) override;
     // CO scan (`ftc scan ... ets`): ETS-parity connection-oriented probe. Reaches old BCU1/BCU2 masks that
     // answer ONLY connection-oriented (the connectionless scan misses them). Driven serially from the client.
     bool ftcScanConnect(uint16_t pa);                       // open a T_Connect to pa (self-guards: no-op if already connected)
     bool ftcScanConnected();                                // T_Connect established?
+    bool ftcScanReadAcked() { return false; }               // presence-on-ACK: not yet exposed by the embedded transport layer -> fall back to the DeviceDescriptor answer (host tunnel overrides this with the real T_ACK)
     void ftcScanReadDescriptor(const SecurityControl& sec); // CO DeviceDescriptor_Read on the open connection
     void ftcScanDisconnect();                               // ALWAYS callable -- also unwedges a stuck Connecting state
     // FTC fast-transfer flow control: current TP transmit-FIFO depth. Base has no TP link -> 0; the
@@ -185,6 +191,7 @@ class BauSystemB : protected BusAccessUnit
     void (*_ftcDdCb)(uint16_t pa, uint8_t descriptorType, const uint8_t* data) = nullptr;
     void (*_ftcPropCb)(uint16_t pa, uint8_t objectIndex, uint8_t propertyId, const uint8_t* data, uint8_t length) = nullptr;
     void (*_ftcMemCb)(uint16_t pa, uint16_t addr, const uint8_t* data, uint8_t len) = nullptr;
+    void (*_ftcAdcCb)(uint16_t pa, uint8_t channel, uint8_t count, int16_t value) = nullptr;
 #endif
     SecurityControl _restartSecurity;
     uint32_t _restartDelay = 0;

@@ -101,6 +101,9 @@ class BusAccessUnit
                                            uint16_t memoryAddress, uint8_t* data, bool status);
     virtual void memoryReadAppLayerConfirm(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, uint8_t number,
                                            uint16_t memoryAddress, uint8_t* data);
+    // A_ADC_Response received (client side, e.g. FTC reading a BCU's bus-voltage ADC). Default: ignore.
+    virtual void adcReadAppLayerConfirm(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl,
+                                        uint8_t channelNr, uint8_t readCount, int16_t value) {}
     virtual void memoryWriteLocalConfirm(AckType ack, Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, uint8_t number,
                                          uint16_t memoryAddress, uint8_t* data, bool status);
     virtual void memoryWriteIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, uint8_t number,

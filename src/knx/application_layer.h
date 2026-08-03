@@ -116,6 +116,9 @@ class ApplicationLayer
                                    uint8_t propertyId, uint8_t numberOfElements, uint16_t startIndex, uint8_t* data, uint8_t length);
     void adcReadResponse(AckType ack, Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl& secCtrl,
                                                      uint8_t channelNr, uint8_t readCount, int16_t value);
+    // A_ADC_Read request (client side): read ADC channel @p channelNr, averaging @p readCount samples.
+    void adcReadRequest(AckType ack, Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl& secCtrl,
+                        uint8_t channelNr, uint8_t readCount);
     void functionPropertyStateResponse(AckType ack, Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl,
                                        uint8_t objectIndex, uint8_t propertyId, uint8_t *resultData, uint8_t resultLength);
 #ifdef OPENKNX_FTC
