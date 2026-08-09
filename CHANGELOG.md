@@ -1,8 +1,48 @@
 # Changelog
 
-## v1dev (replace this with version and date when releasing to v1)
+## ec/v2.4.0-beta.1 - 2026-08-09
 
-- Update TPUart dependency to version 1.1.0
+A large feature/robustness release on top of the 2.3.1 base, serving both coupler/router (`0x091A`) and
+the new IP-interface (`0x07B0`) products: a KNX IP Interface, HW busmonitor, tunnelling reliability +
+conformance, an FTC client and broad memory-safety fixes. All additions follow the KNX specification
+(03_08 KNXnet/IP Core/Tunnelling/Management, 03_06 cEMI, 03_06_03 busmonitor).
+**BETA:** field-tested on the OAM-IP-Interface and OAM-IP-Router (RP2040 + ESP32).
+The additions are grouped below; the upstream v1dev entries follow.
+
+### KNX IP Interface (new)
+- `Bau07B0IP`: a KNXnet/IP tunnelling interface on a TP1 line (mask `0x07B0` + `KNX_TUNNELING`) -- a BAU that combines the 07B0 device layer (property/memory/group objects, so ETS can download and use KOs) with an IP data-link layer, cEMI server and tunnel server. Non-routing (never advertises ROUTING), so the HW busmonitor stays spec-conform.
+- Tunnel hooks for single-interface KNXnet/IP devices (TP at entity index 0): bus-RX->tunnel, own-TX->tunnel and the `KNX_TUNNELING_NO_TUNNEL_PA_ON_TP` gate work without a coupler topology; the interface can answer a tunnel client addressed to itself (self-programming).
+- `ftcPacingRate` hook for delivery-rate send pacing.
+
+### HW busmonitor (`OPENKNX_HW_BUSMON`)
+- Real hardware busmonitor over an ETS Busmonitor tunnel (NCN passive mode); raw LPDUs wrapped as cEMI `L_Busmon.ind`, runs in parallel with the link layer, no TX/ACK while monitoring.
+- `bcu mon` local start/stop toggle with local/ETS dual-owner coordination; a local monitor closes data/config tunnels (exclusive, like ETS); ETS busmon takes over active data tunnels; console echo for `bcu mon`.
+- L2-ACK + extended timestamp transferred (03_06_03 `L_Busmon.ind` conformance); honest status octet (lost + frame-error bits); standalone L2 acknowledges and FCS-errored frames passed through raw; `busMonitorFrame` bounded vs `MAX_LPDU`.
+
+### Tunnelling (reliability / conformance)
+- Per-tunnel FIFO for reliable server->client requests (never drops CO bursts); session history + read-only introspection; connect/disconnect history grown 10 -> 32.
+- KNXnet/IP conformance hardening; dedup device-config requests + reject sub-spec datagrams; L_Data routing guarded on ChannelId (dead config-channel fallback dropped); first free unique IA assigned from the pool (not `addresses[slot]`); frame size computed only when the resend queue is enabled.
+- Opt-in additional-IA defence via L2-ACK (`KNX_TUNNEL_IA_DEFENCE`).
+
+### File-Transfer client (`OPENKNX_FTC`)
+- Connectionless File-Transfer client role in the stack; device diagnosis (property-write, memory-read) + connection-oriented scan (reaches old BCU1/BCU2 masks); client-side `A_ADC_Read` (remote bus-voltage); responder source-PA passed to the FunctionPropertyState callback.
+
+### IP / DESCRIPTION_RESPONSE
+- IP Current Config DIB (0x04) added to `DESCRIPTION_RESPONSE` (current IP/subnet/gateway/assignment-method without a device-mgmt connection); IP-config DIB info1/info2 offsets corrected for the 0x04 layout; `PID_CURRENT_IP_ASSIGNMENT_METHOD` / `PID_IP_CAPABILITIES` allow 1 element.
+
+### Robustness / memory-safety
+- `CemiFrame::valid()` OOB guard; truncated `M_PropRead`/`M_PropWrite` dropped before dereference; inbound routing cEMI validated before forwarding to TP; negative `L_Data.con` on a send-limit drop; all expired tunnel slots reaped (not just the first) + dangling `addresses` pointer fixed; LC-config property pointer guarded (not the always-non-zero default); TpUart `sendFrame` guarded against malloc failure; queue-full log rate-limited (no watchdog-starving print flood).
+- Property reads, memory writes and DPT encodes bounded against OOB; FunctionProperty(Ext)/Memory response indications guarded against short-frame over-read; full 254-octet APDU allowed (NPDU length `uint16` + FTC send guard 251); cEMI frame buffer sized for a full 255-byte APDU; real `M_PropWrite` failure code reported; `PropertyValue` read counts elements in the high nibble.
+
+### Transport / performance
+- Originator `T_Connect` sets `_connectedTsap` to the peer PA (not 0); IP->TP frames serialized on the stack (removes a per-frame malloc/free on the hot path); dead cEMI copy on the IP tunnel fan-out dropped; `CemiFrame` taken by const reference in the IP encoders; malloc'd cEMI RX buffer `free()`d instead of `delete`d.
+
+### Docs
+- README: index, architecture overview + build-flags table.
+
+### Upstream base (v1dev)
+
+- Pin TPUart to ec/v1.2.0-beta.1
 - Fix: memory leak of `TPUart::Frame` on discarded TP frames. The frame was not deleted when the transmit queue was full or when the BCU was not connected / in busmonitor mode
 - Fix: memory leak in the cEMI server on a negative `M_PropRead` response. The buffer allocated by `propertyValueRead()` was only freed on the positive path, so reading an unknown PID (e.g. during an ETS property scan) leaked it
 - Fix: `uniqueSerialNumber()` returned no unique id on RP2350. Use `pico_get_unique_board_id()`, this  is compatible to previous implementation:

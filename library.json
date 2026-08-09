@@ -1,7 +1,7 @@
 {
     "name": "knx",
-    "version": "2.3.1",
-    "description": "knx stack",
+    "version": "2.4.0-ec.beta.1",
+    "description": "knx stack -- OpenKNX enhanced fork: KNX IP interface (Bau07B0IP), HW busmonitor, tunnelling reliability + conformance, FTC client, broad robustness fixes",
     "homepage": "https://openknx.de",
     "authors": [
         {
@@ -19,6 +19,6 @@
         "url": "https://github.com/OpenKNX/knx"
     },
     "dependencies": {
-        "TPUart": "https://github.com/OpenKNX/tpuart#1.1.0"
+        "TPUart": "https://github.com/OpenKNX/tpuart#ec/v1.2.0-beta.1"
     }
 }
