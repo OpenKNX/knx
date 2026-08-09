@@ -41,14 +41,11 @@ bool IpDataLinkLayer::sendFrame(CemiFrame& frame)
 {
     KnxIpRoutingIndication packet(frame);
     // only send 50 packet per second: see KNX 3.2.6 p.6
-    if(isSendLimitReached())
+    if (isSendLimitReached())
     {
-#ifdef KNX_FIXES_EC
-        // Every other sendFrame reports a dataConReceived (see the success path below).
-        // The send-limit drop was the only branch returning false WITHOUT one, leaving the upper
-        // layer waiting for a confirmation that never arrives. Emit the (negative) con to close that gap.
+        // the send-limit drop was the only branch returning false without a dataCon -> the upper layer
+        // waited for a confirmation that never arrived; emit the negative con to close that gap
         dataConReceived(frame, false);
-#endif
         return false;
     }
     bool success = sendBytes(packet.data(), packet.totalLength());
@@ -98,18 +95,11 @@ void IpDataLinkLayer::loop()
             if (!_rxRoutingIndications)
                 break;
             KnxIpRoutingIndication routingIndication(buffer, len);
-#ifdef KNX_FIXES_EC
-            // Validate the inbound multicast cEMI BEFORE forwarding it to TP -- a malformed routing
-            // frame (e.g. a 0-length cEMI from ETS) is otherwise pushed onto the bus as garbage / can crash.
-            // The constructor does NOT validate (it even derives offsets from the untrusted data[1]), so THIS
-            // is the check. Order is load-bearing: totalLenght()!=0 must be first -- valid()'s bounds-check
-            // only self-bounds for _length!=0, so the short-circuit keeps valid() from ever OOB-reading a
-            // zero-length frame.
+            // validate the inbound multicast cEMI before forwarding it to TP -- a malformed/0-length routing
+            // frame from ETS would otherwise be pushed onto the bus as garbage. Order matters: totalLenght()!=0
+            // first, so the short-circuit keeps valid() from OOB-reading a zero-length frame.
             if (routingIndication.frame().totalLenght() != 0 && routingIndication.frame().valid())
                 frameReceived(routingIndication.frame());
-#else
-            frameReceived(routingIndication.frame());
-#endif
             break;
         }
         
