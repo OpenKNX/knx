@@ -1469,7 +1469,7 @@ void ApplicationLayer::individualConfirm(AckType ack, HopCountType hopType, Prio
         case KeyResponse:
             _bau.keyWriteResponseConfirm(ack, priority, hopType, tsap, secCtrl, data[1], status);
             break;
-#ifdef OPENKNX_FTC
+#if defined(OPENKNX_FTC) || defined(OPENKNX_FTC_CONSOLE)
         case FunctionPropertyCommand:
             // The L_Data.con of an FTC request frame we sent. Nothing to do -- without this the
             // stack prints "unhandled APDU-Type: 711" for every chunk (OFM-FileTransferModule).
