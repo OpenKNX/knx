@@ -266,15 +266,17 @@ void CemiServer::handleMPropRead(CemiFrame& frame, uint8_t channelId)
     // so that the device and the cEMI client/server connection(tunnel) can operate simultaneously.
     // KNX IP Interfaces which offer multiple simultaneous tunnel connections seem to operate the same way.
     // Each tunnel has its own cEMI client address which is based on the main device address.
-    if (((ObjectType) objectType == OT_DEVICE) && 
+    // Only patch the actual address element (startIndex != 0). A start_index==0 read returns the element
+    // COUNT (2 bytes); patching data[0] there corrupts the count the client reads (e.g. 0x0A01 not 0x0001).
+    if (((ObjectType) objectType == OT_DEVICE) &&
                         (propertyId == PID_DEVICE_ADDR) &&
-                        (numberOfElements == 1))
+                        (numberOfElements == 1) && startIndex != 0)
     {
         data[0] = (uint8_t) (_clientAddress & 0xFF);
     }
-    else if (((ObjectType) objectType == OT_DEVICE) && 
+    else if (((ObjectType) objectType == OT_DEVICE) &&
                         (propertyId == PID_SUBNET_ADDR) &&
-                        (numberOfElements == 1))
+                        (numberOfElements == 1) && startIndex != 0)
     {
         data[0] = (uint8_t) ((_clientAddress >> 8) & 0xFF);
     }
