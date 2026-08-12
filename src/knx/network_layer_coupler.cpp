@@ -617,7 +617,9 @@ void NetworkLayerCoupler::dataSystemBroadcastRequest(AckType ack, HopCountType h
 
     isClosedMedium = (_netLayerEntities[kSecondaryIfIndex].mediumType() == DptMedium::KNX_TP1) || (_netLayerEntities[kSecondaryIfIndex].mediumType() == DptMedium::KNX_IP);
     broadcastType = (isClosedMedium && isApciSystemBroadcast(tmpFrame.apdu()) ? Broadcast : SysBroadcast);
+#ifdef KNX_LOG_COUPLER
     println(broadcastType);
+#endif
     _netLayerEntities[kSecondaryIfIndex].sendDataRequest(tmpFrame.npdu(), ack, 0, _deviceObj.individualAddress(), priority, GroupAddress, broadcastType);
 }
 
