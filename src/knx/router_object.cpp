@@ -370,7 +370,11 @@ void RouterObject::functionRouteTableControl(bool isCommand, uint8_t* data, uint
     printHex("", data, length);
 #endif
 
+    if (length < 2) { resultData[0] = ReturnCodes::GenericError; resultData[1] = 0; resultLength = 2; return; } // need data[1] (service id)
     RouteTableServices srvId = (RouteTableServices) data[1];
+    // ClearGroupAddress/SetGroupAddress carry start+end at data[2..5]
+    if ((srvId == ClearGroupAddress || srvId == SetGroupAddress) && length < 6)
+        { resultData[0] = ReturnCodes::GenericError; resultData[1] = srvId; resultLength = 2; return; }
 
     if (isCommand)
     {
