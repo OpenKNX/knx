@@ -487,7 +487,11 @@ template <class P, class B> class KnxFacade : private SaveRestore
     #ifdef ARDUINO_ARCH_SAMD
         // predefined global instance for TP or RF or TP/RF coupler
         #if MASK_VERSION == 0x07B0
+            #ifdef KNX_TUNNELING
+                #error "0x07B0 + KNX_TUNNELING (KNXnet/IP interface, Bau07B0IP) needs an IP platform; not available on ARDUINO_ARCH_SAMD"
+            #else
             extern KnxFacade<SamdPlatform, Bau07B0> knx;
+            #endif
         #elif MASK_VERSION == 0x27B0
             extern KnxFacade<SamdPlatform, Bau27B0> knx;
         #elif MASK_VERSION == 0x2920
@@ -547,7 +551,11 @@ template <class P, class B> class KnxFacade : private SaveRestore
     #elif defined(ARDUINO_ARCH_STM32)
         // predefined global instance for TP only
         #if MASK_VERSION == 0x07B0
+            #ifdef KNX_TUNNELING
+                #error "0x07B0 + KNX_TUNNELING (KNXnet/IP interface, Bau07B0IP) needs an IP platform; not available on ARDUINO_ARCH_STM32"
+            #else
             extern KnxFacade<Stm32Platform, Bau07B0> knx;
+            #endif
         #else
             #error "Mask version not supported on ARDUINO_ARCH_STM32"
         #endif
