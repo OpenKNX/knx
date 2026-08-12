@@ -590,6 +590,11 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
     println(connRequest.hpaiCtrl().ipPortNumber());
 #endif
 
+    // Route-back (03_08_02 Core 5.2): a route-back client's control HPAI is 0.0.0.0:0 -> reply to the packet
+    // source; resolved once here and used for every reject response below.
+    uint32_t rIp = connRequest.hpaiCtrl().ipAddress() ? connRequest.hpaiCtrl().ipAddress() : src_addr;
+    uint16_t rPort = connRequest.hpaiCtrl().ipPortNumber() ? connRequest.hpaiCtrl().ipPortNumber() : src_port;
+
     // We only support 0x03 and 0x04!
     if (connRequest.cri().type() != TUNNEL_CONNECTION && connRequest.cri().type() != DEVICE_MGMT_CONNECTION)
     {
@@ -597,7 +602,7 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
         println("Only Tunnel/DeviceMgmt Connection ist supported!");
 #endif
         KnxIpConnectResponse connRes(0x00, E_CONNECTION_TYPE);
-        _platform.sendBytesUniCast(connRequest.hpaiCtrl().ipAddress(), connRequest.hpaiCtrl().ipPortNumber(), connRes.data(), connRes.totalLength());
+        _platform.sendBytesUniCast(rIp, rPort, connRes.data(), connRes.totalLength());
         return;
     }
 
@@ -607,7 +612,7 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
     if (connRequest.cri().type() == TUNNEL_CONNECTION && length < LEN_KNXIP_HEADER + 2 * LEN_IPHPAI + 4)
     {
         KnxIpConnectResponse connRes(0x00, E_CONNECTION_TYPE);
-        _platform.sendBytesUniCast(connRequest.hpaiCtrl().ipAddress(), connRequest.hpaiCtrl().ipPortNumber(), connRes.data(), connRes.totalLength());
+        _platform.sendBytesUniCast(rIp, rPort, connRes.data(), connRes.totalLength());
         return;
     }
 
@@ -628,7 +633,7 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
         println("Only LinkLayer ist supported!");
 #endif
         KnxIpConnectResponse connRes(0x00, E_TUNNELING_LAYER);
-        _platform.sendBytesUniCast(connRequest.hpaiCtrl().ipAddress(), connRequest.hpaiCtrl().ipPortNumber(), connRes.data(), connRes.totalLength());
+        _platform.sendBytesUniCast(rIp, rPort, connRes.data(), connRes.totalLength());
         return;
     }
 
@@ -647,7 +652,7 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
     {
         println("IP tunnel connect rejected: HW busmonitor active (bus TX paused) - close the KNX Busmonitor to program via this interface");
         KnxIpConnectResponse connRes(0x00, E_NO_MORE_CONNECTIONS);
-        _platform.sendBytesUniCast(connRequest.hpaiCtrl().ipAddress(), connRequest.hpaiCtrl().ipPortNumber(), connRes.data(), connRes.totalLength());
+        _platform.sendBytesUniCast(rIp, rPort, connRes.data(), connRes.totalLength());
         return;
     }
 #endif
@@ -914,7 +919,7 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
         println(paNotUnique ? "tunnel connect rejected: no unique individual address available"
                             : "no free tunnel availible");
         KnxIpConnectResponse connRes(0x00, paNotUnique ? E_NO_MORE_UNIQUE_CONNECTIONS : E_NO_MORE_CONNECTIONS);
-        _platform.sendBytesUniCast(connRequest.hpaiCtrl().ipAddress(), connRequest.hpaiCtrl().ipPortNumber(), connRes.data(), connRes.totalLength());
+        _platform.sendBytesUniCast(rIp, rPort, connRes.data(), connRes.totalLength());
         return;
     }
 
@@ -1267,7 +1272,7 @@ void IpTunnelServer::HandleBusMonitorConnect(KnxIpConnectRequest& connRequest, u
     if (_busMonTunnel.ChannelId != 0 || _hwBusMon == nullptr)
     {
         KnxIpConnectResponse connRes(0x00, _hwBusMon == nullptr ? E_TUNNELING_LAYER : E_NO_MORE_CONNECTIONS);
-        _platform.sendBytesUniCast(connRequest.hpaiCtrl().ipAddress(), connRequest.hpaiCtrl().ipPortNumber(), connRes.data(), connRes.totalLength());
+        _platform.sendBytesUniCast(srcIP, srcPort, connRes.data(), connRes.totalLength()); // route-back (srcIP/srcPort resolved at fn top)
         return;
     }
 
