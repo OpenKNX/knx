@@ -1054,7 +1054,11 @@ void IpTunnelServer::HandleDisconnectRequest(uint8_t* buffer, uint16_t length)
     {
         // Busmon tunnel closed by ETS -> leave HW monitor mode, routing returns (see plan 5b/6).
         KnxIpDisconnectResponse discRes(_busMonTunnel.ChannelId, E_NO_ERROR);
-        _platform.sendBytesUniCast(discReq.hpaiCtrl().ipAddress(), discReq.hpaiCtrl().ipPortNumber(), discRes.data(), discRes.totalLength());
+        // Route-back (03_08_02 Core §5.2): a route-back client's control HPAI is 0.0.0.0:0 -> reply to the
+        // stored busmon control endpoint (mirrors the data/config disconnect path below).
+        uint32_t rIp = discReq.hpaiCtrl().ipAddress() ? discReq.hpaiCtrl().ipAddress() : _busMonTunnel.IpAddress;
+        uint16_t rPort = discReq.hpaiCtrl().ipPortNumber() ? discReq.hpaiCtrl().ipPortNumber() : _busMonTunnel.PortCtrl;
+        _platform.sendBytesUniCast(rIp, rPort, discRes.data(), discRes.totalLength());
         busMonitorTeardown();
         return;
     }
