@@ -267,7 +267,10 @@ void IpTunnelServer::dataConfirmationToTunnel(CemiFrame& frame)
     KnxIpTunnelConnection* tun = nullptr;
     for (int i = 0; i < KNX_TUNNELING; i++)
     {
-        if (tunnels[i].ChannelId == 0 || tunnels[i].IndividualAddress == frame.destinationAddress())
+        // Route the con to the tunnel whose IA == source (the sender). The old extra skip on
+        // IA == destinationAddress wrongly dropped the con when a client probes its own tunnel IA
+        // (src == dest): that tunnel got skipped by dest before the source match could hit it.
+        if (tunnels[i].ChannelId == 0)
             continue;
 
         if (tunnels[i].IndividualAddress == frame.sourceAddress())
