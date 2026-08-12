@@ -1023,7 +1023,11 @@ void IpTunnelServer::HandleConnectionStateRequest(uint8_t* buffer, uint16_t leng
 
     tun->lastHeartbeat = millis();
     KnxIpStateResponse stateRes(tun->ChannelId, E_NO_ERROR);
-    _platform.sendBytesUniCast(stateRequest.hpaiCtrl().ipAddress(), stateRequest.hpaiCtrl().ipPortNumber(), stateRes.data(), stateRes.totalLength());
+    // Route-back (03_08_02 Core §5.2): a heartbeat may carry HPAI 0.0.0.0:0 -> reply to the stored control
+    // endpoint (resolved from the packet source at CONNECT), else the response is lost and the client reaps.
+    uint32_t rIp = stateRequest.hpaiCtrl().ipAddress() ? stateRequest.hpaiCtrl().ipAddress() : tun->IpAddress;
+    uint16_t rPort = stateRequest.hpaiCtrl().ipPortNumber() ? stateRequest.hpaiCtrl().ipPortNumber() : tun->PortCtrl;
+    _platform.sendBytesUniCast(rIp, rPort, stateRes.data(), stateRes.totalLength());
 }
 
 void IpTunnelServer::HandleDisconnectRequest(uint8_t* buffer, uint16_t length)
@@ -1068,7 +1072,10 @@ void IpTunnelServer::HandleDisconnectRequest(uint8_t* buffer, uint16_t length)
     }
 
     KnxIpDisconnectResponse discRes(tun->ChannelId, E_NO_ERROR);
-    _platform.sendBytesUniCast(discReq.hpaiCtrl().ipAddress(), discReq.hpaiCtrl().ipPortNumber(), discRes.data(), discRes.totalLength());
+    // Route-back (03_08_02 Core §5.2): reply to the stored control endpoint when the request HPAI is 0.0.0.0:0.
+    uint32_t rIp = discReq.hpaiCtrl().ipAddress() ? discReq.hpaiCtrl().ipAddress() : tun->IpAddress;
+    uint16_t rPort = discReq.hpaiCtrl().ipPortNumber() ? discReq.hpaiCtrl().ipPortNumber() : tun->PortCtrl;
+    _platform.sendBytesUniCast(rIp, rPort, discRes.data(), discRes.totalLength());
     recordTunnelSession(tun->IpAddress, tun->IndividualAddress, tun->IsConfig ? TUN_CONFIG : TUN_DATA, tun->connectStart, END_CLOSED);
     tun->Reset();
 }
