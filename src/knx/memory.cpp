@@ -327,6 +327,16 @@ uint8_t* Memory::toAbsolute(uint32_t relativeAddress)
     return _platform.getNonVolatileMemoryStart() + (ptrdiff_t)relativeAddress;
 }
 
+uint8_t* Memory::toAbsoluteChecked(uint32_t relativeAddress, size_t size)
+{
+    // Wrap-safe NVM bound (same as read/writeMemory): reject an out-of-range range so a management
+    // memory-read cannot memcpy past the NVM buffer (OOB read / info-leak). Returns nullptr on reject.
+    const size_t nvmSize = _platform.getNonVolatileMemorySize();
+    if (size > nvmSize || relativeAddress > nvmSize - size)
+        return nullptr;
+    return toAbsolute(relativeAddress);
+}
+
 
 uint32_t Memory::toRelative(uint8_t* absoluteAddress)
 {

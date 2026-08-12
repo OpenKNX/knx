@@ -141,7 +141,9 @@ void BauSystemB::memoryRoutingTableReadIndication(Priority priority, HopCountTyp
 }
 void BauSystemB::memoryRoutingTableReadIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, uint8_t number, uint16_t memoryAddress)
 {
-    memoryRoutingTableReadIndication(priority, hopType, asap, secCtrl, number, memoryAddress, _memory.toAbsolute(memoryAddress));
+    uint8_t* p = _memory.toAbsoluteChecked(memoryAddress, number);
+    if (p == nullptr) number = 0; // OOB read guard: keep the response within NVM
+    memoryRoutingTableReadIndication(priority, hopType, asap, secCtrl, number, memoryAddress, p);
 }
 
 void BauSystemB::memoryRoutingTableWriteIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, uint8_t number, uint16_t memoryAddress, uint8_t *data)
@@ -174,8 +176,9 @@ void BauSystemB::memoryReadIndication(Priority priority, HopCountType hopType, u
 void BauSystemB::memoryReadIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, uint8_t number,
     uint16_t memoryAddress)
 {
-    applicationLayer().memoryReadResponse(AckRequested, priority, hopType, asap, secCtrl, number, memoryAddress,
-        _memory.toAbsolute(memoryAddress));
+    uint8_t* p = _memory.toAbsoluteChecked(memoryAddress, number);
+    if (p == nullptr) number = 0; // OOB read guard: keep the response within NVM
+    applicationLayer().memoryReadResponse(AckRequested, priority, hopType, asap, secCtrl, number, memoryAddress, p);
 }
 
 void BauSystemB::memoryExtWriteIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, uint8_t number, uint32_t memoryAddress, uint8_t * data)
@@ -187,7 +190,10 @@ void BauSystemB::memoryExtWriteIndication(Priority priority, HopCountType hopTyp
 
 void BauSystemB::memoryExtReadIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, uint8_t number, uint32_t memoryAddress)
 {
-    applicationLayer().memoryExtReadResponse(AckRequested, priority, hopType, asap, secCtrl, ReturnCodes::Success, number, memoryAddress, _memory.toAbsolute(memoryAddress));
+    uint8_t* p = _memory.toAbsoluteChecked(memoryAddress, number);
+    ReturnCodes code = (p != nullptr) ? ReturnCodes::Success : ReturnCodes::AddressVoid; // OOB read -> AddressVoid, no data
+    if (p == nullptr) number = 0;
+    applicationLayer().memoryExtReadResponse(AckRequested, priority, hopType, asap, secCtrl, code, number, memoryAddress, p);
 }
 
 void BauSystemB::doMasterReset(EraseCode eraseCode, uint8_t channel)
@@ -231,8 +237,9 @@ void BauSystemB::authorizeIndication(Priority priority, HopCountType hopType, ui
 
 void BauSystemB::userMemoryReadIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, uint8_t number, uint32_t memoryAddress)
 {
-    applicationLayer().userMemoryReadResponse(AckRequested, priority, hopType, asap, secCtrl, number, memoryAddress,
-        _memory.toAbsolute(memoryAddress));
+    uint8_t* p = _memory.toAbsoluteChecked(memoryAddress, number);
+    if (p == nullptr) number = 0; // OOB read guard: keep the response within NVM
+    applicationLayer().userMemoryReadResponse(AckRequested, priority, hopType, asap, secCtrl, number, memoryAddress, p);
 }
 
 void BauSystemB::userMemoryWriteIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, uint8_t number, uint32_t memoryAddress, uint8_t* data)

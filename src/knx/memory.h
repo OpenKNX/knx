@@ -52,6 +52,7 @@ class Memory
     void writeMemory(uint32_t relativeAddress, size_t size, uint8_t* data);
     void readMemory(uint32_t relativeAddress, size_t size, uint8_t* data);
     uint8_t* toAbsolute(uint32_t relativeAddress);
+    uint8_t* toAbsoluteChecked(uint32_t relativeAddress, size_t size);
     uint32_t toRelative(uint8_t* absoluteAddress);
 
     void versionCheckCallback(VersionCheckCallback func);
