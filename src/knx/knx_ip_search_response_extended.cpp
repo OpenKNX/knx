@@ -47,8 +47,11 @@ void KnxIpSearchResponseExtended::setDeviceInfo(IpParameterObject& parameters, D
     _deviceInfo.individualAddress(parameters.propertyValue<uint16_t>(PID_KNX_INDIVIDUAL_ADDRESS));
     _deviceInfo.projectInstallationIdentifier(parameters.propertyValue<uint16_t>(PID_PROJECT_INSTALLATION_ID));
     _deviceInfo.serialNumber(deviceObject.propertyData(PID_SERIAL_NUMBER));
+#ifdef KNX_IS_ROUTER
     _deviceInfo.routingMulticastAddress(parameters.propertyValue<uint32_t>(PID_ROUTING_MULTICAST_ADDRESS));
-    //_deviceInfo.routingMulticastAddress(0);
+#else
+    _deviceInfo.routingMulticastAddress(0); // 03_08_02 Core §7.5.4.2: non-routing devices SHALL advertise 0.0.0.0
+#endif
 
     uint8_t mac_address[LEN_MAC_ADDRESS] = {0};
     Property* prop = parameters.property(PID_MAC_ADDRESS);
