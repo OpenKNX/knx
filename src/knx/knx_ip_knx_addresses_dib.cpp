@@ -15,7 +15,7 @@ uint16_t KnxIpKnxAddressesDIB::individualAddress()
 
 void KnxIpKnxAddressesDIB::individualAddress(uint16_t addr)
 {
-    pushInt(addr, _data + 2);
+    pushWord(addr, _data + 2); // 2-octet IA: pushInt writes 4 bytes -> own IA read back as 0.0.0 (spill overwritten by the first additional address)
 }
 
 void KnxIpKnxAddressesDIB::additional(uint16_t addr)
