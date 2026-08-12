@@ -1,4 +1,5 @@
 #include "knx_ip_description_response.h"
+#include "service_families.h"
 #ifdef USE_IP
 
 #define LEN_SERVICE_FAMILIES 2
@@ -40,8 +41,11 @@ KnxIpDescriptionResponse::KnxIpDescriptionResponse(IpParameterObject& parameters
     _deviceInfo.individualAddress(parameters.propertyValue<uint16_t>(PID_KNX_INDIVIDUAL_ADDRESS));
     _deviceInfo.projectInstallationIdentifier(parameters.propertyValue<uint16_t>(PID_PROJECT_INSTALLATION_ID));
     _deviceInfo.serialNumber(deviceObject.propertyData(PID_SERIAL_NUMBER));
+#ifdef KNX_IS_ROUTER
     _deviceInfo.routingMulticastAddress(parameters.propertyValue<uint32_t>(PID_ROUTING_MULTICAST_ADDRESS));
-    //_deviceInfo.routingMulticastAddress(0);
+#else
+    _deviceInfo.routingMulticastAddress(0); // 03_08_02 Core §7.5.4.2: non-routing devices SHALL advertise 0.0.0.0
+#endif
 
     uint8_t mac_address[LEN_MAC_ADDRESS] = {0};
     Property* prop = parameters.property(PID_MAC_ADDRESS);
@@ -55,13 +59,13 @@ KnxIpDescriptionResponse::KnxIpDescriptionResponse(IpParameterObject& parameters
 
     _supportedServices.length(LEN_SERVICE_DIB);
     _supportedServices.code(SUPP_SVC_FAMILIES);
-    _supportedServices.serviceVersion(Core, 1);
-    _supportedServices.serviceVersion(DeviceManagement, 1);
+    _supportedServices.serviceVersion(Core, KNX_SERVICE_FAMILY_CORE);
+    _supportedServices.serviceVersion(DeviceManagement, KNX_SERVICE_FAMILY_DEVICE_MANAGEMENT);
 #ifdef KNX_TUNNELING
-    _supportedServices.serviceVersion(Tunnelling, 1);
+    _supportedServices.serviceVersion(Tunnelling, KNX_SERVICE_FAMILY_TUNNELING);
 #endif
-#if MASK_VERSION == 0x091A
-    _supportedServices.serviceVersion(Routing, 1);
+#ifdef KNX_IS_ROUTER
+    _supportedServices.serviceVersion(Routing, KNX_SERVICE_FAMILY_ROUTING);
 #endif
 
     // IP Current Config DIB (0x04) — current IP address / subnet / gateway / assignment method. Mirrors
