@@ -601,6 +601,16 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
         return;
     }
 
+    // Guard the CRI layer octet (CRI[2]) before reading it: the generic dispatch length check only ensures the
+    // CRI type octet is present. A TUNNEL_CONNECTION CRI is 4 octets (03_08_04 §5.4.3.1); reject a truncated one
+    // instead of reading a stale leftover byte (in-bounds of the rx buffer, but undefined) as the layer.
+    if (connRequest.cri().type() == TUNNEL_CONNECTION && length < LEN_KNXIP_HEADER + 2 * LEN_IPHPAI + 4)
+    {
+        KnxIpConnectResponse connRes(0x00, E_CONNECTION_TYPE);
+        _platform.sendBytesUniCast(connRequest.hpaiCtrl().ipAddress(), connRequest.hpaiCtrl().ipPortNumber(), connRes.data(), connRes.totalLength());
+        return;
+    }
+
     if (connRequest.cri().type() == TUNNEL_CONNECTION && connRequest.cri().layer() != 0x02) // LinkLayer
     {
 #ifdef OPENKNX_HW_BUSMON
