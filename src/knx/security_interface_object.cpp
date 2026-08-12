@@ -30,6 +30,8 @@ SecurityInterfaceObject::SecurityInterfaceObject()
             },
             // WriteCallback of PID_LOAD_STATE_CONTROL
             [](SecurityInterfaceObject* obj, uint16_t start, uint8_t count, const uint8_t* data) -> uint8_t {
+                // see TableObject: drop a short LE_ADDITIONAL_LOAD_CONTROLS write to avoid an OOB read past the payload
+                if (count == 0 || (count < 8 && data[0] == LE_ADDITIONAL_LOAD_CONTROLS)) return 1;
                 obj->loadEvent(data);
                 return 1;
             }),

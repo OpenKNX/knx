@@ -313,6 +313,9 @@ void TableObject::initializeProperties(size_t propertiesSize, Property** propert
                 return 1;
             },
             [](TableObject* obj, uint16_t start, uint8_t count, const uint8_t* data) -> uint8_t {
+                // LE_ADDITIONAL_LOAD_CONTROLS reads data[1..7] (8 octets); drop a short write (or one with no
+                // opcode) so additionalLoadControls cannot OOB-read past the payload.
+                if (count == 0 || (count < 8 && data[0] == LE_ADDITIONAL_LOAD_CONTROLS)) return 1;
                 obj->loadEvent(data);
                 return 1;
             })
