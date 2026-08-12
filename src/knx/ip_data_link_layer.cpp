@@ -114,6 +114,7 @@ void IpDataLinkLayer::loop()
             KnxIpSearchResponse searchResponse(_ipParameters, _deviceObject);
 
             auto hpai = searchRequest.hpai();
+            if (hpai.code() != IPV4_UDP) break; // 03_08_02 Core 7.6.1: discovery is UDP-only -> discard a TCP-HPAI SEARCH_REQUEST
 #ifdef KNX_ACTIVITYCALLBACK
             if(_dllcb)
                 _dllcb->activity((_netIndex << KNX_ACTIVITYCALLBACK_NET) | (KNX_ACTIVITYCALLBACK_DIR_SEND << KNX_ACTIVITYCALLBACK_DIR) | (KNX_ACTIVITYCALLBACK_IPUNICAST));
@@ -147,6 +148,7 @@ void IpDataLinkLayer::loop()
 void IpDataLinkLayer::loopHandleSearchRequestExtended(uint8_t* buffer, uint16_t length)
 {
     KnxIpSearchRequestExtended searchRequest(buffer, length);
+    if (searchRequest.hpai().code() != IPV4_UDP) return;
 
     if(searchRequest.srpByProgMode)
     {
