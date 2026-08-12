@@ -304,7 +304,11 @@ void BauSystemB::propertyValueWriteIndication(Priority priority, HopCountType ho
         // Memory-safety guard (see propertyValueExtWriteIndication): numberOfElements is attacker-controlled and
         // DataProperty::write() memcpy()s numberOfElements*ElementSize() from `data`; never read past the payload.
         Property* prop = obj->property((PropertyID)propertyId);
-        if (prop == nullptr || (uint32_t)numberOfElements * prop->ElementSize() <= length)
+        // PID_LOAD_STATE_CONTROL (PDT_CONTROL, ElementSize reports 1) reaches additionalLoadControls, which reads
+        // 8 octets for LE_ADDITIONAL_LOAD_CONTROLS; ElementSize does not bound that -> drop a short/corrupt one.
+        bool loadCtrlShort = (propertyId == PID_LOAD_STATE_CONTROL && length >= 1
+                              && data[0] == LE_ADDITIONAL_LOAD_CONTROLS && length < 8);
+        if (!loadCtrlShort && (prop == nullptr || (uint32_t)numberOfElements * prop->ElementSize() <= length))
             obj->writeProperty((PropertyID)propertyId, startIndex, data, numberOfElements);
     }
     propertyValueReadIndication(priority, hopType, asap, secCtrl, objectIndex, propertyId, numberOfElements, startIndex);
@@ -323,7 +327,11 @@ void BauSystemB::propertyValueExtWriteIndication(Priority priority, HopCountType
         // `length`-octet payload (and persisting the stolen bytes into the property). Reject a write that
         // claims more element data than the payload carries.
         Property* prop = obj->property((PropertyID)propertyId);
-        if (prop != nullptr && (uint32_t)numberOfElements * prop->ElementSize() > length)
+        // see propertyValueWriteIndication: the LE_ADDITIONAL_LOAD_CONTROLS callback reads 8 octets (PDT_CONTROL
+        // ElementSize reports 1 and does not bound it) -> reject a short/corrupt load-control write.
+        bool loadCtrlShort = (propertyId == PID_LOAD_STATE_CONTROL && length >= 1
+                              && data[0] == LE_ADDITIONAL_LOAD_CONTROLS && length < 8);
+        if (loadCtrlShort || (prop != nullptr && (uint32_t)numberOfElements * prop->ElementSize() > length))
             returnCode = ReturnCodes::DataOverflow;
         else
             obj->writeProperty((PropertyID)propertyId, startIndex, data, numberOfElements);
@@ -524,8 +532,11 @@ void BauSystemB::functionPropertyExtCommandIndication(Priority priority, HopCoun
         else if (propType == PDT_CONTROL)
         {
             uint8_t count = 1;
-            // write the event
-            obj->writeProperty((PropertyID)propertyId, 1, data, count);
+            // guard: LE_ADDITIONAL_LOAD_CONTROLS reads 8 octets (see propertyValueWriteIndication); skip a short/corrupt one
+            if (propertyId == PID_LOAD_STATE_CONTROL && length >= 1 && data[0] == LE_ADDITIONAL_LOAD_CONTROLS && length < 8)
+                count = 0;
+            else
+                obj->writeProperty((PropertyID)propertyId, 1, data, count);
             if (count == 1)
             {
                 // Read the current state (one byte only) for the response
@@ -906,7 +917,10 @@ void BauSystemB::propertyValueWrite(ObjectType objectType, uint8_t objectInstanc
         // memcpy()s numberOfElements*ElementSize() from `data`. Reject a write claiming more element data than
         // the `length`-octet payload carries -> no over-read past the cEMI request buffer, no info-leak persisted.
         Property* prop = obj->property((PropertyID)propertyId);
-        if (prop != nullptr && (uint32_t)numberOfElements * prop->ElementSize() > length)
+        // see propertyValueWriteIndication: bound the LE_ADDITIONAL_LOAD_CONTROLS 8-octet read against the payload
+        bool loadCtrlShort = (propertyId == PID_LOAD_STATE_CONTROL && length >= 1
+                              && data[0] == LE_ADDITIONAL_LOAD_CONTROLS && length < 8);
+        if (loadCtrlShort || (prop != nullptr && (uint32_t)numberOfElements * prop->ElementSize() > length))
             numberOfElements = 0;
         else
             obj->writeProperty((PropertyID)propertyId, startIndex, data, numberOfElements);
