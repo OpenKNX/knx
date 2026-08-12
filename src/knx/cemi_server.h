@@ -34,6 +34,7 @@ class CemiServer
 #endif
 
     void dataLinkLayer(DataLinkLayer& layer);
+    DataLinkLayer* dataLinkLayer() const { return _dataLinkLayer; }
 #ifdef KNX_TUNNELING
     void dataLinkLayerPrimary(DataLinkLayer& layer);
 #endif
