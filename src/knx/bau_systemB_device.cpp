@@ -208,6 +208,7 @@ void BauSystemBDevice::groupValueReadIndication(uint16_t asap, Priority priority
     }
 #endif
 
+    if (asap == 0 || asap > _groupObjTable.entryCount()) return;
     GroupObject& go = _groupObjTable.get(asap);
 
     if (!go.communicationEnable() || !go.readEnable())
@@ -220,6 +221,7 @@ void BauSystemBDevice::groupValueReadIndication(uint16_t asap, Priority priority
 void BauSystemBDevice::groupValueReadAppLayerConfirm(uint16_t asap, Priority priority, HopCountType hopType, const SecurityControl &secCtrl, uint8_t* data,
     uint8_t dataLength)
 {
+    if (asap == 0 || asap > _groupObjTable.entryCount()) return;
     GroupObject& go = _groupObjTable.get(asap);
 
     if (!go.communicationEnable() || !go.responseUpdateEnable())
@@ -242,6 +244,7 @@ void BauSystemBDevice::groupValueWriteIndication(uint16_t asap, Priority priorit
         return;
     }
 #endif
+    if (asap == 0 || asap > _groupObjTable.entryCount()) return;
     GroupObject& go = _groupObjTable.get(asap);
 
     if (!go.communicationEnable() || !go.writeEnable())
