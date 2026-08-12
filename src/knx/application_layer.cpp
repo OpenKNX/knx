@@ -212,23 +212,22 @@ void ApplicationLayer::dataSystemBroadcastIndication(HopCountType hopType, Prior
     const uint8_t* data = apdu.data();
     switch (apdu.type())
     {
-        // TODO: testInfo could be of any length
         case SystemNetworkParameterRead:
         {
+            // 03_03_07 3.3.8: test_info operand is variable-length (data[5..n]); forward the real slice+length, no fixed copy (no consumer reads test_info[0])
+            if (apdu.length() < 6) break; // object_type + PID + >=1 operand octet (up to data[5])
             uint16_t objectType;
             uint16_t propertyId;
-            uint8_t testInfo[2];
             popWord(objectType, data + 1);
             popWord(propertyId, data + 3);
-            popByte(testInfo[0], data + 4);
-            popByte(testInfo[1], data + 5);
-            propertyId = (propertyId >> 4) & 0x0FFF;;
-            testInfo[0] &= 0x0F;
-            _bau.systemNetworkParameterReadIndication(priority, hopType, secCtrl, objectType, propertyId, testInfo, sizeof(testInfo));
+            propertyId = (propertyId >> 4) & 0x0FFF;
+            _bau.systemNetworkParameterReadIndication(priority, hopType, secCtrl, objectType, propertyId,
+                                                      (uint8_t*)(data + 4), apdu.length() - 4);
             break;
         }
         case DomainAddressSerialNumberWrite:
         {
+            if (apdu.length() < 13) break;
             const uint8_t* knxSerialNumber = &data[1];
             const uint8_t* domainAddress = &data[7];
             _bau.domainAddressSerialNumberWriteIndication(priority, hopType, secCtrl, domainAddress, knxSerialNumber);
@@ -236,6 +235,7 @@ void ApplicationLayer::dataSystemBroadcastIndication(HopCountType hopType, Prior
         }
         case DomainAddressSerialNumberRead:
         {
+            if (apdu.length() < 7) break;
             const uint8_t* knxSerialNumber = &data[1];
             _bau.domainAddressSerialNumberReadIndication(priority, hopType, secCtrl, knxSerialNumber);
             break;
@@ -256,23 +256,22 @@ void ApplicationLayer::dataSystemBroadcastConfirm(HopCountType hopType, Priority
     const uint8_t* data = apdu.data();
     switch (apdu.type())
     {
-        // TODO: testInfo could be of any length
         case SystemNetworkParameterRead:
         {
+            // 03_03_07 3.3.8: test_info operand is variable-length (data[5..n]); forward the real slice+length, no fixed copy (no consumer reads test_info[0])
+            if (apdu.length() < 6) break; // object_type + PID + >=1 operand octet (up to data[5])
             uint16_t objectType;
             uint16_t propertyId;
-            uint8_t testInfo[2];
             popWord(objectType, data + 1);
             popWord(propertyId, data + 3);
-            popByte(testInfo[0], data + 4);
-            popByte(testInfo[1], data + 5);
-            propertyId = (propertyId >> 4) & 0x0FFF;;
-            testInfo[0] &= 0x0F;
-            _bau.systemNetworkParameterReadLocalConfirm(priority, hopType, secCtrl, objectType, propertyId, testInfo, sizeof(testInfo), status);
+            propertyId = (propertyId >> 4) & 0x0FFF;
+            _bau.systemNetworkParameterReadLocalConfirm(priority, hopType, secCtrl, objectType, propertyId,
+                                                        (uint8_t*)(data + 4), apdu.length() - 4, status);
             break;
         }
         case DomainAddressSerialNumberWrite:
         {
+            if (apdu.length() < 13) break;
             const uint8_t* knxSerialNumber = &data[1];
             const uint8_t* domainAddress = &data[7];
             _bau.domainAddressSerialNumberWriteLocalConfirm(priority, hopType, secCtrl, domainAddress, knxSerialNumber, status);
@@ -280,6 +279,7 @@ void ApplicationLayer::dataSystemBroadcastConfirm(HopCountType hopType, Priority
         }
         case DomainAddressSerialNumberRead:
         {
+            if (apdu.length() < 7) break;
             const uint8_t* knxSerialNumber = &data[1];
             _bau.domainAddressSerialNumberReadLocalConfirm(priority, hopType, secCtrl, knxSerialNumber, status);
             break;
