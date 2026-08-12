@@ -20,6 +20,11 @@ AssociationTableObject::AssociationTableObject(Memory& memory)
 
 uint16_t AssociationTableObject::entryCount()
 {
+    // Guard like the sister tables (AddressTableObject): _tableData is only assigned at LS_LOADED. A partial ETS
+    // load (address table loaded, association not) or a selective association unload leaves it null/dangling ->
+    // ntohs(_tableData[0]) would null-deref / use-after-free on a group telegram.
+    if (loadState() != LS_LOADED || _tableData == nullptr)
+        return 0;
     return ntohs(_tableData[0]);
 }
 
