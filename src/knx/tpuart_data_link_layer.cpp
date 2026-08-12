@@ -101,7 +101,8 @@ void TpUartDataLinkLayer::monitor()
 #if defined(OPENKNX_HW_BUSMON) && defined(KNX_TUNNELING)
     // Baseline the loss counter at monitor entry so pre-existing overflows don't set a spurious "lost" bit.
     _lastBusMonRxOverflow = _tpuart.getStatistics().getRxUartOverflow()
-                          + _tpuart.getStatistics().getRxSearchBufferOverflow();
+                          + _tpuart.getStatistics().getRxSearchBufferOverflow()
+                          + _tpuart.getStatistics().getRxFrameBufferOverflow();
 #endif
 }
 
@@ -265,7 +266,8 @@ void TpUartDataLinkLayer::processRxFrame(TPUart::Frame &tpFrame)
     auto busMonStatus = [&](bool frameError) -> uint8_t {
         uint8_t status = frameError ? 0x80 : 0x00;
         uint32_t rxOvf = _tpuart.getStatistics().getRxUartOverflow()
-                       + _tpuart.getStatistics().getRxSearchBufferOverflow();
+                       + _tpuart.getStatistics().getRxSearchBufferOverflow()
+                       + _tpuart.getStatistics().getRxFrameBufferOverflow(); // loop-drained rx-frame ring: the primary drop point under IP-TX backpressure
         if (rxOvf != _lastBusMonRxOverflow)
         {
             status |= 0x08; // lost
