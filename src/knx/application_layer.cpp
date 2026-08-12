@@ -1244,12 +1244,12 @@ void ApplicationLayer::individualIndication(HopCountType hopType, Priority prior
             break;
         case PropertyExtDescriptionRead:
         {
-            if (apdu.length() < 9) break;
+            if (apdu.length() < 8) break;
             ObjectType objectType = (ObjectType)(((data[1] & 0xff) << 8) | (data[2] & 0xff));
             uint16_t objectInstance = ((data[3] & 0xff) << 4) | ((data[4] & 0xf0) >> 4);
             uint16_t propertyId = ((data[4] & 0x0f) << 8) | (data[5] & 0xff);
             uint8_t descriptionType = (data[6] & 0xf0) >> 4;
-            uint16_t propertyIndex = ((data[7] & 0x0f) << 8) | (data[8] & 0xff);
+            uint16_t propertyIndex = ((data[6] & 0x0f) << 8) | (data[7] & 0xff);
 
             _bau.propertyExtDescriptionReadIndication(priority, hopType, tsap, secCtrl, objectType, objectInstance, propertyId, descriptionType, propertyIndex);
             break;
