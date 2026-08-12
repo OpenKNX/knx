@@ -203,7 +203,7 @@ void KnxIpSearchResponseExtended::setExtendedDeviceInfo()
     KnxIpExtendedDeviceInformationDIB _extended(_data + currentPos);
     _extended.length(LEN_EXTENDED_DEVICE_INFORMATION_DIB);
     _extended.code(EXTENDED_DEVICE_INFO);
-    _extended.status(0x01); //FIXME dont know encoding PID_MEDIUM_STATUS=51 RouterObject
+    _extended.status(0x00); // interim: 0x01 permanently advertised TP1 as COMMUNICATION_IMPOSSIBLE; emit healthy until wired to live PID_MEDIUM_STATUS (dormant, Core v1)
     _extended.localMaxApdu(254); //FIXME is this correct?
     _extended.deviceDescriptor(MASK_VERSION);
 
