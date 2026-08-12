@@ -357,9 +357,9 @@ void CemiServer::handleMPropWrite(CemiFrame& frame, uint8_t channelId)
     printHex(" -> data: ", requestData, requestDataSize);
 
     // Patch request for device address in device object
-    if (((ObjectType) objectType == OT_DEVICE) && 
+    if (((ObjectType) objectType == OT_DEVICE) &&
                         (propertyId == PID_DEVICE_ADDR) &&
-                        (numberOfElements == 1))
+                        (numberOfElements == 1) && requestDataSize >= 1) // requestData[0] must exist (dataLength >= 8)
     {
         // Temporarily store new cEMI client address in memory
         // We also be sent back if the client requests it again
@@ -367,9 +367,9 @@ void CemiServer::handleMPropWrite(CemiFrame& frame, uint8_t channelId)
         print("cEMI client address: ");
         println(_clientAddress, HEX);
     }
-    else if (((ObjectType) objectType == OT_DEVICE) && 
+    else if (((ObjectType) objectType == OT_DEVICE) &&
                         (propertyId == PID_SUBNET_ADDR) &&
-                        (numberOfElements == 1))
+                        (numberOfElements == 1) && requestDataSize >= 1) // requestData[0] must exist (dataLength >= 8)
     {
         // Temporarily store new cEMI client address in memory
         // We also be sent back if the client requests it again
