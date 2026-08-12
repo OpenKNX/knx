@@ -1124,8 +1124,7 @@ void ApplicationLayer::individualIndication(HopCountType hopType, Priority prior
         {
             // These reserved bits must be 0
             uint8_t reservedBits = data[0] & 0x1e;
-            if (reservedBits != 0)
-                return;
+            if (reservedBits != 0) return;
 
             // handle erase code for factory reset (setting FDSK again as toolkey, etc.)
             RestartType restartType = (RestartType) (data[0] & 0x3f);
@@ -1133,6 +1132,7 @@ void ApplicationLayer::individualIndication(HopCountType hopType, Priority prior
             uint8_t channel = 0;
             if (restartType == RestartType::MasterReset)
             {
+                if (apdu.length() < 3) break; // MasterReset carries eraseCode(data[1]) + channel(data[2]); drop a short frame
                 eraseCode = (EraseCode) data[1];
                 channel = data[2];
             }
