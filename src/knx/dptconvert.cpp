@@ -770,7 +770,7 @@ int busValueToScaling(const uint8_t* payload, size_t payload_length, const Dpt& 
             value = unsigned16FromPayload(payload, 0);
             return true;
         case 1:
-            value = (uint8_t)(unsigned8FromPayload(payload, 2) * 100.0 / 255.0);
+            value = (uint8_t)round(unsigned8FromPayload(payload, 2) * 100.0 / 255.0); // round like the encode side (else 51% -> 50% off-by-one)
             return true;
     }
 
@@ -843,7 +843,7 @@ int busValueToFlaggedScaling(const uint8_t* payload, size_t payload_length, cons
     switch (datatype.index)
     {
         case 0:
-            value = (uint8_t)(unsigned8FromPayload(payload, 0) * 100.0 / 255.0);
+            value = (uint8_t)round(unsigned8FromPayload(payload, 0) * 100.0 / 255.0); // round like the encode side (DPT 239.001 off-by-one)
             return true;
         case 1:
             value = bitFromPayload(payload, 15);
