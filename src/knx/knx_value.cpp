@@ -403,7 +403,7 @@ int32_t KNXValue::intValue() const
     switch (_type)
     {
         case IntType:
-            return _value.ulongValue;
+            return _value.intValue;
         case BoolType:
         case UCharType:
         case UShortType:
@@ -436,7 +436,7 @@ int64_t KNXValue::longValue() const
         case UIntType:
             return (int64_t)_value.uintValue;
         case ULongType:
-            return (int64_t)_value.uintValue;
+            return (int64_t)_value.ulongValue;
         case TimeType:
             return (int64_t)ulongValue();
         case CharType:
@@ -472,7 +472,7 @@ double KNXValue::doubleValue() const
         case UIntType:
             return _value.uintValue;
         case ULongType:
-            return _value.uintValue;
+            return _value.ulongValue;
         case TimeType:
             return ulongValue();
         case CharType:
