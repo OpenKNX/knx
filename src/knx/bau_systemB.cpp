@@ -282,7 +282,9 @@ void BauSystemB::propertyExtDescriptionReadIndication(Priority priority, HopCoun
     if (obj)
         obj->readPropertyDescription(pid, pidx, writeEnable, type, numberOfElements, access);
 
-    applicationLayer().propertyExtDescriptionReadResponse(AckRequested, priority, hopType, asap, secCtrl, objectType, objectInstance, propertyId, propertyIndex,
+    // Return the RESOLVED pid/index (readPropertyDescription resolves them in place, like the non-ext handler):
+    // echoing the client's propertyId/propertyIndex made by-index reads report pid=0 -> ETS could not enumerate PIDs.
+    applicationLayer().propertyExtDescriptionReadResponse(AckRequested, priority, hopType, asap, secCtrl, objectType, objectInstance, pid, pidx,
         descriptionType, writeEnable, type, numberOfElements, access);
 }
 
