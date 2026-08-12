@@ -803,9 +803,10 @@ int busValueToLocale(const uint8_t* payload, size_t payload_length, const Dpt& d
     ASSERT_PAYLOAD(datatype.mainGroup == 231 ? 4 : 2);
     if (!datatype.index || (datatype.mainGroup == 231 && datatype.index == 1))
     {
-        char code[2];
+        static char code[3]; // static: `value` stores this pointer; a local array would dangle after return
         code[0] = unsigned8FromPayload(payload, datatype.index * 2);
         code[1] = unsigned8FromPayload(payload, datatype.index * 2 + 1);
+        code[2] = 0; // NUL-terminate the 2-char code
         value = code;
         return true;
     }
