@@ -293,7 +293,13 @@ void BauSystemB::propertyValueWriteIndication(Priority priority, HopCountType ho
 {
     InterfaceObject* obj = getInterfaceObject(objectIndex);
     if(obj)
-        obj->writeProperty((PropertyID)propertyId, startIndex, data, numberOfElements);
+    {
+        // Memory-safety guard (see propertyValueExtWriteIndication): numberOfElements is attacker-controlled and
+        // DataProperty::write() memcpy()s numberOfElements*ElementSize() from `data`; never read past the payload.
+        Property* prop = obj->property((PropertyID)propertyId);
+        if (prop == nullptr || (uint32_t)numberOfElements * prop->ElementSize() <= length)
+            obj->writeProperty((PropertyID)propertyId, startIndex, data, numberOfElements);
+    }
     propertyValueReadIndication(priority, hopType, asap, secCtrl, objectIndex, propertyId, numberOfElements, startIndex);
 }
 
@@ -304,7 +310,17 @@ void BauSystemB::propertyValueExtWriteIndication(Priority priority, HopCountType
 
     InterfaceObject* obj = getInterfaceObject(objectType, objectInstance);
     if(obj)
-        obj->writeProperty((PropertyID)propertyId, startIndex, data, numberOfElements);
+    {
+        // Memory-safety: numberOfElements is attacker-controlled; DataProperty::write() clamps it only against
+        // _maxElements and then memcpy()s numberOfElements*ElementSize() from `data`, over-reading the
+        // `length`-octet payload (and persisting the stolen bytes into the property). Reject a write that
+        // claims more element data than the payload carries.
+        Property* prop = obj->property((PropertyID)propertyId);
+        if (prop != nullptr && (uint32_t)numberOfElements * prop->ElementSize() > length)
+            returnCode = ReturnCodes::DataOverflow;
+        else
+            obj->writeProperty((PropertyID)propertyId, startIndex, data, numberOfElements);
+    }
     else
         returnCode = ReturnCodes::AddressVoid;
 
@@ -871,7 +887,17 @@ void BauSystemB::propertyValueWrite(ObjectType objectType, uint8_t objectInstanc
 {
     InterfaceObject* obj =  getInterfaceObject(objectType, objectInstance);
     if(obj)
-        obj->writeProperty((PropertyID)propertyId, startIndex, data, numberOfElements);
+    {
+        // Memory-safety (same class as propertyValue(Ext)WriteIndication, but this is the cEMI-server feeder):
+        // the length is passed but DataProperty::write() clamps count only against _maxElements and then
+        // memcpy()s numberOfElements*ElementSize() from `data`. Reject a write claiming more element data than
+        // the `length`-octet payload carries -> no over-read past the cEMI request buffer, no info-leak persisted.
+        Property* prop = obj->property((PropertyID)propertyId);
+        if (prop != nullptr && (uint32_t)numberOfElements * prop->ElementSize() > length)
+            numberOfElements = 0;
+        else
+            obj->writeProperty((PropertyID)propertyId, startIndex, data, numberOfElements);
+    }
     else
         numberOfElements = 0;
 }
