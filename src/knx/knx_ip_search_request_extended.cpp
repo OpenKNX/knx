@@ -11,7 +11,11 @@ KnxIpSearchRequestExtended::KnxIpSearchRequestExtended(uint8_t* data, uint16_t l
     int currentPos = LEN_KNXIP_HEADER + LEN_IPHPAI;
     while(currentPos < length)
     {
-        switch(data[currentPos+1])
+        // Guard the SRP block (03_08_02 Core §7.6.3.3): the structure-length octet must be >= 2 and the whole
+        // block must fit the datagram -- a 0 length would loop forever (remote loop()-DoS) and an over-long one
+        // reads past the frame. Also mask the mandatory (M) bit 7 of the type so conformant M-SRPs still match.
+        if (data[currentPos] < 2 || currentPos + data[currentPos] > length) break;
+        switch(data[currentPos + 1] & 0x7F)
         {
             case 0x01:
                 srpByProgMode = true;
@@ -32,7 +36,7 @@ KnxIpSearchRequestExtended::KnxIpSearchRequestExtended(uint8_t* data, uint16_t l
                 for(int i = 0; i < data[currentPos]-2; i++)
                 {
                     if(data[currentPos+i+2] == 0) continue;
-                    if(data[currentPos+i+2] > REQUESTED_DIBS_MAX)
+                    if(data[currentPos+i+2] >= REQUESTED_DIBS_MAX) // >= : requestedDIBs[REQUESTED_DIBS_MAX] would write 1 past the array (valid indices 0..MAX-1)
                     {
                         print("Requested DIBs too high ");
                         continue;
