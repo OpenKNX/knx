@@ -340,6 +340,9 @@ void TransportLayer::dataIndividualConfirm(AckType ack, uint16_t destination, Ho
                 //A0: do nothing
                 break;
             case Connecting:
+                _currentState = Closed; // 03_03_04 §5.4.3 Style-3: E20 x CONNECTING = CLOSED / A5. Without this the
+                                        // state stays CONNECTING while A5 disables both timers -> the connection
+                                        // wedges and the first reconnect after a failed T_CONNECT is swallowed.
                 A5(destination);
                 break;
             }
