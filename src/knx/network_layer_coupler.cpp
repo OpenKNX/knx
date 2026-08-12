@@ -303,15 +303,8 @@ void NetworkLayerCoupler::sendMsgHopCount(AckType ack, AddressType addrType, uin
             // IGNORE_ACKED
             return;
         }
-        if (npdu.hopCount() < 7)
-        {
-            // ROUTE_DECREMENTED
-            npdu.hopCount(npdu.hopCount() - 1);
-        }
-        else if (npdu.hopCount() == 7)
-        {
-            // ROUTE_UNMODIFIED
-        }
+        // ROUTE_DECREMENTED for hop count 1..7 (post-AN189: a hop-count-7 telegram no longer bypasses the filter table)
+        npdu.hopCount(npdu.hopCount() - 1);
     }
 
     // Use other interface
