@@ -37,6 +37,7 @@ void ApplicationLayer::dataGroupIndication(HopCountType hopType, Priority priori
         return;
 
     uint8_t len = apdu.length();
+    if (len == 0) return; // a 0-octet group APDU carries no APCI (malformed): avoid the 0-size VLA + the len-=1 underflow below
     uint8_t dataArray[len];
     uint8_t* data = dataArray;
     memcpy(data, apdu.data(), len);
