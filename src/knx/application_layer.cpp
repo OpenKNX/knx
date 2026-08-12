@@ -354,7 +354,7 @@ void ApplicationLayer::dataConnectedConfirm(uint16_t tsap)
 
 void ApplicationLayer::dataConnectedConfirm(uint16_t tsap, const SecurityControl& secCtrl)
 {
-    //FIXME: implement dataConnectedConfirm DataSecurity
+    //FIXME: implement dataConnectedConfirm DataSecurity: only needed when Data Security is active (off; KNX Secure track); non-secure path is complete (empty is correct).
 }
 #pragma endregion
 void ApplicationLayer::groupValueReadRequest(AckType ack, uint16_t asap, Priority priority, HopCountType hopType, const SecurityControl& secCtrl)
@@ -538,7 +538,7 @@ void ApplicationLayer::ftcDeviceDescriptorReadConnected(const SecurityControl& s
 }
 #endif
 
-//TODO: ApplicationLayer::systemNetworkParameterReadRequest()
+//TODO: ApplicationLayer::systemNetworkParameterReadRequest() not implemented: requester-only, device responds and never sends. Not needed.
 void ApplicationLayer::systemNetworkParameterReadResponse(Priority priority, HopCountType hopType, const SecurityControl &secCtrl,
                                                           uint16_t objectType, uint16_t propertyId,
                                                           uint8_t* testInfo, uint16_t testInfoLength,
@@ -551,7 +551,7 @@ void ApplicationLayer::systemNetworkParameterReadResponse(Priority priority, Hop
 
     pushWord(objectType, data);
     pushWord((propertyId << 4) & 0xFFF0, data + 2);                             // Reserved bits for test_info are always 0
-    uint8_t* pData = pushByteArray(&testInfo[1], testInfoLength - 1, data + 4); // TODO: upper reserved bits (testInfo + 0) have to put into the lower bits of data + 3
+    uint8_t* pData = pushByteArray(&testInfo[1], testInfoLength - 1, data + 4);
     memcpy(pData, testResult, testResultLength);
 
     //apdu.printPDU();
@@ -559,8 +559,8 @@ void ApplicationLayer::systemNetworkParameterReadResponse(Priority priority, Hop
     dataSystemBroadcastRequest(AckDontCare, hopType, SystemPriority, apdu, secCtrl);
 }
 
-//TODO: ApplicationLayer::domainAddressSerialNumberWriteRequest()
-//TODO: ApplicationLayer::domainAddressSerialNumberReadRequest()
+//TODO: ApplicationLayer::domainAddressSerialNumberWriteRequest() not implemented: requester-only, device responds and never sends. Not needed.
+//TODO: ApplicationLayer::domainAddressSerialNumberReadRequest() not implemented: requester-only, device responds and never sends. Not needed.
 void ApplicationLayer::domainAddressSerialNumberReadResponse(Priority priority, HopCountType hopType, const SecurityControl &secCtrl, const uint8_t* rfDoA,
                                                              const uint8_t* knxSerialNumber)
 {
@@ -578,8 +578,8 @@ void ApplicationLayer::domainAddressSerialNumberReadResponse(Priority priority, 
     dataSystemBroadcastRequest(AckDontCare, hopType, SystemPriority, apdu, secCtrl);
 }
 
-//TODO: ApplicationLayer::IndividualAddressSerialNumberWriteRequest()
-//TODO: ApplicationLayer::IndividualAddressSerialNumberReadRequest()
+//TODO: ApplicationLayer::IndividualAddressSerialNumberWriteRequest() not implemented: requester-only, device responds and never sends. Not needed.
+//TODO: ApplicationLayer::IndividualAddressSerialNumberReadRequest() not implemented: requester-only, device responds and never sends. Not needed.
 void ApplicationLayer::IndividualAddressSerialNumberReadResponse(Priority priority, HopCountType hopType, const SecurityControl &secCtrl, const uint8_t* domainAddress,
                                                                  const uint8_t* knxSerialNumber)
 {
