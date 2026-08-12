@@ -429,7 +429,8 @@ void BauSystemB::functionPropertyCommandIndication(Priority priority, HopCountTy
     InterfaceObject* obj = getInterfaceObject(objectIndex);
     if(obj)
     {
-        if (obj->property((PropertyID)propertyId)->Type() == PDT_FUNCTION)
+        Property* prop = obj->property((PropertyID)propertyId);
+        if (prop != nullptr && prop->Type() == PDT_FUNCTION) // property() returns nullptr for an unknown PID -> null-deref
         {
             obj->command((PropertyID)propertyId, data, length, resultData, resultLength);
             handled = true;
@@ -462,7 +463,8 @@ void BauSystemB::functionPropertyStateIndication(Priority priority, HopCountType
     InterfaceObject* obj = getInterfaceObject(objectIndex);
     if(obj)
     {
-        if (obj->property((PropertyID)propertyId)->Type() == PDT_FUNCTION)
+        Property* prop = obj->property((PropertyID)propertyId);
+        if (prop != nullptr && prop->Type() == PDT_FUNCTION) // property() returns nullptr for an unknown PID -> null-deref
         {
             obj->state((PropertyID)propertyId, data, length, resultData, resultLength);
             handled = true;
@@ -487,13 +489,15 @@ void BauSystemB::functionPropertyStateIndication(Priority priority, HopCountType
 void BauSystemB::functionPropertyExtCommandIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, ObjectType objectType, uint8_t objectInstance,
                                                       uint8_t propertyId, uint8_t* data, uint8_t length)
 {
+    if (length == 0) return; // the reserved input octet data[0] must be present; drop a truncated ext function-property command
     uint8_t resultData[kFunctionPropertyResultBufferMaxSize];
     uint8_t resultLength = 1; // we always have to include the return code at least
 
     InterfaceObject* obj = getInterfaceObject(objectType, objectInstance);
     if(obj)
     {
-        PropertyDataType propType = obj->property((PropertyID)propertyId)->Type();
+        Property* prop = obj->property((PropertyID)propertyId);
+        PropertyDataType propType = prop != nullptr ? prop->Type() : (PropertyDataType)0; // null (unknown PID) -> non-FUNCTION sentinel, never deref null
 
         if (propType == PDT_FUNCTION)
         {
@@ -543,13 +547,15 @@ void BauSystemB::functionPropertyExtCommandIndication(Priority priority, HopCoun
 void BauSystemB::functionPropertyExtStateIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, ObjectType objectType, uint8_t objectInstance,
                                                     uint8_t propertyId, uint8_t* data, uint8_t length)
 {
+    if (length == 0) return; // the reserved input octet data[0] must be present; drop a truncated ext function-property state read
     uint8_t resultData[kFunctionPropertyResultBufferMaxSize];
     uint8_t resultLength = sizeof(resultData); // tell the callee the maximum size of the buffer
 
     InterfaceObject* obj = getInterfaceObject(objectType, objectInstance);
     if(obj)
     {
-        PropertyDataType propType = obj->property((PropertyID)propertyId)->Type();
+        Property* prop = obj->property((PropertyID)propertyId);
+        PropertyDataType propType = prop != nullptr ? prop->Type() : (PropertyDataType)0; // null (unknown PID) -> non-FUNCTION sentinel, never deref null
 
         if (propType == PDT_FUNCTION)
         {
