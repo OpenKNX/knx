@@ -799,6 +799,9 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
                     discReq.hpaiCtrl().ipAddress(tunnels[firstResAndOccTunnel].IpAddress);
                     discReq.hpaiCtrl().ipPortNumber(tunnels[firstResAndOccTunnel].PortCtrl);
                     _platform.sendBytesUniCast(tunnels[firstResAndOccTunnel].IpAddress, tunnels[firstResAndOccTunnel].PortCtrl, discReq.data(), discReq.totalLength());
+                    // Audit-trail parity with every other teardown path: log the evicted session before Reset().
+                    recordTunnelSession(tunnels[firstResAndOccTunnel].IpAddress, tunnels[firstResAndOccTunnel].IndividualAddress,
+                                        tunnels[firstResAndOccTunnel].IsConfig ? TUN_CONFIG : TUN_DATA, tunnels[firstResAndOccTunnel].connectStart, END_CLOSED);
                     tunnels[firstResAndOccTunnel].Reset();
 
                     tunIdx = firstResAndOccTunnel;
