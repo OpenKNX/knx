@@ -140,10 +140,11 @@ uint16_t CemiFrame::totalLenght() const
 
 uint16_t CemiFrame::telegramLengthtTP() const
 {
+    const uint8_t addInfoLen = _data[1]; // cEMI additional-info bytes: _ctrl1 already skips them, the length must too
     if (frameType() == StandardFrame)
-        return totalLenght() - 2; /*-AddInfo -MsgCode - only one CTRL + CRC, */
+        return totalLenght() - 2 - addInfoLen; /*-AddInfo -MsgCode - only one CTRL + CRC, */
     else
-        return totalLenght() - 1; /*-AddInfo -MsgCode + CRC, */
+        return totalLenght() - 1 - addInfoLen; /*-AddInfo -MsgCode + CRC, */
 }
 
 void CemiFrame::fillTelegramTP(uint8_t* data)
