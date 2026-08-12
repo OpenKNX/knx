@@ -148,12 +148,12 @@ void KnxIpSearchResponseExtended::setTunnelingInfo(IpParameterObject& parameters
     uint16_t length = 0;
     parameters.readPropertyLength(PID_ADDITIONAL_INDIVIDUAL_ADDRESSES, length);
     
+    uint8_t addrbuffer[KNX_TUNNELING*2]; // function scope: `addresses` may point here and is read by the loop below
     const uint8_t *addresses;
     if(length == KNX_TUNNELING)
     {
         addresses = parameters.propertyData(PID_ADDITIONAL_INDIVIDUAL_ADDRESSES);
     } else {
-        uint8_t addrbuffer[KNX_TUNNELING*2];
         addresses = (uint8_t*)addrbuffer;
         for(int i = 0; i < KNX_TUNNELING; i++)
         {
