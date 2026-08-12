@@ -52,6 +52,7 @@ unsigned char Dpt::dataLength() const
         case 14:
         case 15:
         case 27:
+        case 231:
         case 241:
         case 251:
             return 4;
