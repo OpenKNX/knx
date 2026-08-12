@@ -352,7 +352,7 @@ int busValueToUnsigned8(const uint8_t* payload, size_t payload_length, const Dpt
 int busValueToSigned8(const uint8_t* payload, size_t payload_length, const Dpt& datatype, KNXValue& value)
 {
     ASSERT_PAYLOAD(1);
-    value = (uint8_t)(unsigned8FromPayload(payload, 0));
+    value = signed8FromPayload(payload, 0); // DPT 6 is V8 (signed): 0x80..0xFF must decode to -128..-1, not 128..255
     return true;
 }
 
