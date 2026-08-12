@@ -840,6 +840,11 @@ void ApplicationLayer::memoryRoutingTableReadResponse(AckType ack, Priority prio
 void ApplicationLayer::memoryExtReadResponse(AckType ack, Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl& secCtrl, ReturnCodes code,
                                              uint8_t number, uint32_t memoryAddress, uint8_t * memoryData)
 {
+    // Stack-overflow guard: memoryData is memcpy'd `number` bytes at APDU offset 5 (absolute ~15) into the
+    // fixed 264-byte CemiFrame buffer; clamp so 15+number can never exceed it (0xFF-6 = 249). NOTE: this only
+    // guards the response stack buffer -- the NVM-side OOB source read (bound vs getNonVolatileMemorySize) is
+    // still a separate open item.
+    if (number > 0xFF - 6) number = 0xFF - 6;
     CemiFrame frame(5 +  number);
     APDU& apdu = frame.apdu();
     apdu.type(MemoryExtReadResponse);
