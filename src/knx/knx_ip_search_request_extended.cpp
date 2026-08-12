@@ -56,7 +56,7 @@ IpHostProtocolAddressInformation& KnxIpSearchRequestExtended::hpai()
 
 bool KnxIpSearchRequestExtended::requestedDIB(uint8_t code)
 {
-    if(code > REQUESTED_DIBS_MAX) return false;
+    if(code >= REQUESTED_DIBS_MAX) return false; // >= : valid indices are 0..MAX-1 (matches the write-path guard)
     return requestedDIBs[code];
 }
 #endif
