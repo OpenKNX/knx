@@ -930,6 +930,12 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
         for (int x = 0; x < KNX_TUNNELING + KNX_TUNNELING_DEVMGMT; x++)
             if (tunnels[x].ChannelId == _lastChannelId)
                 channelIdInUse = true;
+#ifdef OPENKNX_HW_BUSMON
+        // The busmon connection's id lives in _busMonTunnel, outside tunnels[] -> include it so a wrapped
+        // _lastChannelId can never collide with an active busmon channel (03_08_02 Core §5.3.3 uniqueness).
+        if (_busMonTunnel.ChannelId != 0 && _busMonTunnel.ChannelId == _lastChannelId)
+            channelIdInUse = true;
+#endif
     } while (channelIdInUse);
 
     tun->ChannelId = _lastChannelId;
@@ -1275,6 +1281,7 @@ void IpTunnelServer::HandleBusMonitorConnect(KnxIpConnectRequest& connRequest, u
     _busMonTunnel.PortData = connRequest.hpaiData().ipPortNumber() ? connRequest.hpaiData().ipPortNumber() : srcPort;
     _busMonTunnel.PortCtrl = connRequest.hpaiCtrl().ipPortNumber() ? connRequest.hpaiCtrl().ipPortNumber() : srcPort;
     _busMonTunnel.SequenceCounter_S = 0;
+    _busMonSeq = 0; // restart the cEMI L_Busmon.ind status-octet sequence counter for the new busmon session
     _busMonTunnel.lastHeartbeat = millis();
     _busMonTunnel.ChannelId = _lastChannelId; // set last -> busMonitorActive() true only once fully set up
     _busMonTunnel.connectStart = millis();
