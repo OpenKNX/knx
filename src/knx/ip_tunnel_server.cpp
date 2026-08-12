@@ -1021,13 +1021,23 @@ void IpTunnelServer::HandleConnectionStateRequest(uint8_t* buffer, uint16_t leng
         return;
     }
 
-    // TODO check knx connection!
-    // if no connection return E_KNX_CONNECTION
+    // Set knxState to E_KNX_CONNECTION while the TP bus is not usable (bus down / chip absent), so the client
+    // sees "tunnel up, bus down" instead of a false-healthy heartbeat. busOperational() covers both the
+    // host<->chip link and the NCN bus-voltage bit (an externally-powered NCN keeps the link up when the bus
+    // power drops); an active busmon counts as usable. The driver debounces all of it -> no transient false alarm.
+    uint8_t knxState = E_NO_ERROR;
+#ifdef OPENKNX_HW_BUSMON
+    if (_hwBusMon && !_hwBusMon->hwBusOperational())
+        knxState = E_KNX_CONNECTION;
+#endif
 
-    // TODO check when to send E_DATA_CONNECTION
+    // No E_DATA_CONNECTION: an IP data-channel fault sits on the very path this reply travels -> undeliverable by
+    // construction (link down = the request never arrives and the reply never leaves); the client reaps such a
+    // dead IP path via its heartbeat timeout instead. E_KNX_CONNECTION differs: the bus fault is behind us while IP
+    // still carries the reply.
 
     tun->lastHeartbeat = millis();
-    KnxIpStateResponse stateRes(tun->ChannelId, E_NO_ERROR);
+    KnxIpStateResponse stateRes(tun->ChannelId, knxState);
     // Route-back (03_08_02 Core §5.2): a heartbeat may carry HPAI 0.0.0.0:0 -> reply to the stored control
     // endpoint (resolved from the packet source at CONNECT), else the response is lost and the client reaps.
     uint32_t rIp = stateRequest.hpaiCtrl().ipAddress() ? stateRequest.hpaiCtrl().ipAddress() : tun->IpAddress;

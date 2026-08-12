@@ -29,6 +29,7 @@ class IHwBusMonitorDll
     virtual bool hwBusMonExit() = 0;      // leave monitor mode -> BCU_CONNECTED; returns true if it actually reset (false if a local console busmon still owns the chip)
     virtual bool hwBusMonConnected() = 0; // chip back to normal operation?
     virtual bool hwBusMonActive() = 0;    // chip currently in monitor mode (any owner: ETS tunnel or local `bcu mon`)
+    virtual bool hwBusOperational() = 0;  // KNX bus actually usable (host<->chip link + bus voltage)?
 };
 #endif
 

@@ -76,6 +76,7 @@ class TpUartDataLinkLayer : public DataLinkLayer
     bool hwBusMonExit() override { if (_localBusmon) return false; reset(); return true; }
     bool hwBusMonConnected() override { return isConnected(); }
     bool hwBusMonActive() override { return isMonitoring(); } // any owner (ETS tunnel or local `bcu mon`)
+    bool hwBusOperational() override { return _tpuart.busOperational(); } // link + NCN bus-voltage, for the connectionstate heartbeat
 #endif
 
     void powerControl(bool state);
