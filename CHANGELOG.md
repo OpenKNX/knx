@@ -1,6 +1,6 @@
 # Changelog
 
-## v1dev (replace this with version and date when releasing to v1)
+## v2.4.0 - 2026-08-14
 
 - Update TPUart dependency to version 1.1.0
 - Fix: memory leak of `TPUart::Frame` on discarded TP frames. The frame was not deleted when the transmit queue was full or when the BCU was not connected / in busmonitor mode
