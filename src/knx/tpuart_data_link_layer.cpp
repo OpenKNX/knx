@@ -9,6 +9,10 @@
 #include "platform.h"
 #include "tpuart_data_link_layer.h"
 
+#ifdef OPENKNX_CON_DIAG
+uint16_t g_conRxRecv = 0; // isTransmitted frame reaching dataConReceived (con diag)
+#endif
+
 void TpUartDataLinkLayer::setRepetitions(uint8_t nack, uint8_t busy)
 {
     _tpuart.setRepetitions(nack, busy);
@@ -329,6 +333,9 @@ void TpUartDataLinkLayer::processRxFrame(TPUart::Frame &tpFrame)
     CemiFrame cemiFrame(cemiData, tpFrame.cemiSize());
 
     if (tpFrame.isTransmitted()) {
+#ifdef OPENKNX_CON_DIAG
+        g_conRxRecv++;
+#endif
         dataConReceived(cemiFrame, tpFrame.isAck());
         free(cemiData); // Frame::cemiData() returns a malloc()'d buffer -> must be free()'d, not delete'd
         return;
