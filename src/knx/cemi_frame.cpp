@@ -402,7 +402,29 @@ bool CemiFrame::valid() const
         || _npdu.octetCount() == 0xFF // not allowed
         || (_npdu.octetCount() > 15 && frameType() == StandardFrame)
         ){
-        print("Other issue");
+        // Name the failing check on the line (was a bare "Other issue").
+        print("cEMI invalid:");
+
+        if ((_ctrl1[0] & 0x40) > 0)
+            print(" ctrl1 bit6 set");
+
+        if ((_ctrl1[1] & 0xF) > 0)
+            print(" ctrl2 low nibble set (not a standard or extended frame)");
+
+        if (_npdu.octetCount() == 0xFF)
+            print(" octet count 0xFF");
+
+        if (_npdu.octetCount() > 15 && frameType() == StandardFrame)
+            print(" standard frame with octet count > 15");
+
+        print(" | ctrl1: 0x");
+        print(_ctrl1[0], HEX);
+        print(" ctrl2: 0x");
+        print(_ctrl1[1], HEX);
+        print(" octetCount: ");
+        println(_npdu.octetCount());
+
+        // No hex dump: printing is blocking and this branch is hit in bursts under fuzz load.
         return false;
         }
 
