@@ -154,17 +154,18 @@ void IpTunnelServer::loop()
                 tunnels[i].Reset();
             }
 #ifdef KNX_TUNNEL_RESEND
-            // KNX 03_08_04 Tunnelling §2.6.1 p.9: no TUNNELLING_ACK for the in-flight head within 1 s ->
-            // resend it verbatim once (same stamped seq); on the 2nd timeout disconnect the client.
-            else if (tunnels[i]._armed && millis() - tunnels[i]._sentAt > 1000)
+            // No ACK for the in-flight head within the request timeout -> resend verbatim (same stamped seq),
+            // disconnect after the last repeat. Data (TUNNELLING_REQUEST): 1 s + 1 repeat (03_08_04 §2.6.1 p.9).
+            // Config (DEVICE_CONFIGURATION_REQUEST): 10 s + 3 repeats (03_08_03; = certified refs 0/10/20/30 s).
+            else if (tunnels[i]._armed && millis() - tunnels[i]._sentAt > (tunnels[i].IsConfig ? 10000u : 1000u))
             {
-                if (tunnels[i]._retries == 0)
+                if (tunnels[i]._retries < (tunnels[i].IsConfig ? 3 : 1))
                 {
                     _platform.sendBytesUniCast(tunnels[i].IpAddress, tunnels[i].PortData, tunnels[i]._txBuf[tunnels[i]._txHead], tunnels[i]._txLen[tunnels[i]._txHead]);
 #ifdef OPENKNX_CON_DIAG
-                    g_conRetry++; // 1s resend fired
+                    g_conRetry++; // resend fired
 #endif
-                    tunnels[i]._retries = 1;
+                    tunnels[i]._retries++;
                     tunnels[i]._sentAt = millis();
                 }
                 else

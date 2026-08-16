@@ -44,7 +44,7 @@ class KnxIpTunnelConnection
     uint8_t _txCount = 0;   // queued slots (0..DEPTH)
     bool _armed = false;    // head is on the wire, awaiting ACK
     uint8_t _seq = 0;       // sequence counter stamped into the in-flight head
-    uint8_t _retries = 0;   // 0 = original send, 1 = repeat already sent
+    uint8_t _retries = 0;   // repeats already sent for the in-flight head (0 = original only; max 1 data / 3 config)
     uint32_t _sentAt = 0;   // millis() of the last (re)send of the head
 #endif
 
