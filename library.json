@@ -19,6 +19,6 @@
         "url": "https://github.com/OpenKNX/knx"
     },
     "dependencies": {
-        "TPUart": "https://github.com/OpenKNX/tpuart#ec/v1.2.0-beta.1"
+        "TPUart": "https://github.com/OpenKNX/tpuart#ec/1.2.0-beta.1"
     }
 }
