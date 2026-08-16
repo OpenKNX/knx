@@ -1074,7 +1074,8 @@ void IpTunnelServer::HandleConnectionStateRequest(uint8_t* buffer, uint16_t leng
         print("Channel ID nicht gefunden: ");
         println(stateRequest.channelId());
 #endif
-        KnxIpStateResponse stateRes(0x00, E_CONNECTION_ID);
+        // Echo the requested (unknown) channel id in the error, not 0 (03_08_04 §7.8.3; both refs do this).
+        KnxIpStateResponse stateRes(stateRequest.channelId(), E_CONNECTION_ID);
         _platform.sendBytesUniCast(stateRequest.hpaiCtrl().ipAddress(), stateRequest.hpaiCtrl().ipPortNumber(), stateRes.data(), stateRes.totalLength());
         return;
     }
@@ -1144,7 +1145,8 @@ void IpTunnelServer::HandleDisconnectRequest(uint8_t* buffer, uint16_t length)
         print("Channel ID nicht gefunden: ");
         println(discReq.channelId());
 #endif
-        KnxIpDisconnectResponse discRes(0x00, E_CONNECTION_ID);
+        // Echo the requested (unknown) channel id back in the error, not 0 (03_08_04 §7.8.4 / TSSH 3.6.2).
+        KnxIpDisconnectResponse discRes(discReq.channelId(), E_CONNECTION_ID);
         _platform.sendBytesUniCast(discReq.hpaiCtrl().ipAddress(), discReq.hpaiCtrl().ipPortNumber(), discRes.data(), discRes.totalLength());
         return;
     }
