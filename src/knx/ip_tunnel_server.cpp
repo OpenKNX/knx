@@ -1005,8 +1005,18 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
     if (_lastChannelId == 255)
         _lastChannelId = 0;
 
-    tun->IpAddress = srcIP;
-    tun->PortData = connRequest.hpaiData().ipPortNumber() ? connRequest.hpaiData().ipPortNumber() : srcPort;
+    // NAT route-back (03_08_02 §5.2): a data HPAI of 0.0.0.0 means "reply to the UDP source" -> use the packet
+    // source for address AND port; else a route-back client gets no indications.
+    if (connRequest.hpaiData().ipAddress() == 0)
+    {
+        tun->IpAddress = src_addr;
+        tun->PortData = src_port;
+    }
+    else
+    {
+        tun->IpAddress = connRequest.hpaiData().ipAddress();
+        tun->PortData = connRequest.hpaiData().ipPortNumber();
+    }
     tun->PortCtrl = connRequest.hpaiCtrl().ipPortNumber() ? connRequest.hpaiCtrl().ipPortNumber() : srcPort;
 
     tun->connectStart = millis(); // start of this session (for duration in the history)
