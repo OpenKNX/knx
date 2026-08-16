@@ -296,7 +296,12 @@ void IpDataLinkLayer::enabled(bool value)
 //    _println(_deviceObject.individualAddress());
     if (value && !_enabled)
     {
+#ifdef KNX_IS_ROUTER
         _platform.setupMultiCast(_ipParameters.propertyValue<uint32_t>(PID_ROUTING_MULTICAST_ADDRESS), KNXIP_MULTICAST_PORT);
+#else
+        // Non-routing device: join the fixed system-setup multicast (PID 65) so SEARCH_REQUEST still reaches us.
+        _platform.setupMultiCast(_ipParameters.propertyValue<uint32_t>(PID_SYSTEM_SETUP_MULTICAST_ADDRESS), KNXIP_MULTICAST_PORT);
+#endif
         _enabled = true;
         return;
     }

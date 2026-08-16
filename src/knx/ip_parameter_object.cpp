@@ -110,7 +110,28 @@ IpParameterObject::IpParameterObject(DeviceObject& deviceObject, Platform& platf
                 pushInt(DEFAULT_MULTICAST_ADDR, data);
                 return 1;
             }),
+#ifdef KNX_IS_ROUTER
         new DataProperty(PID_ROUTING_MULTICAST_ADDRESS, true, PDT_UNSIGNED_LONG, 1, ReadLv3 | WriteLv3, DEFAULT_MULTICAST_ADDR),
+#else
+        // Non-routing device: PID_ROUTING_MULTICAST_ADDRESS always reads 0.0.0.0 (03_08_02 §7.5.4.2). Callback
+        // (read 0, write accepted+ignored) so a persisted value can't surface a non-zero routing multicast.
+        new CallbackProperty<IpParameterObject>(this, PID_ROUTING_MULTICAST_ADDRESS, true, PDT_UNSIGNED_LONG, 1, ReadLv3 | WriteLv3,
+            [](IpParameterObject* io, uint16_t start, uint8_t count, uint8_t* data) -> uint8_t
+            {
+                if (start == 0)
+                {
+                    uint16_t currentNoOfElements = 1;
+                    pushWord(currentNoOfElements, data);
+                    return 1;
+                }
+                pushInt((uint32_t)0, data); // non-routing device: 0.0.0.0
+                return 1;
+            },
+            [](IpParameterObject* io, uint16_t start, uint8_t count, const uint8_t* data) -> uint8_t
+            {
+                return 1; // accept a write (ETS/tools may set it) but ignore it -> the read stays 0.0.0.0
+            }),
+#endif
         new DataProperty(PID_TTL, true, PDT_UNSIGNED_CHAR, 1, ReadLv3 | WriteLv3, (uint8_t)16),
         new CallbackProperty<IpParameterObject>(this, PID_KNXNETIP_DEVICE_CAPABILITIES, false, PDT_BITSET16, 1, ReadLv3 | WriteLv0,
             [](IpParameterObject* io, uint16_t start, uint8_t count, uint8_t* data) -> uint8_t 
