@@ -106,10 +106,15 @@ const IpTunnelServer::TunnelEvent* IpTunnelServer::tunnelHistoryAt(uint8_t index
 // L_Data.con-generation diagnostics: counters filled across the tpuart RX/TX path and this tunnel server,
 // dumped once a probe burst settles. Gated by OPENKNX_CON_DIAG (off in normal builds).
 static uint16_t g_conRouted = 0, g_conWire = 0, g_conSendFail = 0, g_conRetry = 0;
+// bus->tunnel indication path: call / individual / matched-by-IA / no-tunnel.
+static uint16_t g_indCall = 0, g_indIndiv = 0, g_indFound = 0, g_indNoTun = 0;
+// client->device ACK path: reached handleTunnelAck / matched an in-flight head.
+static uint16_t g_ackRecv = 0, g_ackMatch = 0;
 extern uint16_t g_rxTxWaitAckn, g_rxTxCompleted, g_txAwaitEcho, g_echoMismatch, g_echoTxIdle; // tpuart Receiver
 extern uint16_t g_txSent; // tpuart Transmitter (frames handed to TX_TRANSMIT)
 extern uint16_t g_rxTxDropped; // tpuart DataLinkLayer (rx-frame-buffer overflow drop)
 extern uint16_t g_conRxRecv; // knx TpUartDataLinkLayer (isTransmitted reaching dataConReceived)
+extern uint16_t g_bef3Drop; // knx IpDataLinkLayer (KNXnet/IP header total-length mismatch drop)
 #endif
 
 void IpTunnelServer::loop()
@@ -117,12 +122,12 @@ void IpTunnelServer::loop()
 #ifdef OPENKNX_CON_DIAG
     { // dump con counters once stable 4s after a probe burst (> the 3s probe timeout -> no mid-run dump)
         static uint16_t s_lastSum = 0; static uint32_t s_stableAt = 0; static bool s_dumped = false;
-        uint16_t sum = g_conRouted + g_conWire + g_rxTxWaitAckn + g_rxTxCompleted + g_conRxRecv + g_rxTxDropped;
+        uint16_t sum = g_conRouted + g_conWire + g_rxTxWaitAckn + g_rxTxCompleted + g_conRxRecv + g_rxTxDropped + g_indCall + g_ackRecv + g_bef3Drop;
         if (sum != s_lastSum) { s_lastSum = sum; s_stableAt = millis(); s_dumped = false; }
         else if (sum > 0 && !s_dumped && millis() - s_stableAt > 4000)
         {
-            print("[CONCNT] routed="); print((int)g_conRouted); print(" wire="); print((int)g_conWire); print(" sendFail="); print((int)g_conSendFail); print(" retry="); print((int)g_conRetry); print(" rxWaitAckn="); print((int)g_rxTxWaitAckn); print(" rxCompleted="); print((int)g_rxTxCompleted); print(" rxRecv="); print((int)g_conRxRecv); print(" txAwait="); print((int)g_txAwaitEcho); print(" echoMiss="); print((int)g_echoMismatch); print(" txIdle="); print((int)g_echoTxIdle); print(" txSent="); print((int)g_txSent); print(" rxDropped="); println((int)g_rxTxDropped);
-            g_conRouted = 0; g_conWire = 0; g_conSendFail = 0; g_conRetry = 0; g_rxTxWaitAckn = 0; g_rxTxCompleted = 0; g_rxTxDropped = 0; g_conRxRecv = 0; g_txAwaitEcho = 0; g_echoMismatch = 0; g_echoTxIdle = 0; g_txSent = 0;
+            print("[CONCNT] routed="); print((int)g_conRouted); print(" wire="); print((int)g_conWire); print(" sendFail="); print((int)g_conSendFail); print(" retry="); print((int)g_conRetry); print(" rxWaitAckn="); print((int)g_rxTxWaitAckn); print(" rxCompleted="); print((int)g_rxTxCompleted); print(" rxRecv="); print((int)g_conRxRecv); print(" txAwait="); print((int)g_txAwaitEcho); print(" echoMiss="); print((int)g_echoMismatch); print(" txIdle="); print((int)g_echoTxIdle); print(" txSent="); print((int)g_txSent); print(" rxDropped="); print((int)g_rxTxDropped); print(" indCall="); print((int)g_indCall); print(" indIndiv="); print((int)g_indIndiv); print(" indFound="); print((int)g_indFound); print(" indNoTun="); print((int)g_indNoTun); print(" ackRecv="); print((int)g_ackRecv); print(" ackMatch="); print((int)g_ackMatch); print(" bef3Drop="); println((int)g_bef3Drop);
+            g_conRouted = 0; g_conWire = 0; g_conSendFail = 0; g_conRetry = 0; g_rxTxWaitAckn = 0; g_rxTxCompleted = 0; g_rxTxDropped = 0; g_conRxRecv = 0; g_txAwaitEcho = 0; g_echoMismatch = 0; g_echoTxIdle = 0; g_txSent = 0; g_indCall = 0; g_indIndiv = 0; g_indFound = 0; g_indNoTun = 0; g_ackRecv = 0; g_ackMatch = 0; g_bef3Drop = 0;
             s_dumped = true;
         }
     }
@@ -323,6 +328,9 @@ void IpTunnelServer::dataConfirmationToTunnel(CemiFrame& frame)
 
 void IpTunnelServer::dataIndicationToTunnel(CemiFrame& frame)
 {
+#ifdef OPENKNX_CON_DIAG
+    g_indCall++;
+#endif
     if (frame.addressType() == AddressType::GroupAddress)
     {
         for (int i = 0; i < KNX_TUNNELING; i++)
@@ -331,6 +339,9 @@ void IpTunnelServer::dataIndicationToTunnel(CemiFrame& frame)
         return;
     }
 
+#ifdef OPENKNX_CON_DIAG
+    g_indIndiv++;
+#endif
     KnxIpTunnelConnection* tun = nullptr;
     for (int i = 0; i < KNX_TUNNELING; i++)
     {
@@ -346,6 +357,9 @@ void IpTunnelServer::dataIndicationToTunnel(CemiFrame& frame)
 
     if (tun == nullptr)
     {
+#ifdef OPENKNX_CON_DIAG
+        g_indNoTun++;
+#endif
 #ifdef KNX_LOG_TUNNELING
         print("Found no Tunnel for IA: ");
         println(frame.destinationAddress(), 16);
@@ -353,6 +367,9 @@ void IpTunnelServer::dataIndicationToTunnel(CemiFrame& frame)
         return;
     }
 
+#ifdef OPENKNX_CON_DIAG
+    g_indFound++;
+#endif
     sendFrameToTunnel(tun, frame);
 }
 
@@ -456,6 +473,9 @@ void IpTunnelServer::disconnectTunnel(KnxIpTunnelConnection* t, uint8_t reason)
 void IpTunnelServer::handleTunnelAck(uint8_t* buffer, uint16_t length)
 {
     if (length < LEN_KNXIP_HEADER + LEN_CH) return;
+#ifdef OPENKNX_CON_DIAG
+    g_ackRecv++;
+#endif
     KnxIpTunnelingAck ack(buffer, length);
     uint8_t ch = ack.connectionHeader().channelId();
     uint8_t seq = ack.connectionHeader().sequenceCounter();
@@ -464,6 +484,9 @@ void IpTunnelServer::handleTunnelAck(uint8_t* buffer, uint16_t length)
         {
             if (ack.connectionHeader().status() == E_NO_ERROR)
             {
+#ifdef OPENKNX_CON_DIAG
+                g_ackMatch++;
+#endif
                 tunnels[i]._txHead = (tunnels[i]._txHead + 1) % KNX_TUNNEL_RESEND_DEPTH;
                 tunnels[i]._txCount--;
                 tunnels[i]._armed = false;
