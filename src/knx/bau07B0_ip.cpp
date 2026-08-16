@@ -33,6 +33,9 @@ Bau07B0IP::Bau07B0IP(Platform& platform)
     _cemiServerObject.setMediumTypeAsSupported(DptMedium::KNX_TP1);
     _cemiServer.dataLinkLayer(_tpLayer);          // tunnelled L_Data is put onto the TP bus
     _cemiServer.dataLinkLayerPrimary(_ipLayer);
+#ifdef KNX_CEMI_TRANSPORT_LAYER
+    _cemiServer.transportLayer(_transLayer);      // serve the local cEMI Transport Layer services (03_06_03 §4.1.6)
+#endif
     _tpLayer.cemiServer(_cemiServer);
     _ipLayer.cemiServer(_cemiServer);
     _memory.addSaveRestore(&_cemiServerObject);

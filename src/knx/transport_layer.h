@@ -62,6 +62,13 @@ public:
     uint16_t getConnectionAddress();
 #pragma endregion
 
+#ifdef KNX_CEMI_TRANSPORT_LAYER
+    // cEMI local Transport Layer service (03_06_03 §4.1.6 / AN118): feed a T_Data_Individual/Connected.req APDU
+    // into the local app layer, capture its response into out. connected selects the primitive; returns the
+    // response length (0 = none). Synchronous.
+    uint16_t localTransportRequest(APDU& apdu, bool connected, uint8_t* out, uint16_t outMax);
+#endif
+
 #pragma region other
     void connectionTimeoutIndication();
     void ackTimeoutIndication();
@@ -118,4 +125,13 @@ private:
     ApplicationLayer& _applicationLayer;
     AddressTableObject* _groupAddressTable;
     NetworkLayer* _networkLayer;
+
+#ifdef KNX_CEMI_TRANSPORT_LAYER
+    // Response-capture window for localTransportRequest(): while active, an individual send is copied to
+    // _localCaptureBuf instead of going to the network layer.
+    bool _localCaptureActive = false;
+    uint8_t* _localCaptureBuf = nullptr;
+    uint16_t _localCaptureMax = 0;
+    uint16_t _localCaptureLen = 0;
+#endif
 };

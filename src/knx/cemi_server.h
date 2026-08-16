@@ -11,6 +11,7 @@ class BauSystemB;
 class DataLinkLayer;
 class CemiFrame;
 class IpTunnelServer;
+class TransportLayer;
 
 /**
  * This is an implementation of the cEMI server as specified in @cite knx:3/6/3.
@@ -38,6 +39,10 @@ class CemiServer
 #ifdef KNX_TUNNELING
     void dataLinkLayerPrimary(DataLinkLayer& layer);
 #endif
+#ifdef KNX_CEMI_TRANSPORT_LAYER
+    // Wire the device transport layer for the local T_Data_Individual/Connected services (03_06_03 §4.1.6).
+    void transportLayer(TransportLayer& layer);
+#endif
 
     // from data link layer
     // Only L_Data service
@@ -60,11 +65,17 @@ class CemiServer
     void handleMPropRead(CemiFrame& frame, uint8_t channelId);
     void handleMPropWrite(CemiFrame& frame, uint8_t channelId);
     void handleMReset(CemiFrame& frame, uint8_t channelId);
+#ifdef KNX_CEMI_TRANSPORT_LAYER
+    void handleLocalTransport(CemiFrame& frame, uint8_t channelId, bool connected);
+#endif
 
     DataLinkLayer* _dataLinkLayer = nullptr;
 #ifdef KNX_TUNNELING
     DataLinkLayer* _dataLinkLayerPrimary = nullptr;
     IpTunnelServer& _ipTunnelServer;
+#endif
+#ifdef KNX_CEMI_TRANSPORT_LAYER
+    TransportLayer* _transportLayer = nullptr;
 #endif
     BauSystemB& _bau;
 #ifdef USE_USB

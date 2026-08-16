@@ -5,6 +5,7 @@
 #include "application_layer.h"
 #include "platform.h"
 #include "bits.h"
+#include "string.h"
 #include <stdio.h>
 
 TransportLayer::TransportLayer(ApplicationLayer& layer): _savedFrame(0),
@@ -429,9 +430,42 @@ void TransportLayer::dataIndividualRequest(AckType ack, HopCountType hopType, Pr
 {
     //print.print("-> TL  ");
     //apdu.printPDU();
+#ifdef KNX_CEMI_TRANSPORT_LAYER
+    if (_localCaptureActive)
+    {
+        // cEMI local Transport Layer: capture the app's response for the cEMI client instead of the bus (03_06_03 §4.1.6.4/.5).
+        CemiFrame& frame = apdu.frame();
+        uint16_t len = frame.totalLenght();
+        if (len && len <= _localCaptureMax)
+        {
+            memcpy(_localCaptureBuf, frame.data(), len);
+            _localCaptureLen = len;
+        }
+        return;
+    }
+#endif
     TPDU& tpdu = apdu.frame().tpdu();
     _networkLayer->dataIndividualRequest(ack, destination, hopType, priority, tpdu);
 }
+
+#ifdef KNX_CEMI_TRANSPORT_LAYER
+uint16_t TransportLayer::localTransportRequest(APDU& apdu, bool connected, uint8_t* out, uint16_t outMax)
+{
+    // Arm capture, feed the APDU to the app layer as a local indication (source 0), disarm. asap 0 never
+    // matches an open connection, so the response takes the captured connectionless path. Synchronous.
+    _localCaptureBuf = out;
+    _localCaptureMax = outMax;
+    _localCaptureLen = 0;
+    _localCaptureActive = true;
+    if (connected)
+        _applicationLayer.dataConnectedIndication(SystemPriority, 0, apdu);
+    else
+        _applicationLayer.dataIndividualIndication(NetworkLayerParameter, SystemPriority, 0, apdu);
+    _localCaptureActive = false;
+    _localCaptureBuf = nullptr;
+    return _localCaptureLen;
+}
+#endif
 
 void TransportLayer::connectRequest(uint16_t destination, Priority priority)
 {

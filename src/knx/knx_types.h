@@ -45,6 +45,12 @@ enum MessageCode
     // L_Busmon service (HW busmonitor, cEMI 3/6/3)
     L_busmon_ind = 0x2B,
 
+    // Local cEMI Transport Layer services (03_06_03 §4.1.6); inert unless KNX_CEMI_TRANSPORT_LAYER is set.
+    T_Data_Connected_req = 0x41,
+    T_Data_Connected_ind = 0x89,
+    T_Data_Individual_req = 0x4A,
+    T_Data_Individual_ind = 0x94,
+
     // Data Properties
     M_PropRead_req = 0xFC,
     M_PropRead_con = 0xFB,

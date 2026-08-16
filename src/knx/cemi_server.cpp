@@ -10,6 +10,9 @@
 #include "bits.h"
 #include <stdio.h>
 #include "ip_tunnel_server.h"
+#ifdef KNX_CEMI_TRANSPORT_LAYER
+#include "transport_layer.h"
+#endif
 
 #ifndef KNX_TUNNELING
 CemiServer::CemiServer(BauSystemB& bau)
@@ -41,6 +44,12 @@ void CemiServer::dataLinkLayerPrimary(DataLinkLayer& layer)
     _dataLinkLayerPrimary = &layer;
 }
 
+#endif
+#ifdef KNX_CEMI_TRANSPORT_LAYER
+void CemiServer::transportLayer(TransportLayer& layer)
+{
+    _transportLayer = &layer;
+}
 #endif
 uint16_t CemiServer::clientAddress() const
 {
@@ -157,6 +166,21 @@ void CemiServer::frameReceived(CemiFrame& frame, uint8_t channelId)
             handleMReset(frame, channelId);
             break;
         }
+
+#ifdef KNX_CEMI_TRANSPORT_LAYER
+        // Local cEMI Transport Layer services (03_06_03 §4.1.6): process the TPDU locally, answer as a .ind on this connection.
+        case T_Data_Individual_req:
+        {
+            handleLocalTransport(frame, channelId, false);
+            break;
+        }
+
+        case T_Data_Connected_req:
+        {
+            handleLocalTransport(frame, channelId, true);
+            break;
+        }
+#endif
 
         // we should never receive these: server -> client
         case L_data_con:
@@ -445,6 +469,40 @@ void CemiServer::handleMReset(CemiFrame& frame, uint8_t channelId)
     _ipTunnelServer.dataRequestToChannelId(responseFrame, channelId);
 #endif
 }
+
+#ifdef KNX_CEMI_TRANSPORT_LAYER
+void CemiServer::handleLocalTransport(CemiFrame& frame, uint8_t channelId, bool connected)
+{
+    // Run the APDU through the local app layer; return any response on the same connection as a
+    // T_Data_Individual.ind (0x94) / T_Data_Connected.ind (0x89). Nothing reaches the bus.
+    if (_transportLayer == nullptr)
+        return;
+
+    // Drop a malformed/short frame; the device-mgmt path does not pre-validate. totalLenght()==0 first --
+    // valid() only self-bounds for a non-empty frame.
+    if (frame.totalLenght() == 0 || !frame.valid())
+        return;
+
+    // Response scratch, sized like the internal CemiFrame buffer so any built frame fits.
+    uint8_t out[0xFF + APDU_LPDU_DIFF];
+    uint16_t len = _transportLayer->localTransportRequest(frame.apdu(), connected, out, sizeof(out));
+
+    // No response (write, unknown/short APCI): stay silent; the datagram was already ACK'd at the connection level.
+    if (len < APDU_LPDU_DIFF)
+        return;
+
+    // 03_06_03 Fig 7: MC selects the .ind service; the 6 octets over ctrl1/ctrl2/SA/DA are reserved (0).
+    out[0] = connected ? T_Data_Connected_ind : T_Data_Individual_ind;
+    memset(&out[2], 0, 6);
+
+    CemiFrame response(out, len);
+#ifdef USE_USB
+    _usbTunnelInterface.sendCemiFrame(response);
+#elif defined(KNX_TUNNELING)
+    _ipTunnelServer.dataRequestToChannelId(response, channelId);
+#endif
+}
+#endif
 
 void CemiServer::loop()
 {
