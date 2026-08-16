@@ -84,9 +84,21 @@ void IpDataLinkLayer::loop()
     if (len < KNXIP_HEADER_LEN)
         return;
     
-    if (buffer[0] != KNXIP_HEADER_LEN 
+    if (buffer[0] != KNXIP_HEADER_LEN
         || buffer[1] != KNXIP_PROTOCOL_VERSION)
         return;
+
+    // KNXnet/IP total length (octets 4-5) must equal the received datagram; a mismatch is malformed ->
+    // discard (TSSH 3.2.4/3.2.5, both refs do). Well-formed short frames (declared==len) still pass.
+    uint16_t declaredLen;
+    popWord(declaredLen, buffer + 4);
+    if (declaredLen != (uint16_t)len)
+    {
+#ifdef OPENKNX_CON_DIAG
+        g_bef3Drop++;
+#endif
+        return;
+    }
 
 #ifdef KNX_ACTIVITYCALLBACK
     if(_dllcb)
