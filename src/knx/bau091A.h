@@ -22,6 +22,10 @@ class Bau091A : public BauSystemBCoupler, public ITpUartCallBacks, public DataLi
 
     IpDataLinkLayer* getPrimaryDataLinkLayer();
     TpUartDataLinkLayer* getSecondaryDataLinkLayer();
+
+#ifdef KNX_TUNNELING
+    IpTunnelServer& getIpTunnelServer() { return _ipTunnelServer; }
+#endif
 #ifdef OPENKNX_FTC
     // FTC fast-transfer flow control: read the TP transmit FIFO depth off the secondary (TP) link.
     uint16_t ftcTxQueueSize() override;
