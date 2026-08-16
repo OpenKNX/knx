@@ -127,6 +127,27 @@ void CemiServer::dataIndicationToTunnel(CemiFrame& frame)
 #endif
 }
 
+#ifdef KNX_LOG_TUNNELING
+// Map a cEMI property error code (cEmiErrorCode, 03_06_03 §4.1.7.3.7.2) to a human-readable reason for the log.
+static const char* cemiErrorName(uint8_t code)
+{
+    switch (code)
+    {
+        case Out_Of_Range:             return "value not allowed";
+        case Out_Of_Max_Range:         return "value too high";
+        case Out_Of_Min_Range:         return "value too low";
+        case Memory_Error:             return "memory error";
+        case Read_Only:                return "read-only / write-protected";
+        case Illegal_Command:          return "illegal command";
+        case Void_DP:                  return "property not present";
+        case Type_Conflict:            return "wrong data type";
+        case Prop_Index_Range_Error:   return "array index out of range";
+        case Value_temp_not_writeable: return "temporarily not writable";
+        default:                       return "unknown";
+    }
+}
+#endif
+
 void CemiServer::frameReceived(CemiFrame& frame, uint8_t channelId)
 {
     switch(frame.messageCode())
@@ -332,8 +353,11 @@ void CemiServer::handleMPropRead(CemiFrame& frame, uint8_t channelId)
         responseData[7] = Void_DP; // Set cEMI error code
         responseData[5] = 0; // Set Number of elements to zero
 
-        printHex(" <- error: ", &responseData[7], 1);
-        println("");
+#ifdef KNX_LOG_TUNNELING
+        // Expected/harmless: a client (ETS) probes an optional property this object does not carry.
+        print(" <- PropRead OT="); print(objectType, DEC); print(" PID="); print(propertyId, DEC);
+        print(" -> "); println(cemiErrorName(responseData[7]));
+#endif
 
         CemiFrame responseFrame(responseData, sizeof(responseData));
         responseFrame.messageCode(M_PropRead_con);
@@ -421,7 +445,9 @@ void CemiServer::handleMPropWrite(CemiFrame& frame, uint8_t channelId)
         uint8_t responseData[7];
         memcpy(responseData, frame.data(), sizeof(responseData));
 
-        println(" <- no error");
+#ifdef KNX_LOG_TUNNELING
+        print(" <- PropWrite OT="); print(objectType, DEC); print(" PID="); print(propertyId, DEC); println(" -> OK");
+#endif
 
         CemiFrame responseFrame(responseData, sizeof(responseData));
         responseFrame.messageCode(M_PropWrite_con);
@@ -439,8 +465,10 @@ void CemiServer::handleMPropWrite(CemiFrame& frame, uint8_t channelId)
         responseData[7] = errorCode ? errorCode : Illegal_Command; // specific cause if known, else generic
         responseData[5] = 0; // Set Number of elements to zero
 
-        printHex(" <- error: ", &responseData[7], 1);
-        println("");
+#ifdef KNX_LOG_TUNNELING
+        print(" <- PropWrite OT="); print(objectType, DEC); print(" PID="); print(propertyId, DEC);
+        print(" -> "); println(cemiErrorName(responseData[7]));
+#endif
 
         CemiFrame responseFrame(responseData, sizeof(responseData));
         responseFrame.messageCode(M_PropWrite_con);
