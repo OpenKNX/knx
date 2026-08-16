@@ -1055,7 +1055,8 @@ void IpTunnelServer::HandleConnectionStateRequest(uint8_t* buffer, uint16_t leng
     KnxIpTunnelConnection* tun = nullptr;
     for (int i = 0; i < KNX_TUNNELING + KNX_TUNNELING_DEVMGMT; i++)
     {
-        if (tunnels[i].ChannelId == stateRequest.channelId())
+        // channel 0 marks an unused slot -> never matches as an open channel
+        if (tunnels[i].ChannelId != 0 && tunnels[i].ChannelId == stateRequest.channelId())
         {
             tun = &tunnels[i];
             break;
@@ -1114,7 +1115,8 @@ void IpTunnelServer::HandleDisconnectRequest(uint8_t* buffer, uint16_t length)
     KnxIpTunnelConnection* tun = nullptr;
     for (int i = 0; i < KNX_TUNNELING + KNX_TUNNELING_DEVMGMT; i++)
     {
-        if (tunnels[i].ChannelId == discReq.channelId())
+        // channel 0 marks an unused slot -> never matches as an open channel
+        if (tunnels[i].ChannelId != 0 && tunnels[i].ChannelId == discReq.channelId())
         {
             tun = &tunnels[i];
             break;
@@ -1170,7 +1172,8 @@ void IpTunnelServer::HandleDeviceConfigurationRequest(uint8_t* buffer, uint16_t 
     KnxIpTunnelConnection* tun = nullptr;
     for (int i = KNX_TUNNELING; i < KNX_TUNNELING + KNX_TUNNELING_DEVMGMT; i++)
     {
-        if (tunnels[i].ChannelId == confReq.connectionHeader().channelId())
+        // channel 0 marks an unused slot -> never matches as an open channel (no M_Prop/T_Data without a connection)
+        if (tunnels[i].ChannelId != 0 && tunnels[i].ChannelId == confReq.connectionHeader().channelId())
         {
             tun = &tunnels[i];
             break;
@@ -1230,7 +1233,8 @@ void IpTunnelServer::HandleTunnelingRequest(uint8_t* buffer, uint16_t length)
     KnxIpTunnelConnection* tun = nullptr;
     for (int i = 0; i < KNX_TUNNELING; i++)
     {
-        if (tunnels[i].ChannelId == tunnReq.connectionHeader().channelId())
+        // channel 0 marks an unused slot -> never matches as an open channel (no L_Data without a connection)
+        if (tunnels[i].ChannelId != 0 && tunnels[i].ChannelId == tunnReq.connectionHeader().channelId())
         {
             tun = &tunnels[i];
             break;
