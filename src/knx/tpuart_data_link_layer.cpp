@@ -267,11 +267,17 @@ void TpUartDataLinkLayer::processRxFrame(TPUart::Frame &tpFrame)
 #if defined(OPENKNX_HW_BUSMON) && defined(KNX_TUNNELING)
     // Build the cEMI busmon status octet: bit 3 "lost" when RX overflow(s) happened since the last
     // reported frame, bit 7 "frame error" for an FCS-failed frame (03_06_03 EMI §3.3.3.2).
-    auto busMonStatus = [&](bool frameError) -> uint8_t {
+    // 03_06_03 4.1.5.8.1 (p.97): F(7) frame error | B(6) bit error | P(5) parity error | bit4=0 | L(3) lost
+    // | seq(2-0). "Bit error" = the NCN's acceptance-window/pulse-duration error (DS p.27), not TP1 parity.
+    // A truncated telegram is a lost frame PIECE -> sets Lost, not Frame error.
+    auto busMonStatus = [&](bool frameError, bool bitError = false, bool truncated = false) -> uint8_t {
         uint8_t status = frameError ? 0x80 : 0x00;
+        if (bitError) status |= 0x40;
+        if (truncated) status |= 0x08;
         uint32_t rxOvf = _tpuart.getStatistics().getRxUartOverflow()
                        + _tpuart.getStatistics().getRxSearchBufferOverflow()
-                       + _tpuart.getStatistics().getRxFrameBufferOverflow(); // loop-drained rx-frame ring: the primary drop point under IP-TX backpressure
+                       + _tpuart.getStatistics().getRxFrameBufferOverflow()  // loop-drained rx-frame ring: the primary drop point under IP-TX backpressure
+                       + _tpuart.getStatistics().getRxDiscardedBytes();      // swept bytes are a gap in the capture too, and the only one that leaves no other trace
         if (rxOvf != _lastBusMonRxOverflow)
         {
             status |= 0x08; // lost
@@ -287,12 +293,15 @@ void TpUartDataLinkLayer::processRxFrame(TPUart::Frame &tpFrame)
     // and return before any cEMI conversion. Handled independently of the runtime isMonitoring() state so a
     // monitor-teardown race cannot leak a 1-byte carrier into cemiData()/frameReceived, which would read
     // past its buffer; they are never delivered up to the link layer.
-    if (tpFrame.isAckOnly() || tpFrame.isErrored())
+    if (tpFrame.isAckOnly() || tpFrame.isErrored() || tpFrame.isTruncated() || tpFrame.isRaw())
     {
         if (_ipTunnelServer.busMonitorActive())
         {
-            uint16_t len = tpFrame.isAckOnly() ? 1 : tpFrame.size();
-            _ipTunnelServer.busMonitorFrame((uint8_t*)tpFrame.data(), len, busMonStatus(tpFrame.isErrored()));
+            // rawLength() = octets actually received; size() (what the length octet promised) would read
+            // past the buffer for a truncated frame or an ack carrier.
+            _ipTunnelServer.busMonitorFrame((uint8_t*)tpFrame.data(), tpFrame.rawLength(),
+                                            busMonStatus(tpFrame.isErrored(), tpFrame.isBitErrored(),
+                                                         tpFrame.isTruncated()));
         }
         return;
     }
@@ -308,7 +317,7 @@ void TpUartDataLinkLayer::processRxFrame(TPUart::Frame &tpFrame)
         // Forward every raw monitor-mode frame (incl. un-ACKed frames, incl. FCS) to the ETS busmon tunnel.
         if (_ipTunnelServer.busMonitorActive())
         {
-            _ipTunnelServer.busMonitorFrame((uint8_t*)tpFrame.data(), tpFrame.size(), busMonStatus(false));
+            _ipTunnelServer.busMonitorFrame((uint8_t*)tpFrame.data(), tpFrame.size(), busMonStatus(false, tpFrame.isBitErrored()));
             // 03_06_03 EMI/IMI §4.1.5.8.1 (p.96): a busmonitor SHALL also transfer the DLL acknowledge
             // (this is the defining difference from L_Raw.ind, §4.1.5.7.5 p.95). The receiver folds the
             // frame-trailing ACK/NACK/BUSY into this frame's flags and consumes the octet, so it never

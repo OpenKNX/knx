@@ -61,8 +61,19 @@ class IpTunnelServer
     const KnxIpTunnelConnection* tunnelAt(uint8_t index) const;
 
     // Tunnel connection type + how a session ended, for the active list / history.
-    enum TunnelType : uint8_t { TUN_DATA = 0, TUN_CONFIG = 1, TUN_BUSMON = 2 };
-    enum TunnelEndReason : uint8_t { END_ACTIVE = 0, END_CLOSED = 1, END_TIMEOUT = 2, END_BUSMON = 3 };
+    enum TunnelType : uint8_t { TUN_DATA = 0, TUN_CONFIG = 1, TUN_BUSMON = 2, TUN_OTHER = 3 };
+    // A refused CONNECT_REQUEST is recorded too (else a client hammering an unsupported type is invisible);
+    // `detail` carries the offending CRI type / KNX layer octet.
+    enum TunnelEndReason : uint8_t
+    {
+        END_ACTIVE = 0,
+        END_CLOSED = 1,
+        END_TIMEOUT = 2,
+        END_BUSMON = 3,
+        END_REJ_TYPE = 4,  // connection type not supported (03_08_02 Table 7) -> detail = CRI type
+        END_REJ_LAYER = 5, // tunnelling layer not supported (03_08_04 Table 10) -> detail = layer
+        END_REJ_BUSY = 6   // no connection available right now (busmon owns the bus / all slots taken)
+    };
     // One tunnel session. Times are millis()-relative (uptime); the console converts start to an absolute
     // wall-clock time on the fly when the clock is valid, so it stays correct even if the clock arrives later.
     struct TunnelEvent
@@ -71,6 +82,7 @@ class IpTunnelServer
         uint16_t pa = 0;               // KNX individual address (0 for config/busmon)
         uint8_t type = TUN_DATA;       // TunnelType
         uint8_t reason = END_ACTIVE;   // TunnelEndReason (END_ACTIVE for the live list)
+        uint8_t detail = 0;            // rejected attempts: the offending CRI type / KNX layer octet
         unsigned long startMillis = 0; // millis() at connect
         unsigned long endMillis = 0;   // millis() at disconnect (0 while active)
     };
@@ -118,7 +130,11 @@ class IpTunnelServer
     TunnelEvent _history[TUNNEL_HISTORY_SIZE];
     uint8_t _historyHead = 0;  // next write slot
     uint8_t _historyCount = 0;
-    void recordTunnelSession(uint32_t ip, uint16_t pa, uint8_t type, unsigned long startMillis, uint8_t reason);
+    void recordTunnelSession(uint32_t ip, uint16_t pa, uint8_t type, unsigned long startMillis, uint8_t reason,
+                             uint8_t detail = 0);
+    // Refused CONNECT_REQUEST -> history; coalesces an identical repeat into the newest entry so a
+    // retrying client cannot push the real sessions out of the 32-entry ring.
+    void recordRejectedConnect(uint32_t ip, uint8_t type, uint8_t reason, uint8_t detail);
     IpParameterObject& _ipParameters;
     DeviceObject& _deviceObject;
     Platform& _platform;

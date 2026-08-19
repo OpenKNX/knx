@@ -76,17 +76,35 @@ uint8_t IpTunnelServer::activeTunnels(TunnelEvent* out, uint8_t maxOut) const
     return n;
 }
 
-void IpTunnelServer::recordTunnelSession(uint32_t ip, uint16_t pa, uint8_t type, unsigned long startMillis, uint8_t reason)
+void IpTunnelServer::recordTunnelSession(uint32_t ip, uint16_t pa, uint8_t type, unsigned long startMillis, uint8_t reason,
+                                        uint8_t detail)
 {
     TunnelEvent& e = _history[_historyHead];
     e.ip = ip;
     e.pa = pa;
     e.type = type;
     e.reason = reason;
+    e.detail = detail;
     e.startMillis = startMillis;
     e.endMillis = millis();
     _historyHead = (_historyHead + 1) % TUNNEL_HISTORY_SIZE;
     if (_historyCount < TUNNEL_HISTORY_SIZE) _historyCount++;
+}
+
+// A refused connect is an event without a session (start == end, 0 s duration). An identical repeat from
+// the same client only refreshes the newest entry, so a retrying client can't flush the 32-entry ring.
+void IpTunnelServer::recordRejectedConnect(uint32_t ip, uint8_t type, uint8_t reason, uint8_t detail)
+{
+    if (_historyCount > 0)
+    {
+        TunnelEvent& last = _history[(uint8_t)((_historyHead + TUNNEL_HISTORY_SIZE - 1) % TUNNEL_HISTORY_SIZE)];
+        if (last.ip == ip && last.reason == reason && last.detail == detail && last.type == type)
+        {
+            last.endMillis = millis(); // same refusal again: keep one entry, extend it
+            return;
+        }
+    }
+    recordTunnelSession(ip, 0, type, millis(), reason, detail);
 }
 
 uint8_t IpTunnelServer::tunnelHistoryCount() const
@@ -402,7 +420,10 @@ void IpTunnelServer::sendFrameToTunnel(KnxIpTunnelConnection* tunnel, CemiFrame&
     }
     if (tunnel->_txCount == KNX_TUNNEL_RESEND_DEPTH)
     {
-        // Queue full -> the client stopped acking while the device kept producing responses: disconnect it.
+        // FIFO full: drop a best-effort group telegram and keep the connection (the 1 s ACK-timeout in loop()
+        // is the disconnect authority, 03_08_04 §2.6.1). A non-group (CO/mgmt) overflow still disconnects.
+        if (frame.addressType() == AddressType::GroupAddress)
+            return;
         disconnectTunnel(tunnel, END_TIMEOUT);
         return;
     }
@@ -656,6 +677,7 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
     // We only support 0x03 and 0x04!
     if (connRequest.cri().type() != TUNNEL_CONNECTION && connRequest.cri().type() != DEVICE_MGMT_CONNECTION)
     {
+        recordRejectedConnect(rIp, TUN_OTHER, END_REJ_TYPE, (uint8_t)connRequest.cri().type());
 #ifdef KNX_LOG_TUNNELING
         println("Only Tunnel/DeviceMgmt Connection ist supported!");
 #endif
@@ -669,6 +691,7 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
     // instead of reading a stale leftover byte (in-bounds of the rx buffer, but undefined) as the layer.
     if (connRequest.cri().type() == TUNNEL_CONNECTION && length < LEN_KNXIP_HEADER + 2 * LEN_IPHPAI + 4)
     {
+        recordRejectedConnect(rIp, TUN_DATA, END_REJ_TYPE, (uint8_t)TUNNEL_CONNECTION);
         KnxIpConnectResponse connRes(0x00, E_CONNECTION_TYPE);
         _platform.sendBytesUniCast(rIp, rPort, connRes.data(), connRes.totalLength());
         return;
@@ -690,6 +713,7 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
 #ifdef KNX_LOG_TUNNELING
         println("Only LinkLayer ist supported!");
 #endif
+        recordRejectedConnect(rIp, TUN_DATA, END_REJ_LAYER, connRequest.cri().layer());
         KnxIpConnectResponse connRes(0x00, E_TUNNELING_LAYER);
         _platform.sendBytesUniCast(rIp, rPort, connRes.data(), connRes.totalLength());
         return;
@@ -709,6 +733,7 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
     if (_hwBusMon != nullptr && _hwBusMon->hwBusMonActive() && connRequest.cri().type() == TUNNEL_CONNECTION)
     {
         println("IP tunnel connect rejected: HW busmonitor active (bus TX paused) - close the KNX Busmonitor to program via this interface");
+        recordRejectedConnect(rIp, TUN_DATA, END_REJ_BUSY, 0);
         KnxIpConnectResponse connRes(0x00, E_NO_MORE_CONNECTIONS);
         _platform.sendBytesUniCast(rIp, rPort, connRes.data(), connRes.totalLength());
         return;
