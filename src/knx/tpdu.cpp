@@ -9,20 +9,35 @@ TpduType TPDU::type() const
 {
     if (control())
     {
+        // 03_03_04 clause 2 Fig 3 defines exactly four control encodings (T_Connect 80h, T_Disconnect 81h,
+        // T_ACK 11-Seq-10, T_NAK 11-Seq-11). Deciding by bit 0 alone made reserved BFh a T_Disconnect and
+        // closed a connection E27 requires untouched. Match the defined encodings, reject the rest.
         if (numbered())
         {
-            if ((_data[0] & 1) == 0)
+            if ((_data[0] & 0x03) == 0x02)
                 return Ack;
-            else
+
+            if ((_data[0] & 0x03) == 0x03)
                 return Nack;
+
+            return InvalidTpdu;
         }
-        else if ((_data[0] & 1) == 0)
+
+        if (_data[0] == 0x80)
             return Connect;
-        else
+
+        if (_data[0] == 0x81)
             return Disconnect;
+
+        return InvalidTpdu;
     }
     else
     {
+        // A data PDU's APCI lives in the octet after the transport control field (03_03_04 clause 2 Fig 2);
+        // with an octet count of 0 that octet isn't in the frame, but APDU::type() would read + dispatch it.
+        if (_frame.npdu().octetCount() == 0)
+            return InvalidTpdu;
+
         if (_frame.addressType() == GroupAddress)
         {
             if (_frame.destinationAddress() == 0)
@@ -62,6 +77,9 @@ void TPDU::type(TpduType type)
         break;
     case Nack:
         _data[0] |= 0xC3;
+        break;
+    case InvalidTpdu:
+        // Never built, only decoded.
         break;
     }
 }

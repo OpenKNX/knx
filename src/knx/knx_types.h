@@ -145,6 +145,9 @@ enum TpduType
     Disconnect,
     Ack,
     Nack,
+    // Reserved encodings + data PDUs with no APCI octet. 03_03_04 clause 5: invalid PDUs are ignored, so
+    // naming this lets the transport layer default to "do nothing". Kept last to preserve enumerator values.
+    InvalidTpdu,
 };
 
 enum ApduType
