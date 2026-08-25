@@ -649,8 +649,8 @@ void BauSystemB::addSaveRestore(SaveRestore* obj)
     _memory.addSaveRestore(obj);
 }
 
-#ifdef OPENKNX_FTC
-// OPENKNX_FTC: client role for KnxFileTransfer (ObjectIndex 159) -- lets one device drive another's
+#ifdef OPENKNX_FTC_CLIENT
+// OPENKNX_FTC_CLIENT: client role for KnxFileTransfer (ObjectIndex 159) -- lets one device drive another's
 // file transfer PA -> PA. The transfer state machine lives in the application, not here.
 void BauSystemB::functionPropertyStateResponseIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl& secCtrl,
                                                          uint8_t objectIndex, uint8_t propertyId, uint8_t* data, uint8_t length)

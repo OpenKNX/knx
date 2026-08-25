@@ -31,8 +31,8 @@ class BauSystemB : protected BusAccessUnit
     void addSaveRestore(SaveRestore* obj);
 
     bool restartRequest(uint16_t asap, const SecurityControl secCtrl);
-#ifdef OPENKNX_FTC
-    // OPENKNX_FTC: client role for KnxFileTransfer (ObjectIndex 159). Connectionless by design; the
+#ifdef OPENKNX_FTC_CLIENT
+    // OPENKNX_FTC_CLIENT: client role for KnxFileTransfer (ObjectIndex 159). Connectionless by design; the
     // reply arrives via the callback.
     bool ftcSendCommand(uint16_t asap, const SecurityControl secCtrl, uint8_t objectIndex, uint8_t propertyId, uint8_t* data, uint8_t length);
     void ftcSetResponseCallback(void (*cb)(uint16_t pa, uint8_t objectIndex, uint8_t propertyId, uint8_t* data, uint8_t length)) { _ftcResponseCb = cb; }
@@ -141,7 +141,7 @@ class BauSystemB : protected BusAccessUnit
                                            uint8_t propertyId, uint8_t* data, uint8_t length) override;
     void functionPropertyStateIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, uint8_t objectIndex,
                                          uint8_t propertyId, uint8_t* data, uint8_t length) override;
-#ifdef OPENKNX_FTC
+#ifdef OPENKNX_FTC_CLIENT
     void functionPropertyStateResponseIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, uint8_t objectIndex,
                                                  uint8_t propertyId, uint8_t* data, uint8_t length) override;
     // A DeviceDescriptor_Response we asked for came back (scan): hand the responder's PA + mask to the client.
@@ -186,7 +186,7 @@ class BauSystemB : protected BusAccessUnit
     ApplicationProgramObject _appProgram;
     Platform& _platform;
     RestartState _restartState = Idle;
-#ifdef OPENKNX_FTC
+#ifdef OPENKNX_FTC_CLIENT
     void (*_ftcResponseCb)(uint16_t pa, uint8_t objectIndex, uint8_t propertyId, uint8_t* data, uint8_t length) = nullptr;
     void (*_ftcDdCb)(uint16_t pa, uint8_t descriptorType, const uint8_t* data) = nullptr;
     void (*_ftcPropCb)(uint16_t pa, uint8_t objectIndex, uint8_t propertyId, const uint8_t* data, uint8_t length) = nullptr;

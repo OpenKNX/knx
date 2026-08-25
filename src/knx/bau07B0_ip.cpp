@@ -213,7 +213,7 @@ IpDataLinkLayer* Bau07B0IP::getPrimaryDataLinkLayer() {
     return (IpDataLinkLayer*)&_ipLayer;
 }
 
-#ifdef OPENKNX_FTC
+#ifdef OPENKNX_FTC_CLIENT
 uint16_t Bau07B0IP::ftcTxQueueSize() {
     return (uint16_t)_tpLayer.getTPUart().getTransmitter().queueSize();
 }

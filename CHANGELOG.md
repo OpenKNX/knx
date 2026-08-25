@@ -24,7 +24,7 @@ The additions are grouped below; the upstream v1dev entries follow.
 - KNXnet/IP conformance hardening; dedup device-config requests + reject sub-spec datagrams; L_Data routing guarded on ChannelId (dead config-channel fallback dropped); first free unique IA assigned from the pool (not `addresses[slot]`); frame size computed only when the resend queue is enabled.
 - Opt-in additional-IA defence via L2-ACK (`KNX_TUNNEL_IA_DEFENCE`).
 
-### File-Transfer client (`OPENKNX_FTC`)
+### File-Transfer client (`OPENKNX_FTC_CLIENT`, formerly `OPENKNX_FTC` — the old name is gone, rename in your `ini` and `main.cpp`)
 - Connectionless File-Transfer client role in the stack; device diagnosis (property-write, memory-read) + connection-oriented scan (reaches old BCU1/BCU2 masks); client-side `A_ADC_Read` (remote bus-voltage); responder source-PA passed to the FunctionPropertyState callback.
 
 ### IP / DESCRIPTION_RESPONSE

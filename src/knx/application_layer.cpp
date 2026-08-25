@@ -526,7 +526,7 @@ void ApplicationLayer::restartResponse(AckType ack, Priority priority, HopCountT
     individualSend(ack, hopType, priority, _connectedTsap, apdu, secCtrl);
 }
 
-#ifdef OPENKNX_FTC
+#ifdef OPENKNX_FTC_CLIENT
 void ApplicationLayer::ftcDeviceDescriptorReadConnected(const SecurityControl& secCtrl)
 {
     // Modeled on restartRequest(): send to _connectedTsap so individualSend() goes connection-oriented
@@ -698,7 +698,7 @@ void ApplicationLayer::functionPropertyStateResponse(AckType ack, Priority prior
         dataIndividualRequest(ack, hopType, priority, asap, apdu, secCtrl);
 }
 
-#ifdef OPENKNX_FTC
+#ifdef OPENKNX_FTC_CLIENT
 
 void ApplicationLayer::functionPropertyCommandRequest(AckType ack, Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl& secCtrl,
                                                       uint8_t objectIndex, uint8_t propertyId, uint8_t* data, uint8_t length)
@@ -1209,7 +1209,7 @@ void ApplicationLayer::individualIndication(HopCountType hopType, Priority prior
             _bau.functionPropertyStateIndication(priority, hopType, tsap, secCtrl, data[1], data[2], &data[3], apdu.length() - 3);
             break;
 
-#ifdef OPENKNX_FTC // Answer to our own functionPropertyCommandRequest(). Without: switch silently drops it -- we would send and never hear the reply.
+#ifdef OPENKNX_FTC_CLIENT // Answer to our own functionPropertyCommandRequest(). Without: switch silently drops it -- we would send and never hear the reply.
         case FunctionPropertyStateResponse:
             if (apdu.length() >= 3)
                 _bau.functionPropertyStateResponseIndication(priority, hopType, tsap, secCtrl, data[1], data[2], &data[3], apdu.length() - 3);
@@ -1484,17 +1484,19 @@ void ApplicationLayer::individualConfirm(AckType ack, HopCountType hopType, Prio
         case KeyResponse:
             _bau.keyWriteResponseConfirm(ack, priority, hopType, tsap, secCtrl, data[1], status);
             break;
-#if defined(OPENKNX_FTC) || defined(OPENKNX_FTC_CONSOLE)
         case FunctionPropertyCommand:
-            // The L_Data.con of an FTC request frame we sent. Nothing to do -- without this the
-            // stack prints "unhandled APDU-Type: 711" for every chunk (OFM-FileTransferModule).
+            // The L_Data.con of a FunctionProperty request frame we sent. Nothing to do -- without this
+            // the stack prints "unhandled APDU-Type: 711" for every chunk (OFM-FileTransferModule).
             break;
         case FunctionPropertyStateResponse:
-            // Twin of the case above for the L_Data.con of an FTC *answer* frame the server sent
-            // (obj 159 data/ack, bau_systemB.cpp functionPropertyStateResponse at :412 and :445).
-            // Without it the target prints "unhandled APDU-Type: 713" for every answered chunk.
+            // Twin of the case above for the L_Data.con of an answer frame this device sent (obj 159
+            // data/ack, bau_systemB.cpp functionPropertyStateResponse at :412 and :445). Without it the
+            // target prints "unhandled APDU-Type: 713" for every answered chunk.
+            //
+            // Unconditional on purpose: ANY device that answers FunctionProperty produces this confirm,
+            // whether or not it was built with a file-transfer client or console. Two empty case labels
+            // cost nothing; gating them left every plain FTC target logging one line per chunk.
             break;
-#endif
         default:
             print("Individual-confirm: unhandled APDU-Type: ");
             println(apdu.type());

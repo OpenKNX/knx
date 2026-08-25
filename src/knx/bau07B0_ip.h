@@ -32,7 +32,7 @@ class Bau07B0IP : public BauSystemBDevice, public ITpUartCallBacks, public DataL
 
     // Read-only access to the tunnel front-end for diagnostics/UI (display widget, group objects).
     IpTunnelServer& getIpTunnelServer() { return _ipTunnelServer; }
-#ifdef OPENKNX_FTC
+#ifdef OPENKNX_FTC_CLIENT
     // FTC fast-transfer flow control: read the TP transmit FIFO depth off the TP link.
     uint16_t ftcTxQueueSize() override;
 #endif

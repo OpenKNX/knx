@@ -26,7 +26,7 @@ class Bau091A : public BauSystemBCoupler, public ITpUartCallBacks, public DataLi
 #ifdef KNX_TUNNELING
     IpTunnelServer& getIpTunnelServer() { return _ipTunnelServer; }
 #endif
-#ifdef OPENKNX_FTC
+#ifdef OPENKNX_FTC_CLIENT
     // FTC fast-transfer flow control: read the TP transmit FIFO depth off the secondary (TP) link.
     uint16_t ftcTxQueueSize() override;
 #endif
