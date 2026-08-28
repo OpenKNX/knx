@@ -60,37 +60,31 @@ uint8_t BauSystemB::checkmasterResetValidity(EraseCode eraseCode, uint8_t channe
         }
         case EraseCode::ResetAP:
         {
-            // TODO: increase download counter except for confirmed restart (PID_DOWNLOAD_COUNTER)
             println("ResetAP requested. Not implemented yet.");
             return successCode;
         }
         case EraseCode::ResetIA:
         {
-            // TODO: increase download counter except for confirmed restart (PID_DOWNLOAD_COUNTER)
             println("ResetIA requested. Not implemented yet.");
             return successCode;
         }
         case EraseCode::ResetLinks:
         {
-            // TODO: increase download counter except for confirmed restart (PID_DOWNLOAD_COUNTER)
             println("ResetLinks requested. Not implemented yet.");
             return successCode;
         }
         case EraseCode::ResetParam:
         {
-            // TODO: increase download counter except for confirmed restart (PID_DOWNLOAD_COUNTER)
             println("ResetParam requested. Not implemented yet.");
             return successCode;
         }
         case EraseCode::FactoryReset:
         {
-            // TODO: increase download counter except for confirmed restart (PID_DOWNLOAD_COUNTER)
             println("Factory reset requested. type: with IA");
             return successCode;
         }
         case EraseCode::FactoryResetWithoutIA:
         {
-            // TODO: increase download counter except for confirmed restart (PID_DOWNLOAD_COUNTER)
             println("Factory reset requested. type: without IA");
             return successCode;
         }
@@ -198,6 +192,10 @@ void BauSystemB::memoryExtReadIndication(Priority priority, HopCountType hopType
 
 void BauSystemB::doMasterReset(EraseCode eraseCode, uint8_t channel)
 {
+    // A content-erasing master reset changes the downloadable part -> bump PID_DOWNLOAD_COUNTER.
+    // A confirmed restart is not a content change, so it does not increment.
+    if (eraseCode != EraseCode::ConfirmedRestart)
+        _deviceObj.incrementDownloadCounter();
     _deviceObj.masterReset(eraseCode, channel);
     _appProgram.masterReset(eraseCode, channel);
 }

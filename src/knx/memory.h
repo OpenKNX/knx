@@ -58,6 +58,8 @@ class Memory
     void versionCheckCallback(VersionCheckCallback func);
     VersionCheckCallback versionCheckCallback();
 
+    DeviceObject& deviceObject() { return _deviceObject; }
+
   private:
     void removeFromFreeList(MemoryBlock* block);
     void addToUsedList(MemoryBlock* block);
