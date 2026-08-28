@@ -59,6 +59,45 @@ void TableObject::loadState(LoadState newState)
         _memory.deviceObject().incrementDownloadCounter();
 }
 
+void TableObject::masterReset(EraseCode eraseCode, uint8_t channel)
+{
+    (void)channel;
+    // ConfirmedRestart and ResetIA never touch a table.
+    if (eraseCode == EraseCode::ConfirmedRestart || eraseCode == EraseCode::ResetIA)
+        return;
+
+    // A factory reset erases every table; the targeted codes erase only their matching object type.
+    bool doReset = (eraseCode == EraseCode::FactoryReset || eraseCode == EraseCode::FactoryResetWithoutIA);
+    if (!doReset)
+    {
+        uint16_t ot = 0;
+        Property* p = property(PID_OBJECT_TYPE);
+        if (p != nullptr)
+            p->read(ot);
+        switch (eraseCode)
+        {
+            case EraseCode::ResetLinks: doReset = (ot == OT_ADDR_TABLE || ot == OT_ASSOC_TABLE); break;
+            case EraseCode::ResetAP:    doReset = (ot == OT_APPLICATION_PROG || ot == OT_GRP_OBJ_TABLE); break;
+            case EraseCode::ResetParam: doReset = (ot == OT_APPLICATION_PROG); break;
+            default: break;
+        }
+    }
+
+    if (doReset)
+        resetTable();
+}
+
+void TableObject::resetTable()
+{
+    // Byte-identical to the LE_UNLOAD handler in loadEventLoaded(): mark unloaded and free the NV memory.
+    loadState(LS_UNLOADED);
+    if (_data && !_staticTableAdr)
+    {
+        _memory.freeMemory(_data);
+        _data = 0;
+    }
+}
+
 
 uint8_t* TableObject::save(uint8_t* buffer)
 {

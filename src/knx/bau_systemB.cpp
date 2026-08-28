@@ -53,41 +53,15 @@ uint8_t BauSystemB::checkmasterResetValidity(EraseCode eraseCode, uint8_t channe
 
     switch (eraseCode)
     {
+        // All standard erase codes are supported; the reset itself runs per object in doMasterReset().
         case EraseCode::ConfirmedRestart:
-        {
-            println("Confirmed restart requested.");
-            return successCode;
-        }
         case EraseCode::ResetAP:
-        {
-            println("ResetAP requested. Not implemented yet.");
-            return successCode;
-        }
         case EraseCode::ResetIA:
-        {
-            println("ResetIA requested. Not implemented yet.");
-            return successCode;
-        }
         case EraseCode::ResetLinks:
-        {
-            println("ResetLinks requested. Not implemented yet.");
-            return successCode;
-        }
         case EraseCode::ResetParam:
-        {
-            println("ResetParam requested. Not implemented yet.");
-            return successCode;
-        }
         case EraseCode::FactoryReset:
-        {
-            println("Factory reset requested. type: with IA");
-            return successCode;
-        }
         case EraseCode::FactoryResetWithoutIA:
-        {
-            println("Factory reset requested. type: without IA");
             return successCode;
-        }
         default:
         {
             print("Unhandled erase code: ");

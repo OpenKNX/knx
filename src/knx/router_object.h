@@ -34,7 +34,8 @@ public:
   bool isRfSbcRoutingEnabled();
   bool isIpSbcRoutingEnabled();
 
-  void masterReset(EraseCode eraseCode, uint8_t channel) override;
+  // masterReset is inherited from TableObject: a factory reset clears the filter table via the tested
+  // unload path; RouterObject adds no code-specific behaviour of its own.
 
   const uint8_t* restore(const uint8_t* buffer) override;
 

@@ -538,22 +538,6 @@ void RouterObject::beforeStateChange(LoadState& newState)
         return;
 }
 
-void RouterObject::masterReset(EraseCode eraseCode, uint8_t channel)
-{
-#ifdef KNX_LOG_COUPLER
-    print("RouterObject::masterReset ");
-    print(eraseCode);
-    print(" ");
-    println(channel);
-#endif
-
-    if (eraseCode == FactoryReset)
-    {
-        // TODO: handle different erase codes
-        println("Factory reset of router object with filter table requested.");
-    }
-}
-
 bool RouterObject::isGroupAddressInFilterTable(uint16_t groupAddress)
 {
     if (loadState() != LS_LOADED)

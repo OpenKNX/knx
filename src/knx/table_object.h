@@ -31,6 +31,11 @@ class TableObject: public InterfaceObject
     uint8_t* save(uint8_t* buffer) override;
     const uint8_t* restore(const uint8_t* buffer) override;
     uint16_t saveSize() override;
+    // Master Reset (03_05_02 Management Procedures 3.7.1.2): erase this table for the erase codes that
+    // apply to it -- ResetLinks for address/assoc tables, ResetAP/ResetParam for the application program,
+    // ResetAP for the group-object table, and every table on a factory reset. Reuses the tested unload
+    // path so the table ends up unloaded and ETS re-downloads it.
+    void masterReset(EraseCode eraseCode, uint8_t channel) override;
 
     static void beforeTablesUnloadCallback(BeforeTablesUnloadCallback func);
     static BeforeTablesUnloadCallback beforeTablesUnloadCallback();
@@ -79,6 +84,8 @@ class TableObject: public InterfaceObject
      * @param newState the new ::LoadState 
      */
     void loadState(LoadState newState);
+    // Erase the table exactly like the tested ETS unload (LE_UNLOAD): mark unloaded + free NV memory.
+    void resetTable();
     LoadState _state = LS_UNLOADED;
     uint8_t *_data = 0;
     static uint8_t _tableUnloadCount;

@@ -15,6 +15,9 @@ public:
     uint8_t* save(uint8_t* buffer) override;
     const uint8_t* restore(const uint8_t* buffer) override;
     uint16_t saveSize() override;
+    // Master Reset (03_05_02 3.7.1.2): ResetIA and a factory reset WITH IA restore the individual address
+    // to the medium default; factory-reset-without-IA and every other code leave it.
+    void masterReset(EraseCode eraseCode, uint8_t channel) override;
 
     uint16_t individualAddress();
     void individualAddress(uint16_t value);

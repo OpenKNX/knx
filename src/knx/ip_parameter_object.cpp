@@ -151,4 +151,40 @@ IpParameterObject::IpParameterObject(DeviceObject& deviceObject, Platform& platf
     initializeProperties(sizeof(properties), properties);
 }
 
+// Zero every element of a property via the tested write path (ETS uses the same write to set them).
+static void clearProperty(Property* p)
+{
+    if (p == nullptr)
+        return;
+    const uint16_t max = p->MaxElements();
+    const uint8_t elemSize = p->ElementSize();
+    if (max == 0 || elemSize == 0 || elemSize > 4)
+        return;
+    uint8_t zero[4] = {0, 0, 0, 0};
+    for (uint16_t i = 1; i <= max; i++)
+        p->write(i, (uint8_t)1, zero);
+}
+
+void IpParameterObject::masterReset(EraseCode eraseCode, uint8_t channel)
+{
+    (void)channel;
+    if (eraseCode != EraseCode::FactoryReset && eraseCode != EraseCode::FactoryResetWithoutIA)
+        return;
+
+    // Clear the tunnelling identities and the downloaded IP address config back to unassigned. Assignment
+    // method, capabilities, multicast and TTL keep their defaults (some reject a 0 write), and the IP stack
+    // re-resolves; ETS re-writes everything on the next download. Zeroing unused NV memory
+    // (03_05_02 3.7.1.2.3.2.2) belongs to the Data Security track -- no keys are stored while it is off.
+    clearProperty(property(PID_PROJECT_INSTALLATION_ID));
+    clearProperty(property(PID_IP_ADDRESS));
+    clearProperty(property(PID_SUBNET_MASK));
+    clearProperty(property(PID_DEFAULT_GATEWAY));
+    clearProperty(property(PID_FRIENDLY_NAME));
+#ifdef KNX_TUNNELING
+    clearProperty(property(PID_ADDITIONAL_INDIVIDUAL_ADDRESSES));
+    clearProperty(property(PID_CUSTOM_RESERVED_TUNNELS_CTRL));
+    clearProperty(property(PID_CUSTOM_RESERVED_TUNNELS_IP));
+#endif
+}
+
 #endif

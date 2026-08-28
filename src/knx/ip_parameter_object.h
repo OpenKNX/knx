@@ -12,6 +12,10 @@ class IpParameterObject : public InterfaceObject
 {
   public:
     IpParameterObject(DeviceObject& deviceObject, Platform& platform);
+    // Master Reset (03_05_02 3.7.1.2 / Table 6): a factory reset clears the tunnelling identities and the
+    // downloaded IP configuration; assignment method / capabilities / multicast keep their defaults and
+    // the IP stack re-resolves. ETS re-writes the object on the next download.
+    void masterReset(EraseCode eraseCode, uint8_t channel) override;
 
   private:
     DeviceObject& _deviceObject;
