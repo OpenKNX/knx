@@ -44,7 +44,6 @@ class IpTunnelServer
 
     void loop();
     void dataRequestToChannelId(CemiFrame& frame, uint8_t channelId);
-    void dataRequestToTunnel(CemiFrame& frame);
     void dataConfirmationToTunnel(CemiFrame& frame);
     void dataIndicationToTunnel(CemiFrame& frame);
     bool isTunnelAddress(uint16_t addr);

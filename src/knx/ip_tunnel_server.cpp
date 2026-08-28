@@ -267,42 +267,6 @@ void IpTunnelServer::dataRequestToChannelId(CemiFrame& frame, uint8_t channelId)
     sendFrameToTunnel(tun, frame);
 }
 
-void IpTunnelServer::dataRequestToTunnel(CemiFrame& frame)
-{
-    if (frame.addressType() == AddressType::GroupAddress)
-    {
-        for (int i = 0; i < KNX_TUNNELING; i++)
-            if (tunnels[i].ChannelId != 0 && tunnels[i].IndividualAddress == frame.sourceAddress())
-                sendFrameToTunnel(&tunnels[i], frame);
-        // TODO check if source is from tunnel
-        return;
-    }
-
-    KnxIpTunnelConnection* tun = nullptr;
-    for (int i = 0; i < KNX_TUNNELING; i++)
-    {
-        if (tunnels[i].ChannelId == 0 || tunnels[i].IndividualAddress == frame.sourceAddress())
-            continue;
-
-        if (tunnels[i].IndividualAddress == frame.destinationAddress())
-        {
-            tun = &tunnels[i];
-            break;
-        }
-    }
-
-    if (tun == nullptr)
-    {
-#ifdef KNX_LOG_TUNNELING
-        print("Found no Tunnel for IA: ");
-        println(frame.destinationAddress(), 16);
-#endif
-        return;
-    }
-
-    sendFrameToTunnel(tun, frame);
-}
-
 void IpTunnelServer::dataConfirmationToTunnel(CemiFrame& frame)
 {
     if (frame.addressType() == AddressType::GroupAddress)
@@ -310,7 +274,7 @@ void IpTunnelServer::dataConfirmationToTunnel(CemiFrame& frame)
         for (int i = 0; i < KNX_TUNNELING; i++)
             if (tunnels[i].ChannelId != 0 && tunnels[i].IndividualAddress == frame.sourceAddress())
                 sendFrameToTunnel(&tunnels[i], frame);
-        // TODO check if source is from tunnel
+        // source is always a tunnel PA here -- dataConReceived only calls this after isTunnelingPA(source)
         return;
     }
 
@@ -623,6 +587,10 @@ bool IpTunnelServer::HandleIpFrame(uint8_t* buffer, uint16_t length, uint32_t& s
 
 void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint32_t& src_addr, uint16_t& src_port)
 {
+    // TODO(EC) tunnelling-v2: the Extended CRI (03_08_04 §5.4.3.2) that requests a specific tunnelling IA on
+    // CONNECT is not parsed (KnxIpCRI is Basic-only) -- unreachable while the device advertises Core v1, so
+    // a conformant ETS never sends it. Adding it means raising Core to v2 plus the 2Dh/28h/2Eh evaluation
+    // and a CONNECT_RESPONSE response-matrix re-audit.
     KnxIpConnectRequest connRequest(buffer, length);
 #ifdef KNX_LOG_TUNNELING
     println("Got Connect Request!");
