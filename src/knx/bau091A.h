@@ -6,6 +6,7 @@
 #include "bau_systemB_coupler.h"
 #include "router_object.h"
 #include "ip_parameter_object.h"
+#include "knx_ip_counters.h"
 #include "ip_data_link_layer.h"
 #include "tpuart_data_link_layer.h"
 #include "cemi_server_object.h"
@@ -19,6 +20,9 @@ class Bau091A : public BauSystemBCoupler, public ITpUartCallBacks, public DataLi
     bool enabled() override;
     void enabled(bool value) override;
     bool configured() override;
+
+    /** @brief KNXnet/IP telegram counters (03_08_03) for diagnostics and the OAM console. */
+    KnxIpCounters& getCounters() { return _counters; }
 
     IpDataLinkLayer* getPrimaryDataLinkLayer();
     TpUartDataLinkLayer* getSecondaryDataLinkLayer();
@@ -39,6 +43,7 @@ class Bau091A : public BauSystemBCoupler, public ITpUartCallBacks, public DataLi
 
     void doMasterReset(EraseCode eraseCode, uint8_t channel) override;
   private:
+    KnxIpCounters _counters; // declared first: _ipParameters takes its address
     RouterObject _routerObj;
     IpParameterObject _ipParameters;
     IpDataLinkLayer _dlLayerPrimary;

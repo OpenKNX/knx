@@ -9,8 +9,8 @@
 // 224.0.23.12
 #define DEFAULT_MULTICAST_ADDR ((uint32_t)0xE000170C)
 
-IpParameterObject::IpParameterObject(DeviceObject& deviceObject, Platform& platform): _deviceObject(deviceObject),
-    _platform(platform)
+IpParameterObject::IpParameterObject(DeviceObject& deviceObject, Platform& platform, KnxIpCounters* counters): _deviceObject(deviceObject),
+    _platform(platform), _counters(counters)
 {
     Property* properties[] =
     {
@@ -130,6 +130,38 @@ IpParameterObject::IpParameterObject(DeviceObject& deviceObject, Platform& platf
             [](IpParameterObject* io, uint16_t start, uint8_t count, const uint8_t* data) -> uint8_t
             {
                 return 1; // accept a write (ETS/tools may set it) but ignore it -> the read stays 0.0.0.0
+            }),
+#endif
+#ifdef KNX_IS_ROUTER
+        // 03_08_03 2.5.23-2.5.26: telegram counters of a KNXnet/IP routing device. Read-only, they
+        // never wrap, and they read 0 while no counter object is wired in.
+        new CallbackProperty<IpParameterObject>(this, PID_QUEUE_OVERFLOW_TO_IP, false, PDT_UNSIGNED_INT, 1, ReadLv3 | WriteLv0,
+            [](IpParameterObject* io, uint16_t start, uint8_t count, uint8_t* data) -> uint8_t
+            {
+                if (start == 0) { pushWord(1, data); return 1; }
+                pushWord(io->_counters ? io->_counters->overflowToIp() : 0, data);
+                return 1;
+            }),
+        new CallbackProperty<IpParameterObject>(this, PID_QUEUE_OVERFLOW_TO_KNX, false, PDT_UNSIGNED_INT, 1, ReadLv3 | WriteLv0,
+            [](IpParameterObject* io, uint16_t start, uint8_t count, uint8_t* data) -> uint8_t
+            {
+                if (start == 0) { pushWord(1, data); return 1; }
+                pushWord(io->_counters ? io->_counters->overflowToKnx() : 0, data);
+                return 1;
+            }),
+        new CallbackProperty<IpParameterObject>(this, PID_MSG_TRANSMIT_TO_IP, false, PDT_UNSIGNED_LONG, 1, ReadLv3 | WriteLv0,
+            [](IpParameterObject* io, uint16_t start, uint8_t count, uint8_t* data) -> uint8_t
+            {
+                if (start == 0) { pushWord(1, data); return 1; }
+                pushInt(io->_counters ? io->_counters->transmitToIp() : 0, data);
+                return 1;
+            }),
+        new CallbackProperty<IpParameterObject>(this, PID_MSG_TRANSMIT_TO_KNX, false, PDT_UNSIGNED_LONG, 1, ReadLv3 | WriteLv0,
+            [](IpParameterObject* io, uint16_t start, uint8_t count, uint8_t* data) -> uint8_t
+            {
+                if (start == 0) { pushWord(1, data); return 1; }
+                pushInt(io->_counters ? io->_counters->transmitToKnx() : 0, data);
+                return 1;
             }),
 #endif
         new DataProperty(PID_TTL, true, PDT_UNSIGNED_CHAR, 1, ReadLv3 | WriteLv3, (uint8_t)16),

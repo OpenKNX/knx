@@ -9,6 +9,7 @@
 #include <stdint.h>
 #include "knx_types.h"
 #include "knx_ip_tunnel_connection.h"
+#include "knx_ip_counters.h"
 #include "cemi_frame.h"
 #include "ip_parameter_object.h"
 
@@ -56,6 +57,9 @@ class IpTunnelServer
     uint8_t tunnelMax() const { return KNX_TUNNELING; }
     /** @brief Currently open data tunnels (ChannelId != 0). */
     uint8_t tunnelCount() const;
+    /** @brief KNXnet/IP telegram counters (03_08_03); null on builds that do not keep them. */
+    void setCounters(KnxIpCounters* counters) { _counters = counters; }
+
     /** @brief Read-only i-th open data tunnel (0..tunnelCount()-1); nullptr if out of range. */
     const KnxIpTunnelConnection* tunnelAt(uint8_t index) const;
 
@@ -136,6 +140,11 @@ class IpTunnelServer
     void recordRejectedConnect(uint32_t ip, uint8_t type, uint8_t reason, uint8_t detail);
     IpParameterObject& _ipParameters;
     DeviceObject& _deviceObject;
+    // Single funnel for every datagram this server emits, so PID_MSG_TRANSMIT_TO_IP counts them all
+    // (Core, Tunnelling, Device Management, ACKs) as the spec requires.
+    bool sendCounted(uint32_t addr, uint16_t port, uint8_t* buffer, uint16_t len);
+
+    KnxIpCounters* _counters = nullptr;
     Platform& _platform;
     CemiServer& _cemiServer;
 

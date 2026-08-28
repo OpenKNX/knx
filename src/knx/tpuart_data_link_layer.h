@@ -14,6 +14,7 @@
 #endif
 #ifdef ARDUINO_ARCH_RP2040
 #include "TPUart/Interface/RP2040.h"
+#include "knx_ip_counters.h"
 #endif
 
 class ITpUartCallBacks
@@ -86,7 +87,12 @@ class TpUartDataLinkLayer : public DataLinkLayer
         return _tpuart;
     }
 
+  public:
+    /** @brief KNXnet/IP telegram counters (03_08_03); null on builds that do not keep them. */
+    void setCounters(KnxIpCounters* counters) { _counters = counters; }
+
   private:
+    KnxIpCounters* _counters = nullptr;
     TPUart::Interface::Abstract* _tpuartInterface = nullptr;
     TPUart::DataLinkLayer _tpuart;
     void initialize();

@@ -14,13 +14,18 @@ using namespace std;
 // has its inbound RoutingIndication handling disabled -> no group communication over IP, no routing.
 Bau07B0IP::Bau07B0IP(Platform& platform)
     : BauSystemBDevice(platform),
-      _ipParameters(_deviceObj, platform),
+      _ipParameters(_deviceObj, platform, &_counters),
       _tpLayer(_deviceObj, _netLayer.getInterface(), platform, *this, _ipTunnelServer, (ITpUartCallBacks&) *this, (DataLinkLayerCallbacks*) this),
       _ipLayer(_deviceObj, _ipParameters, _netLayer.getInterface(), _platform, *this, _ipTunnelServer, (DataLinkLayerCallbacks*) this),
       DataLinkLayerCallbacks(),
       _cemiServer(*this, _ipTunnelServer),
       _ipTunnelServer(_deviceObj, _ipParameters, platform, _cemiServer)
 {
+    // Same counters as the router keeps; the interface uses them for the console/display only.
+    _ipLayer.setCounters(&_counters);
+    _tpLayer.setCounters(&_counters);
+    _ipTunnelServer.setCounters(&_counters);
+
     // TP is the bus link: the network layer sends the device's group objects onto TP.
     _netLayer.getInterface().dataLinkLayer(_tpLayer);
 

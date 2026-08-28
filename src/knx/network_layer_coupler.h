@@ -6,6 +6,7 @@
 #include "transport_layer.h"
 #include "network_layer_entity.h"
 #include "network_layer.h"
+#include "knx_ip_counters.h"
 
 class DeviceObject;
 class RouterObject;
@@ -34,7 +35,12 @@ class NetworkLayerCoupler : public NetworkLayer
     void dataBroadcastRequest(AckType ack, HopCountType hopType, Priority priority, TPDU& tpdu) override;
     void dataSystemBroadcastRequest(AckType ack, HopCountType hopType, Priority priority, TPDU& tpdu) override;
 
+    /** @brief Routing-decision counters (ours, not spec); null on builds that do not keep them. */
+    void setCounters(KnxIpCounters* counters) { _counters = counters; }
+
   private:
+    KnxIpCounters* _counters = nullptr;
+
     enum CouplerType
     {
         LineCoupler,

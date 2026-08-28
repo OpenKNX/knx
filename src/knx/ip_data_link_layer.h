@@ -8,12 +8,15 @@
 #include "ip_parameter_object.h"
 #include "service_families.h"
 #include "ip_tunnel_server.h"
+#include "knx_ip_counters.h"
 
 class IpDataLinkLayer : public DataLinkLayer
 {
     using DataLinkLayer::_deviceObject;
 
   public:
+    /** @brief KNXnet/IP telegram counters (03_08_03); null on builds that do not keep them. */
+    void setCounters(KnxIpCounters* counters) { _counters = counters; }
     IpDataLinkLayer(DeviceObject& devObj, IpParameterObject& ipParam,
                     NetworkLayerEntity& netLayerEntity,
                     Platform& platform, BusAccessUnit& busAccessUnit,
@@ -33,12 +36,15 @@ class IpDataLinkLayer : public DataLinkLayer
     void enableRoutingIndications(bool value) { _rxRoutingIndications = value; }
 
   private:
+    KnxIpCounters* _counters = nullptr;
+    bool sendUniCastCounted(uint32_t addr, uint16_t port, uint8_t* buffer, uint16_t len);
     bool _enabled = false;
     bool _rxRoutingIndications = true;
     uint8_t _frameCount[10] = {0,0,0,0,0,0,0,0,0,0};
     uint8_t _frameCountBase = 0;
     uint32_t _frameCountTimeBase = 0;
     bool sendFrame(CemiFrame& frame);
+
 
 #if KNX_SERVICE_FAMILY_CORE >= 2
     void loopHandleSearchRequestExtended(uint8_t* buffer, uint16_t length);

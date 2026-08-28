@@ -48,6 +48,8 @@ bool IpDataLinkLayer::sendFrame(CemiFrame& frame)
     // only send 50 packet per second: see KNX 3.2.6 p.6
     if (isSendLimitReached())
     {
+        if (_counters != nullptr)
+            _counters->incrementOverflowToIp();
         // the send-limit drop was the only branch returning false without a dataCon -> the upper layer
         // waited for a confirmation that never arrived; emit the negative con to close that gap
         dataConReceived(frame, false);
@@ -135,7 +137,7 @@ void IpDataLinkLayer::loop()
             if(_dllcb)
                 _dllcb->activity((_netIndex << KNX_ACTIVITYCALLBACK_NET) | (KNX_ACTIVITYCALLBACK_DIR_SEND << KNX_ACTIVITYCALLBACK_DIR) | (KNX_ACTIVITYCALLBACK_IPUNICAST));
 #endif
-            _platform.sendBytesUniCast(hpai.ipAddress(), hpai.ipPortNumber(), searchResponse.data(), searchResponse.totalLength());
+            sendUniCastCounted(hpai.ipAddress(), hpai.ipPortNumber(), searchResponse.data(), searchResponse.totalLength());
             break;
         }
         case SearchRequestExt:
@@ -284,7 +286,7 @@ void IpDataLinkLayer::loopHandleSearchRequestExtended(uint8_t* buffer, uint16_t 
         return;
     }
 
-    _platform.sendBytesUniCast(searchRequest.hpai().ipAddress(), searchRequest.hpai().ipPortNumber(), searchResponse.data(), searchResponse.totalLength());
+    sendUniCastCounted(searchRequest.hpai().ipAddress(), searchRequest.hpai().ipPortNumber(), searchResponse.data(), searchResponse.totalLength());
 }
 #endif
 
@@ -324,12 +326,33 @@ DptMedium IpDataLinkLayer::mediumType() const
     return DptMedium::KNX_IP;
 }
 
+bool IpDataLinkLayer::sendUniCastCounted(uint32_t addr, uint16_t port, uint8_t* buffer, uint16_t len)
+{
+    const bool sent = _platform.sendBytesUniCast(addr, port, buffer, len);
+    if (_counters != nullptr)
+    {
+        if (sent)
+            _counters->incrementTransmitToIp();
+        else
+            _counters->incrementOverflowToIp();
+    }
+    return sent;
+}
+
 bool IpDataLinkLayer::sendBytes(uint8_t* bytes, uint16_t length)
 {
     if (!_enabled)
         return false;
 
-    return _platform.sendBytesMultiCast(bytes, length);
+    const bool sent = _platform.sendBytesMultiCast(bytes, length);
+    if (_counters != nullptr)
+    {
+        if (sent)
+            _counters->incrementTransmitToIp();
+        else
+            _counters->incrementOverflowToIp();
+    }
+    return sent;
 }
 
 bool IpDataLinkLayer::isSendLimitReached()

@@ -279,7 +279,11 @@ void NetworkLayerCoupler::sendMsgHopCount(AckType ack, AddressType addrType, uin
     if(addrType == AddressType::GroupAddress && destination != 0) // destination == 0 means broadcast and must not be filtered with the GroupAddresses
     {
         if(!isRoutedGroupAddress(destination, sourceInterfaceIndex))
+        {
+            if (_counters != nullptr)
+                _counters->incrementFiltered(); // filtered by the routing table -- dropped by design, not lost
             return; // drop;
+        }
     }
 
 
@@ -325,6 +329,14 @@ void NetworkLayerCoupler::sendMsgHopCount(AckType ack, AddressType addrType, uin
        (addrType == AddressType::GroupAddress && destination == 0 && !(lcconfig & LCCONFIG::BROADCAST_REPEAT)))
         doNotRepeat = true;
     
+    if (_counters != nullptr)
+    {
+        if (interfaceIndex == kPrimaryIfIndex)
+            _counters->incrementRoutedToIp();
+        else
+            _counters->incrementRoutedToKnx();
+    }
+
     _netLayerEntities[interfaceIndex].sendDataRequest(npdu, ack, destination, source, priority, addrType, broadcastType, doNotRepeat);
 }
 

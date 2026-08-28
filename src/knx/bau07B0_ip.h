@@ -14,6 +14,7 @@
 #include "cemi_server.h"
 #include "cemi_server_object.h"
 #include "ip_tunnel_server.h"
+#include "knx_ip_counters.h"
 
 class Bau07B0IP : public BauSystemBDevice, public ITpUartCallBacks, public DataLinkLayerCallbacks
 {
@@ -32,6 +33,10 @@ class Bau07B0IP : public BauSystemBDevice, public ITpUartCallBacks, public DataL
 
     // Read-only access to the tunnel front-end for diagnostics/UI (display widget, group objects).
     IpTunnelServer& getIpTunnelServer() { return _ipTunnelServer; }
+
+    /** @brief KNXnet/IP telegram counters (03_08_03) for diagnostics and the OAM console.
+     *  Kept like the router does, but NOT exposed as properties: this device is not a routing device. */
+    KnxIpCounters& getCounters() { return _counters; }
 #ifdef OPENKNX_FTC_CLIENT
     // FTC fast-transfer flow control: read the TP transmit FIFO depth off the TP link.
     uint16_t ftcTxQueueSize() override;
@@ -46,6 +51,10 @@ class Bau07B0IP : public BauSystemBDevice, public ITpUartCallBacks, public DataL
     void doMasterReset(EraseCode eraseCode, uint8_t channel) override;
 
   private:
+    // The interface DOES instantiate and increment these (wired into _tpLayer/_ipLayer/_ipTunnelServer for
+    // the OAM console/display); it only does not expose them as PID 72-75. Do not assume "07B0 has null
+    // counters" -- the non-routing guarantee comes from the property gating, not from an absent object.
+    KnxIpCounters _counters;
     IpParameterObject _ipParameters;
     TpUartDataLinkLayer _tpLayer;  // bus link (index 0) -- carries the device's group objects
     IpDataLinkLayer _ipLayer;      // KNXnet/IP endpoint: discovery + tunnel pump, no routing

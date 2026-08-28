@@ -16,7 +16,7 @@ implement PID_COUPLER_SERVICES_CONTROL 03_05_01 4.4.7
 Bau091A::Bau091A(Platform& platform)
     : BauSystemBCoupler(platform),
       _routerObj(memory(), 0x200, 0x2000),  // the Filtertable of 0x091A IP Routers is fixed at 0x200 and 0x2000 long
-      _ipParameters(_deviceObj, platform),
+      _ipParameters(_deviceObj, platform, &_counters),
       _dlLayerPrimary(_deviceObj, _ipParameters, _netLayer.getPrimaryInterface(), _platform, *this,
 #ifdef KNX_TUNNELING
                       _ipTunnelServer,
@@ -41,6 +41,14 @@ Bau091A::Bau091A(Platform& platform)
 
     // Mask 091A uses older coupler model 1.x which only uses one router object
     _netLayer.rtObj(_routerObj);
+
+    // One counter object behind every point that puts a telegram on IP or TP.
+    _netLayer.setCounters(&_counters);
+    _dlLayerPrimary.setCounters(&_counters);
+    _dlLayerSecondary.setCounters(&_counters);
+#ifdef KNX_TUNNELING
+    _ipTunnelServer.setCounters(&_counters);
+#endif
 
     _netLayer.getPrimaryInterface().dataLinkLayer(_dlLayerPrimary);
     _netLayer.getSecondaryInterface().dataLinkLayer(_dlLayerSecondary);

@@ -53,6 +53,8 @@ bool TpUartDataLinkLayer::sendFrame(CemiFrame &cemiFrame)
     if (!_tpuart.pushTransmitQueue(tpFrame))
     {
         delete tpFrame; // queue full, not taken -> free (else leak per dropped frame)
+        if (_counters != nullptr)
+            _counters->incrementOverflowToKnx();
         // rate-limit the print (~1 in 1024): under an IP->TP flood the queue stays full and a blocking
         // print on every drop would starve the loop() watchdog.
         static uint16_t _qFullDrops = 0;
@@ -63,6 +65,12 @@ bool TpUartDataLinkLayer::sendFrame(CemiFrame &cemiFrame)
     }
 
     // success: queue took ownership of tpFrame -> it deletes it after TX (no delete here)
+    // TODO EC PID 75 increments here at queue-accept, but 03_08_03 2.5.26 wants "successfully transmitted".
+    // The exact point is the ACK-confirmed L_Data.con below (isTransmitted -> dataConReceived, gated on
+    // tpFrame.isAck()). Deviation = 0 on a healthy bus, over-counts un-ACKed frames; harmless while the
+    // statistics capability (PID 70 bit1) is not advertised. Move only with a cross-target audit.
+    if (_counters != nullptr)
+        _counters->incrementTransmitToKnx();
     // printHex("  CEMI>: ", cemiFrame.data(), cemiFrame.dataLength());
     return true;
 }

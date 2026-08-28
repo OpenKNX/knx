@@ -27,6 +27,22 @@ IpTunnelServer::IpTunnelServer(DeviceObject& devObj, IpParameterObject& ipParam,
 {
 }
 
+bool IpTunnelServer::sendCounted(uint32_t addr, uint16_t port, uint8_t* buffer, uint16_t len)
+{
+    const bool sent = _platform.sendBytesUniCast(addr, port, buffer, len);
+    if (_counters != nullptr)
+    {
+        if (sent)
+            _counters->incrementTransmitToIp();
+        else
+            // A false return is dominated by a full IP TX buffer (ENOBUFS / no free W5500 slot) = a real
+            // queue overflow to IP (PID 72, 03_08_03 2.5.23). A rare link-down / socket error also lands
+            // here; splitting the two would need the platform to report the failure reason -- kept as-is.
+            _counters->incrementOverflowToIp();
+    }
+    return sent;
+}
+
 uint8_t IpTunnelServer::tunnelCount() const
 {
     uint8_t n = 0;
@@ -167,7 +183,7 @@ void IpTunnelServer::loop()
                 discReq.hpaiCtrl().code(IPV4_UDP);
                 discReq.hpaiCtrl().ipAddress(tunnels[i].IpAddress);
                 discReq.hpaiCtrl().ipPortNumber(tunnels[i].PortCtrl);
-                _platform.sendBytesUniCast(tunnels[i].IpAddress, tunnels[i].PortCtrl, discReq.data(), discReq.totalLength());
+                sendCounted(tunnels[i].IpAddress, tunnels[i].PortCtrl, discReq.data(), discReq.totalLength());
                 recordTunnelSession(tunnels[i].IpAddress, tunnels[i].IndividualAddress, tunnels[i].IsConfig ? TUN_CONFIG : TUN_DATA, tunnels[i].connectStart, END_TIMEOUT);
                 tunnels[i].Reset();
             }
@@ -179,7 +195,7 @@ void IpTunnelServer::loop()
             {
                 if (tunnels[i]._retries < (tunnels[i].IsConfig ? 3 : 1))
                 {
-                    _platform.sendBytesUniCast(tunnels[i].IpAddress, tunnels[i].PortData, tunnels[i]._txBuf[tunnels[i]._txHead], tunnels[i]._txLen[tunnels[i]._txHead]);
+                    sendCounted(tunnels[i].IpAddress, tunnels[i].PortData, tunnels[i]._txBuf[tunnels[i]._txHead], tunnels[i]._txLen[tunnels[i]._txHead]);
 #ifdef OPENKNX_CON_DIAG
                     g_conRetry++; // resend fired
 #endif
@@ -209,7 +225,7 @@ void IpTunnelServer::loop()
         discReq.hpaiCtrl().code(IPV4_UDP);
         discReq.hpaiCtrl().ipAddress(_busMonTunnel.IpAddress);
         discReq.hpaiCtrl().ipPortNumber(_busMonTunnel.PortCtrl);
-        _platform.sendBytesUniCast(_busMonTunnel.IpAddress, _busMonTunnel.PortCtrl, discReq.data(), discReq.totalLength());
+        sendCounted(_busMonTunnel.IpAddress, _busMonTunnel.PortCtrl, discReq.data(), discReq.totalLength());
         busMonitorTeardown(END_TIMEOUT);
     }
 
@@ -417,7 +433,7 @@ void IpTunnelServer::sendFrameToTunnel(KnxIpTunnelConnection* tunnel, CemiFrame&
     req.connectionHeader().channelId(tunnel->ChannelId);
     req.serviceTypeIdentifier(svc);
     req.connectionHeader().sequenceCounter(tunnel->SequenceCounter_S++);
-    _platform.sendBytesUniCast(tunnel->IpAddress, tunnel->PortData, req.data(), req.totalLength());
+    sendCounted(tunnel->IpAddress, tunnel->PortData, req.data(), req.totalLength());
 #endif
 }
 
@@ -435,9 +451,9 @@ void IpTunnelServer::pumpTunnel(KnxIpTunnelConnection* t)
     t->_armed = true;
 #ifdef OPENKNX_CON_DIAG
     if (t->_txBuf[h][10] == 0x2E) g_conWire++; // 0x2E = L_data_con at cEMI offset 10
-    if (!_platform.sendBytesUniCast(t->IpAddress, t->PortData, t->_txBuf[h], t->_txLen[h])) g_conSendFail++; // send returned false
+    if (!sendCounted(t->IpAddress, t->PortData, t->_txBuf[h], t->_txLen[h])) g_conSendFail++; // send returned false
 #else
-    _platform.sendBytesUniCast(t->IpAddress, t->PortData, t->_txBuf[h], t->_txLen[h]);
+    sendCounted(t->IpAddress, t->PortData, t->_txBuf[h], t->_txLen[h]);
 #endif
 }
 
@@ -450,7 +466,7 @@ void IpTunnelServer::disconnectTunnel(KnxIpTunnelConnection* t, uint8_t reason)
     discReq.hpaiCtrl().code(IPV4_UDP);
     discReq.hpaiCtrl().ipAddress(t->IpAddress);
     discReq.hpaiCtrl().ipPortNumber(t->PortCtrl);
-    _platform.sendBytesUniCast(t->IpAddress, t->PortCtrl, discReq.data(), discReq.totalLength());
+    sendCounted(t->IpAddress, t->PortCtrl, discReq.data(), discReq.totalLength());
     recordTunnelSession(t->IpAddress, t->IndividualAddress, t->IsConfig ? TUN_CONFIG : TUN_DATA, t->connectStart, reason);
     t->Reset();
 }
@@ -587,7 +603,7 @@ bool IpTunnelServer::HandleIpFrame(uint8_t* buffer, uint16_t length, uint32_t& s
 
 void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint32_t& src_addr, uint16_t& src_port)
 {
-    // TODO(EC) tunnelling-v2: the Extended CRI (03_08_04 §5.4.3.2) that requests a specific tunnelling IA on
+    // TODO EC tunnelling-v2: the Extended CRI (03_08_04 §5.4.3.2) that requests a specific tunnelling IA on
     // CONNECT is not parsed (KnxIpCRI is Basic-only) -- unreachable while the device advertises Core v1, so
     // a conformant ETS never sends it. Adding it means raising Core to v2 plus the 2Dh/28h/2Eh evaluation
     // and a CONNECT_RESPONSE response-matrix re-audit.
@@ -650,7 +666,7 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
         println("Only Tunnel/DeviceMgmt Connection ist supported!");
 #endif
         KnxIpConnectResponse connRes(0x00, E_CONNECTION_TYPE);
-        _platform.sendBytesUniCast(rIp, rPort, connRes.data(), connRes.totalLength());
+        sendCounted(rIp, rPort, connRes.data(), connRes.totalLength());
         return;
     }
 
@@ -661,7 +677,7 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
     {
         recordRejectedConnect(rIp, TUN_DATA, END_REJ_TYPE, (uint8_t)TUNNEL_CONNECTION);
         KnxIpConnectResponse connRes(0x00, E_CONNECTION_TYPE);
-        _platform.sendBytesUniCast(rIp, rPort, connRes.data(), connRes.totalLength());
+        sendCounted(rIp, rPort, connRes.data(), connRes.totalLength());
         return;
     }
 
@@ -683,7 +699,7 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
 #endif
         recordRejectedConnect(rIp, TUN_DATA, END_REJ_LAYER, connRequest.cri().layer());
         KnxIpConnectResponse connRes(0x00, E_TUNNELING_LAYER);
-        _platform.sendBytesUniCast(rIp, rPort, connRes.data(), connRes.totalLength());
+        sendCounted(rIp, rPort, connRes.data(), connRes.totalLength());
         return;
     }
 
@@ -703,7 +719,7 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
         println("IP tunnel connect rejected: HW busmonitor active (bus TX paused) - close the KNX Busmonitor to program via this interface");
         recordRejectedConnect(rIp, TUN_DATA, END_REJ_BUSY, 0);
         KnxIpConnectResponse connRes(0x00, E_NO_MORE_CONNECTIONS);
-        _platform.sendBytesUniCast(rIp, rPort, connRes.data(), connRes.totalLength());
+        sendCounted(rIp, rPort, connRes.data(), connRes.totalLength());
         return;
     }
 #endif
@@ -854,7 +870,7 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
                     discReq.hpaiCtrl().code(IPV4_UDP);
                     discReq.hpaiCtrl().ipAddress(tunnels[firstResAndOccTunnel].IpAddress);
                     discReq.hpaiCtrl().ipPortNumber(tunnels[firstResAndOccTunnel].PortCtrl);
-                    _platform.sendBytesUniCast(tunnels[firstResAndOccTunnel].IpAddress, tunnels[firstResAndOccTunnel].PortCtrl, discReq.data(), discReq.totalLength());
+                    sendCounted(tunnels[firstResAndOccTunnel].IpAddress, tunnels[firstResAndOccTunnel].PortCtrl, discReq.data(), discReq.totalLength());
                     // Audit-trail parity with every other teardown path: log the evicted session before Reset().
                     recordTunnelSession(tunnels[firstResAndOccTunnel].IpAddress, tunnels[firstResAndOccTunnel].IndividualAddress,
                                         tunnels[firstResAndOccTunnel].IsConfig ? TUN_CONFIG : TUN_DATA, tunnels[firstResAndOccTunnel].connectStart, END_CLOSED);
@@ -970,7 +986,7 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
         println(paNotUnique ? "tunnel connect rejected: no unique individual address available"
                             : "no free tunnel availible");
         KnxIpConnectResponse connRes(0x00, paNotUnique ? E_NO_MORE_UNIQUE_CONNECTIONS : E_NO_MORE_CONNECTIONS);
-        _platform.sendBytesUniCast(rIp, rPort, connRes.data(), connRes.totalLength());
+        sendCounted(rIp, rPort, connRes.data(), connRes.totalLength());
         return;
     }
 
@@ -1042,7 +1058,7 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
     println();
 
     KnxIpConnectResponse connRes(_ipParameters, tun->IndividualAddress, 3671, tun->ChannelId, connRequest.cri().type());
-    _platform.sendBytesUniCast(tun->IpAddress, tun->PortCtrl, connRes.data(), connRes.totalLength());
+    sendCounted(tun->IpAddress, tun->PortCtrl, connRes.data(), connRes.totalLength());
 }
 
 void IpTunnelServer::HandleConnectionStateRequest(uint8_t* buffer, uint16_t length)
@@ -1073,7 +1089,7 @@ void IpTunnelServer::HandleConnectionStateRequest(uint8_t* buffer, uint16_t leng
 #endif
         // Echo the requested (unknown) channel id in the error, not 0 (03_08_04 §7.8.3; both refs do this).
         KnxIpStateResponse stateRes(stateRequest.channelId(), E_CONNECTION_ID);
-        _platform.sendBytesUniCast(stateRequest.hpaiCtrl().ipAddress(), stateRequest.hpaiCtrl().ipPortNumber(), stateRes.data(), stateRes.totalLength());
+        sendCounted(stateRequest.hpaiCtrl().ipAddress(), stateRequest.hpaiCtrl().ipPortNumber(), stateRes.data(), stateRes.totalLength());
         return;
     }
 
@@ -1098,7 +1114,7 @@ void IpTunnelServer::HandleConnectionStateRequest(uint8_t* buffer, uint16_t leng
     // endpoint (resolved from the packet source at CONNECT), else the response is lost and the client reaps.
     uint32_t rIp = stateRequest.hpaiCtrl().ipAddress() ? stateRequest.hpaiCtrl().ipAddress() : tun->IpAddress;
     uint16_t rPort = stateRequest.hpaiCtrl().ipPortNumber() ? stateRequest.hpaiCtrl().ipPortNumber() : tun->PortCtrl;
-    _platform.sendBytesUniCast(rIp, rPort, stateRes.data(), stateRes.totalLength());
+    sendCounted(rIp, rPort, stateRes.data(), stateRes.totalLength());
 }
 
 void IpTunnelServer::HandleDisconnectRequest(uint8_t* buffer, uint16_t length)
@@ -1130,7 +1146,7 @@ void IpTunnelServer::HandleDisconnectRequest(uint8_t* buffer, uint16_t length)
         // stored busmon control endpoint (mirrors the data/config disconnect path below).
         uint32_t rIp = discReq.hpaiCtrl().ipAddress() ? discReq.hpaiCtrl().ipAddress() : _busMonTunnel.IpAddress;
         uint16_t rPort = discReq.hpaiCtrl().ipPortNumber() ? discReq.hpaiCtrl().ipPortNumber() : _busMonTunnel.PortCtrl;
-        _platform.sendBytesUniCast(rIp, rPort, discRes.data(), discRes.totalLength());
+        sendCounted(rIp, rPort, discRes.data(), discRes.totalLength());
         busMonitorTeardown();
         return;
     }
@@ -1144,7 +1160,7 @@ void IpTunnelServer::HandleDisconnectRequest(uint8_t* buffer, uint16_t length)
 #endif
         // Echo the requested (unknown) channel id back in the error, not 0 (03_08_04 §7.8.4 / TSSH 3.6.2).
         KnxIpDisconnectResponse discRes(discReq.channelId(), E_CONNECTION_ID);
-        _platform.sendBytesUniCast(discReq.hpaiCtrl().ipAddress(), discReq.hpaiCtrl().ipPortNumber(), discRes.data(), discRes.totalLength());
+        sendCounted(discReq.hpaiCtrl().ipAddress(), discReq.hpaiCtrl().ipPortNumber(), discRes.data(), discRes.totalLength());
         return;
     }
 
@@ -1152,7 +1168,7 @@ void IpTunnelServer::HandleDisconnectRequest(uint8_t* buffer, uint16_t length)
     // Route-back (03_08_02 Core §5.2): reply to the stored control endpoint when the request HPAI is 0.0.0.0:0.
     uint32_t rIp = discReq.hpaiCtrl().ipAddress() ? discReq.hpaiCtrl().ipAddress() : tun->IpAddress;
     uint16_t rPort = discReq.hpaiCtrl().ipPortNumber() ? discReq.hpaiCtrl().ipPortNumber() : tun->PortCtrl;
-    _platform.sendBytesUniCast(rIp, rPort, discRes.data(), discRes.totalLength());
+    sendCounted(rIp, rPort, discRes.data(), discRes.totalLength());
     recordTunnelSession(tun->IpAddress, tun->IndividualAddress, tun->IsConfig ? TUN_CONFIG : TUN_DATA, tun->connectStart, END_CLOSED);
     tun->Reset();
 }
@@ -1161,7 +1177,7 @@ void IpTunnelServer::HandleDescriptionRequest(uint8_t* buffer, uint16_t length)
 {
     KnxIpDescriptionRequest descReq(buffer, length);
     KnxIpDescriptionResponse descRes(_ipParameters, _deviceObject);
-    _platform.sendBytesUniCast(descReq.hpaiCtrl().ipAddress(), descReq.hpaiCtrl().ipPortNumber(), descRes.data(), descRes.totalLength());
+    sendCounted(descReq.hpaiCtrl().ipAddress(), descReq.hpaiCtrl().ipPortNumber(), descRes.data(), descRes.totalLength());
 }
 
 void IpTunnelServer::HandleDeviceConfigurationRequest(uint8_t* buffer, uint16_t length)
@@ -1203,7 +1219,7 @@ void IpTunnelServer::HandleDeviceConfigurationRequest(uint8_t* buffer, uint16_t 
         dupAck.connectionHeader().channelId(tun->ChannelId);
         dupAck.connectionHeader().sequenceCounter(sequence);
         dupAck.connectionHeader().status(E_NO_ERROR);
-        _platform.sendBytesUniCast(tun->IpAddress, tun->PortData, dupAck.data(), dupAck.totalLength());
+        sendCounted(tun->IpAddress, tun->PortData, dupAck.data(), dupAck.totalLength());
         return;
     }
     else if ((uint8_t)(sequence - 1) != tun->SequenceCounter_R)
@@ -1218,7 +1234,7 @@ void IpTunnelServer::HandleDeviceConfigurationRequest(uint8_t* buffer, uint16_t 
     tunnAck.connectionHeader().channelId(tun->ChannelId);
     tunnAck.connectionHeader().sequenceCounter(sequence);
     tunnAck.connectionHeader().status(E_NO_ERROR);
-    _platform.sendBytesUniCast(tun->IpAddress, tun->PortData, tunnAck.data(), tunnAck.totalLength());
+    sendCounted(tun->IpAddress, tun->PortData, tunnAck.data(), tunnAck.totalLength());
 
     tun->SequenceCounter_R = sequence;
     tun->lastHeartbeat = millis();
@@ -1265,7 +1281,7 @@ void IpTunnelServer::HandleTunnelingRequest(uint8_t* buffer, uint16_t length)
         tunnAck.connectionHeader().channelId(tun->ChannelId);
         tunnAck.connectionHeader().sequenceCounter(tunnReq.connectionHeader().sequenceCounter());
         tunnAck.connectionHeader().status(E_NO_ERROR);
-        _platform.sendBytesUniCast(tun->IpAddress, tun->PortData, tunnAck.data(), tunnAck.totalLength());
+        sendCounted(tun->IpAddress, tun->PortData, tunnAck.data(), tunnAck.totalLength());
         return;
     }
     else if ((uint8_t)(sequence - 1) != tun->SequenceCounter_R)
@@ -1285,7 +1301,7 @@ void IpTunnelServer::HandleTunnelingRequest(uint8_t* buffer, uint16_t length)
     tunnAck.connectionHeader().channelId(tun->ChannelId);
     tunnAck.connectionHeader().sequenceCounter(tunnReq.connectionHeader().sequenceCounter());
     tunnAck.connectionHeader().status(E_NO_ERROR);
-    _platform.sendBytesUniCast(tun->IpAddress, tun->PortData, tunnAck.data(), tunnAck.totalLength());
+    sendCounted(tun->IpAddress, tun->PortData, tunnAck.data(), tunnAck.totalLength());
 
     tun->SequenceCounter_R = tunnReq.connectionHeader().sequenceCounter();
     tun->lastHeartbeat = millis(); // KNX 03_08_02 Core §5.4 p.14: any correctly received frame retriggers the 120s timer
@@ -1327,7 +1343,7 @@ void IpTunnelServer::closeTunnelsForBusmon()
         discReq.hpaiCtrl().code(IPV4_UDP);
         discReq.hpaiCtrl().ipAddress(tunnels[i].IpAddress);
         discReq.hpaiCtrl().ipPortNumber(tunnels[i].PortCtrl);
-        _platform.sendBytesUniCast(tunnels[i].IpAddress, tunnels[i].PortCtrl, discReq.data(), discReq.totalLength());
+        sendCounted(tunnels[i].IpAddress, tunnels[i].PortCtrl, discReq.data(), discReq.totalLength());
         recordTunnelSession(tunnels[i].IpAddress, tunnels[i].IndividualAddress, tunnels[i].IsConfig ? TUN_CONFIG : TUN_DATA, tunnels[i].connectStart, END_BUSMON);
         tunnels[i].Reset();
     }
@@ -1342,7 +1358,7 @@ void IpTunnelServer::HandleBusMonitorConnect(KnxIpConnectRequest& connRequest, u
     if (_busMonTunnel.ChannelId != 0 || _hwBusMon == nullptr)
     {
         KnxIpConnectResponse connRes(0x00, _hwBusMon == nullptr ? E_TUNNELING_LAYER : E_NO_MORE_CONNECTIONS);
-        _platform.sendBytesUniCast(srcIP, srcPort, connRes.data(), connRes.totalLength()); // route-back (srcIP/srcPort resolved at fn top)
+        sendCounted(srcIP, srcPort, connRes.data(), connRes.totalLength()); // route-back (srcIP/srcPort resolved at fn top)
         return;
     }
 
@@ -1380,7 +1396,7 @@ void IpTunnelServer::HandleBusMonitorConnect(KnxIpConnectRequest& connRequest, u
     println(" (routing paused until disconnect)");
 
     KnxIpConnectResponse connRes(_ipParameters, _deviceObject.individualAddress(), 3671, _busMonTunnel.ChannelId, TUNNEL_CONNECTION);
-    _platform.sendBytesUniCast(_busMonTunnel.IpAddress, _busMonTunnel.PortCtrl, connRes.data(), connRes.totalLength());
+    sendCounted(_busMonTunnel.IpAddress, _busMonTunnel.PortCtrl, connRes.data(), connRes.totalLength());
 }
 
 void IpTunnelServer::busMonitorTeardown(uint8_t reason)
@@ -1447,7 +1463,7 @@ void IpTunnelServer::busMonitorFrame(uint8_t* lpdu, uint16_t len, uint8_t status
     req.connectionHeader().sequenceCounter(_busMonTunnel.SequenceCounter_S++);
     req.connectionHeader().length(LEN_CH);
     req.connectionHeader().channelId(_busMonTunnel.ChannelId);
-    _platform.sendBytesUniCast(_busMonTunnel.IpAddress, _busMonTunnel.PortData, req.data(), req.totalLength());
+    sendCounted(_busMonTunnel.IpAddress, _busMonTunnel.PortData, req.data(), req.totalLength());
 }
 #endif
 
