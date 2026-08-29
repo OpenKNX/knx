@@ -14,8 +14,8 @@
  *    counted here nowhere.
  *
  * The spec requires the counts not to wrap; all four saturate at their property width.
- * routedToIp/routedToKnx/filtered are ours, not spec: the coupler's routing decision, for the
- * console and the display.
+ * routedToIp/ToKnx and filteredToIp/ToKnx are ours, not spec: the coupler's routing decision
+ * per direction, for the console and the display.
  */
 class KnxIpCounters
 {
@@ -26,7 +26,8 @@ class KnxIpCounters
     void incrementOverflowToKnx() { inc16(_overflowToKnx); }
     void incrementRoutedToIp() { inc32(_routedToIp); }
     void incrementRoutedToKnx() { inc32(_routedToKnx); }
-    void incrementFiltered() { inc32(_filtered); }
+    void incrementFilteredToIp() { inc32(_filteredToIp); }
+    void incrementFilteredToKnx() { inc32(_filteredToKnx); }
 
     uint32_t transmitToIp() const { return _transmitToIp; }
     uint32_t transmitToKnx() const { return _transmitToKnx; }
@@ -34,7 +35,8 @@ class KnxIpCounters
     uint16_t overflowToKnx() const { return (uint16_t)_overflowToKnx; }
     uint32_t routedToIp() const { return _routedToIp; }
     uint32_t routedToKnx() const { return _routedToKnx; }
-    uint32_t filtered() const { return _filtered; }
+    uint32_t filteredToIp() const { return _filteredToIp; }
+    uint32_t filteredToKnx() const { return _filteredToKnx; }
 
   private:
     // 03_08_03: "The count does not wrap around when the maximum is reached."
@@ -47,5 +49,6 @@ class KnxIpCounters
     volatile uint32_t _overflowToKnx = 0;
     volatile uint32_t _routedToIp = 0;
     volatile uint32_t _routedToKnx = 0;
-    volatile uint32_t _filtered = 0;
+    volatile uint32_t _filteredToIp = 0;
+    volatile uint32_t _filteredToKnx = 0;
 };

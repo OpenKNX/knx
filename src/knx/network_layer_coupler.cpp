@@ -281,7 +281,13 @@ void NetworkLayerCoupler::sendMsgHopCount(AckType ack, AddressType addrType, uin
         if(!isRoutedGroupAddress(destination, sourceInterfaceIndex))
         {
             if (_counters != nullptr)
-                _counters->incrementFiltered(); // filtered by the routing table -- dropped by design, not lost
+            {
+                // interfaceIndex is the side it would have gone to -- dropped by design, not lost.
+                if (interfaceIndex == kPrimaryIfIndex)
+                    _counters->incrementFilteredToIp();
+                else
+                    _counters->incrementFilteredToKnx();
+            }
             return; // drop;
         }
     }
