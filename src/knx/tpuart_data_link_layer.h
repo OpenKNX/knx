@@ -6,6 +6,7 @@
 #include "TPUart.h"
 #include "data_link_layer.h"
 #include "tp_frame.h"
+#include "knx_ip_counters.h"
 #include <stdint.h>
 #include <functional>
 #include "TPUart.h"
@@ -14,7 +15,6 @@
 #endif
 #ifdef ARDUINO_ARCH_RP2040
 #include "TPUart/Interface/RP2040.h"
-#include "knx_ip_counters.h"
 #endif
 
 class ITpUartCallBacks

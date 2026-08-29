@@ -98,6 +98,7 @@ Field-tested on OAM-IP-Interface and OAM-IP-Router (RP2040 + ESP32).
 * Change: the four spec counters saturate instead of wrapping, as 2.5.23 demands
 * Change: the properties are gated on `KNX_IS_ROUTER`, so the parameter object of a tunnelling-only device stays unchanged
 * Fix: the saturating increment no longer uses `v++` on a `volatile`, which C++20 deprecates
+* Fix: the counter header is included next to the other includes instead of inside `#ifdef ARDUINO_ARCH_RP2040` -- an ESP32 target without `KNX_TUNNELING`, so a plain TP device, lost the declaration while the members stayed and did not compile
 
 ## ec/v2.4.0-beta.1 - 2026-08-09
 

@@ -6,9 +6,9 @@
 #include <stdint.h>
 #include "data_link_layer.h"
 #include "ip_parameter_object.h"
+#include "knx_ip_counters.h"
 #include "service_families.h"
 #include "ip_tunnel_server.h"
-#include "knx_ip_counters.h"
 
 class IpDataLinkLayer : public DataLinkLayer
 {
