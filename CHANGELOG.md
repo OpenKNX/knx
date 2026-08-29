@@ -1,5 +1,104 @@
 # Changelog
 
+
+## ec/v2.5.0-beta.1 - 2026-08-29
+
+Conformance and hardening release on top of `ec/v2.4.0-beta.1` (`cec1b35` .. `eef0ade`). Most entries
+come from tracing the KNXnet/IP and device-management paths against the specification with a test
+client, so nearly every fix names a value or timing an ETS or a tunnel client actually observes.
+Field-tested on OAM-IP-Interface and OAM-IP-Router (RP2040 + ESP32).
+
+### Breaking
+* Breaking: `OPENKNX_FTC` is now `OPENKNX_FTC_CLIENT`. A product that sets the old name loses the client role silently, so rename it in the ini
+* Change: the FunctionProperty confirm cases are handled unconditionally, no longer only under the FTC flag
+
+### Discovery and description (a non-router must not look like a router)
+* Fix: ROUTING is advertised only on a router — `DESCRIPTION_RESPONSE`, `SEARCH_RESPONSE` and `SEARCH_RESPONSE_EXTENDED` announced the routing service family and the routing multicast on an interface as well, which is what makes an interface fail the HW-busmonitor rules of 03_08_04 §2.2.4
+* Fix: a non-routing device reads routing multicast as `0` and still joins the discovery multicast, so it stays findable without claiming routing
+* Fix: the extended search no longer advertises the TP1 medium as permanently unavailable
+* Fix: `SEARCH_REQUEST`/`SEARCH_REQUEST_EXTENDED` carrying a TCP HPAI is discarded instead of answered over UDP
+* Fix: the extended-search SRP parser is bound-checked and the `requestedDIB` read guard corrected from `>` to `>=`
+* Fix: the IP Current Config DIB (`0x04`) is part of `DESCRIPTION_RESPONSE`, with corrected info1/info2 offsets
+* Fix: the KNX-Addresses DIB writes the individual address as 2 octets
+* Fix: `PID_CURRENT_IP_ASSIGNMENT_METHOD` and `PID_IP_CAPABILITIES` accept 1 element
+* Fix: the `setTunnelingInfo` address buffer is hoisted out of the `else` block, where it went out of scope before use
+
+### Tunnelling
+* Fix: `L_Data.con` carries the real TP result and is emitted once per request — a client could see a positive confirmation for a frame the bus never took
+* Fix: a self-addressed tunnel probe (`src == dest`) gets its `L_Data.con`
+* Fix: a truncated TUNNEL `CONNECT_REQUEST` is rejected with `E_CONNECTION_TYPE` instead of being parsed
+* Fix: requests on an unopened channel are rejected, and a connection error response echoes the requested channel id
+* Fix: `CONNECTIONSTATE_RESPONSE`, `DISCONNECT_RESPONSE` and `CONNECT_RESPONSE` rejects go back to the stored or resolved control endpoint, not to wherever the last datagram came from
+* Fix: NAT route-back for a `0.0.0.0` data HPAI, per field rather than for the whole endpoint
+* Fix: the config channel resends at 10 s / 3 attempts, data stays at 1 s / 1 attempt (03_08_04 H-4.2.11); both used the data timing before
+* Fix: the connectionstate heartbeat reports `E_KNX_CONNECTION` while the bus is down instead of claiming a healthy link
+* Fix: the session is recorded before a reserved-slot takeover resets it, so the history no longer loses the entry
+* Fix: the KNXnet/IP header total length is validated before anything is read from it
+* Change: drop the dead `IpTunnelServer::dataRequestToTunnel` (no caller; requests run through `dataRequestToChannelId`) and note the missing Extended-CRI (tunnelling v2 requested-IA) path
+
+### cEMI and device management
+* Feature: local Transport Layer over cEMI — `T_Data_Individual` and `T_Data_Connected` message codes `0x4A`/`0x41` are served instead of dropped (AN118, 03_08_04 H-4.3.5/H-4.3.7)
+* Feature: `PID_DOWNLOAD_COUNTER` (30) on the Device Object — read-only change token, +1 per download session (armed by a read, spent by the first table load), kept in RAM so the NVM layout and apiVersion are unchanged; a product may persist it in one of its OpenKNX modules
+* Fix: `M_PropRead` skips the client-address patch on a `start_index == 0` count read, which returned a patched value where the count belongs
+* Fix: `M_PropWrite` guards its address patch against a request with no data
+* Fix: `M_PropRead`/`M_PropWrite` frames that are truncated are dropped instead of parsed
+* Fix: `M_PropWrite` reports the real failure code
+* Fix: `A_PropertyExtDescription_Read` parses the 8-octet APDU correctly, and the response returns the resolved PID and index
+* Fix: property writes are bounded against the received payload length; property value reads count elements in the high nibble (`|=` instead of `&=`)
+* Fix: the FunctionProperty handlers null-check the property and drop a zero-length PDU
+* Fix: the `A_Restart` master-reset erase codes now actually erase instead of answering `0x00` and doing nothing — ResetLinks/ResetAP/ResetParam/ResetIA and both factory resets clear the matching tables, individual address and IP configuration via the tested unload path (03_05_02 3.7.1.2)
+
+### Management APDU bounds
+* Fix: `A_MemoryExtended_Read` clamps its response length to the CemiFrame buffer — the previous version could write past it
+* Fix: management memory reads are bounded against the NVM size
+* Fix: short APDUs are rejected before any length-derived read in the management handlers, including `A_Restart` MasterReset
+* Fix: a zero-octet group APDU is dropped before the length underflow
+* Fix: `LE_ADDITIONAL_LOAD_CONTROLS` reads are bounded by the payload length, and a short write is dropped before the out-of-bounds read
+* Fix: the full variable-length `test_info` is forwarded and the system-broadcast reads are guarded
+* Fix: the group-object ASAP is bounded before `GroupObjectTableObject::get()`, and `AssociationTableObject::entryCount()` is guarded until the table is loaded
+* Fix: `telegramLengthtTP` subtracts the cEMI additional-info length
+
+### Transport layer
+* Fix: an undefined transport control PDU is rejected instead of acted on
+* Fix: in the `CONNECTING` state an E20 event closes and then sends A5, per 03_03_04 style 3
+
+### Busmonitor
+* Fix: the status octet carries bit-error, truncated and lost, and an rx-frame-buffer overflow counts into the lost-frame status
+* Fix: the busmon channel id stays unique against the data channels and the `L_Busmon.ind` sequence is reset on connect
+* Fix: refused tunnel connects are recorded
+* Fix: busmon-only carrier handling is gated under `OPENKNX_HW_BUSMON`
+
+### Coupler
+* Fix: hop count 7 is decremented on closed-media routing (post-AN189)
+* Fix: `functionRouteTableControl` is guarded against a short PDU
+* Change: the stray system-broadcast `println` is compile-guarded with `KNX_LOG_COUPLER`
+* Feature: KNXnet/IP telegram counters (`PID_QUEUE_OVERFLOW_TO_IP`/`_TO_KNX` 72/73, `PID_MSG_TRANSMIT_TO_IP`/`_TO_KNX` 74/75, 03_08_03 2.5.23-2.5.26) on a routing device — saturating, counted on the send paths (every emitted datagram incl. ACKs), read-only and only under `KNX_IS_ROUTER`, so the interface advertises none
+
+### Datapoint types
+* Fix: DPT 6 decodes as signed (V8)
+* Fix: DPT 225/239 scaling decode rounds the same way the encoder does, so encode-decode round-trips
+* Fix: the DPT Locale decode no longer returns a dangling pointer and NUL-terminates
+* Fix: DPT 231 (Locale) has a `dataLength()` entry
+* Fix: the value accessors read the matching `KNXValue` union member
+
+### Diagnostics and portability
+* Feature: `OPENKNX_CON_DIAG` counts confirmation generation on the tunnel path (indications, acks, header drops); off by default
+* Feature: `KNX_LOG_TUNNELING` names the failing check on an invalid frame and prints property errors in readable form
+* Feature: device type, role and capabilities are decoded once per `MASK_VERSION` instead of at each call site
+* Fix: `0x07B0` plus `KNX_TUNNELING` is compile-guarded on SAMD and STM32, which have no IP platform
+* Fix: the 711/713 unhandled-APDU confirm log is suppressed on FTC console-only builds
+* Doc: the unimplemented requester primitives and the KNX-Secure confirm are annotated in the source
+* Change: TPUart dependency pinned to `ec/1.2.0-beta.1`
+
+### KNXnet/IP telegram counters (03_08_03 2.5.23-2.5.26)
+* Feature: the four counters exist for the first time — `PID_QUEUE_OVERFLOW_TO_IP/KNX` (72/73) and `PID_MSG_TRANSMIT_TO_IP/KNX` (74/75) were enum values no `.cpp` ever used, so a routing device could not answer them at all
+* Feature: `->IP` counts every KNXnet/IP datagram the stack emits — tunnelling, core, device management, ACKs — as 2.5.25 requires, not just routed group telegrams; every `IpTunnelServer` send goes through one helper, so no path escapes the count
+* Feature: `->KNX` counts frames the TP link accepted; a rejected transmit queue counts as a loss towards KNX, the IP send limit as a loss towards IP
+* Feature: `routedToIp`/`routedToKnx` and `filteredToIp`/`filteredToKnx` record the coupler's routing decision per direction — not in the spec, for the console and the display
+* Change: the four spec counters saturate instead of wrapping, as 2.5.23 demands
+* Change: the properties are gated on `KNX_IS_ROUTER`, so the parameter object of a tunnelling-only device stays unchanged
+* Fix: the saturating increment no longer uses `v++` on a `volatile`, which C++20 deprecates
+
 ## ec/v2.4.0-beta.1 - 2026-08-09
 
 A large feature/robustness release on top of the 2.3.1 base, serving both coupler/router (`0x091A`) and
