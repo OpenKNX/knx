@@ -38,8 +38,8 @@ class KnxIpCounters
 
   private:
     // 03_08_03: "The count does not wrap around when the maximum is reached."
-    static void inc32(volatile uint32_t& v) { if (v < 0xFFFFFFFF) v++; }
-    static void inc16(volatile uint32_t& v) { if (v < 0xFFFF) v++; }
+    static void inc32(volatile uint32_t& v) { const uint32_t c = v; if (c < 0xFFFFFFFF) v = c + 1; }
+    static void inc16(volatile uint32_t& v) { const uint32_t c = v; if (c < 0xFFFF) v = c + 1; }
 
     volatile uint32_t _transmitToIp = 0;
     volatile uint32_t _transmitToKnx = 0;
