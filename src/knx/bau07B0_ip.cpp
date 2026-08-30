@@ -181,9 +181,9 @@ TPAckType Bau07B0IP::isAckRequired(uint16_t address, bool isGrpAddr)
         // is group address in group address table? ACK if yes.
         if (_addrTable.contains(address))
             return TPAckType::AckReqAck;
-        // ACK on behalf of a tunnel client that listens to this group address
-        if (_ipTunnelServer.isSentToTunnel(address, isGrpAddr))
-            return TPAckType::AckReqAck;
+        // No L2-ACK on behalf of a tunnel client: isSentToTunnel() is true for EVERY group address while any
+        // tunnel is open, so the interface would acknowledge foreign group telegrams and suppress the TP1
+        // repetition a receiver that missed the frame depends on. ACKing on behalf is coupler behaviour (091A).
         return TPAckType::AckReqNone;
     }
 
