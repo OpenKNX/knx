@@ -24,6 +24,8 @@ Field-tested on OAM-IP-Interface and OAM-IP-Router (RP2040 + ESP32).
 * Fix: the `setTunnelingInfo` address buffer is hoisted out of the `else` block, where it went out of scope before use
 
 ### Tunnelling
+* Fix: the interface no longer L2-acknowledges foreign group telegrams on behalf of a tunnel client -- `isSentToTunnel()` reports true for EVERY group address while any tunnel is open, so `Bau07B0IP::isAckRequired` acknowledged group telegrams the device is not addressed by, and the TP1 repetition a receiver that missed the frame depends on never happened (observed as scene telegrams not reaching a logic module while a tunnel was connected)
+* Fix: the interface acknowledges group telegrams only for broadcast and its own address table; acknowledging on behalf is coupler behaviour and stays in `Bau091A`
 * Fix: `L_Data.con` carries the real TP result and is emitted once per request — a client could see a positive confirmation for a frame the bus never took
 * Fix: a self-addressed tunnel probe (`src == dest`) gets its `L_Data.con`
 * Fix: a truncated TUNNEL `CONNECT_REQUEST` is rejected with `E_CONNECTION_TYPE` instead of being parsed
