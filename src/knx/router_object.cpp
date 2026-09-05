@@ -538,6 +538,21 @@ void RouterObject::beforeStateChange(LoadState& newState)
         return;
 }
 
+// Same rule the per-address check uses: without PID_FILTER_TABLE_USE (coupler models other than 20)
+// the table is always in use; with it, bit 0 decides.
+bool RouterObject::filterTableInUse()
+{
+    if (loadState() != LS_LOADED)
+        return false;
+
+    uint8_t filterTableUse = 0x01;
+    Property* propFilterTableUse = property(PID_FILTER_TABLE_USE);
+    if (propFilterTableUse)
+        if (propFilterTableUse->read(filterTableUse) == 0)
+            return false;
+    return (filterTableUse & 0x01) == 1;
+}
+
 bool RouterObject::isGroupAddressInFilterTable(uint16_t groupAddress)
 {
     if (loadState() != LS_LOADED)

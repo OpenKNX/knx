@@ -31,6 +31,15 @@ public:
 
   bool isGroupAddressInFilterTable(uint16_t groupAddress);
 
+  // Read-only view of the filter table for diagnostics: one bit per group address, nullptr when the
+  // table is not loaded. isGroupAddressInFilterTable() answers one address and re-reads
+  // PID_FILTER_TABLE_USE every time -- scanning all 65536 addresses that way is not affordable.
+  // Only while the table is really loaded: _data survives LS_LOADING and LS_ERROR, and the routing
+  // path itself filters everything in those states (isGroupAddressInFilterTable returns false).
+  const uint8_t* filterTableData() { return loadState() == LS_LOADED ? data() : nullptr; }
+  uint32_t filterTableSize() { return loadState() == LS_LOADED ? tableSize() : 0; }
+  bool filterTableInUse();
+
   bool isRfSbcRoutingEnabled();
   bool isIpSbcRoutingEnabled();
 

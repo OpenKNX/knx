@@ -41,6 +41,9 @@ class TableObject: public InterfaceObject
     static BeforeTablesUnloadCallback beforeTablesUnloadCallback();
 
   protected:
+    /** @brief Allocated table size in bytes; 0 when nothing is loaded. Diagnostics must not assume a size. */
+    uint32_t tableSize() const { return _size; }
+
     /**
      * This method is called before the interface object enters a new ::LoadState.
      * If there is a error changing the state newState should be set to ::LS_ERROR and errorCode() 

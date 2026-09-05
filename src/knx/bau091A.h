@@ -24,6 +24,9 @@ class Bau091A : public BauSystemBCoupler, public ITpUartCallBacks, public DataLi
     /** @brief KNXnet/IP telegram counters (03_08_03) for diagnostics and the OAM console. */
     KnxIpCounters& getCounters() { return _counters; }
 
+    /** @brief Router object, for reading the filter table in diagnostics. */
+    RouterObject& getRouterObject() { return _routerObj; }
+
     IpDataLinkLayer* getPrimaryDataLinkLayer();
     TpUartDataLinkLayer* getSecondaryDataLinkLayer();
 
