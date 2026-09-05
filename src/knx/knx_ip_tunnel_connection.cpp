@@ -19,6 +19,7 @@ void KnxIpTunnelConnection::Reset()
     SequenceCounter_R = 255;
     IndividualAddress = 0;
     IsConfig = false;
+    ReservedSlot = 0xFF;
 #ifdef KNX_TUNNEL_RESEND
     _txHead = 0;
     _txTail = 0;

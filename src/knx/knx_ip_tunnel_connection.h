@@ -17,6 +17,10 @@ class KnxIpTunnelConnection
     unsigned long lastHeartbeat = 0;
     unsigned long connectStart = 0; // millis() when this connection was established (for session duration)
     bool IsConfig = false;
+    // Which slot the reservation table held for this client at connect time, 0xFF for none. Recorded
+    // here because only the connect knows it: the reservation is matched against the CONTROL HPAI,
+    // while IpAddress above is the DATA HPAI, and the two need not carry the same address.
+    uint8_t ReservedSlot = 0xFF;
 
 #ifdef KNX_TUNNEL_RESEND
     // Server->client TUNNELLING_REQUEST reliability (KNX 03_08_04 Tunnelling §2.6.1 p.9): a per-tunnel FIFO

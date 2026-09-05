@@ -86,9 +86,21 @@ class IpTunnelServer
         uint8_t type = TUN_DATA;       // TunnelType
         uint8_t reason = END_ACTIVE;   // TunnelEndReason (END_ACTIVE for the live list)
         uint8_t detail = 0;            // rejected attempts: the offending CRI type / KNX layer octet
+        uint8_t slot = 0xFF;           // index in tunnels[], 0xFF when it does not belong to one
+        uint8_t resSlot = 0xFF;        // slot reserved for this client at connect time, 0xFF for none
         unsigned long startMillis = 0; // millis() at connect
         unsigned long endMillis = 0;   // millis() at disconnect (0 while active)
     };
+    /**
+     * @brief Reserved-tunnel configuration as ETS wrote it, for diagnostics only.
+     * One control byte per tunnel (bit 7 reserved, bits 6-5 behaviour when busy) and one IPv4 each.
+     * Both return nullptr unless the property carries exactly KNX_TUNNELING entries.
+     * The returned memory belongs to the property and is freed on the next ETS write to it, so this
+     * must only be called from the KNX loop -- never from a web handler on another task.
+     */
+    const uint8_t* reservedTunnelsCtrl();
+    const uint8_t* reservedTunnelsIp();
+
     /** @brief Snapshot of all currently open connections (data + config + busmon); returns count. */
     uint8_t activeTunnels(TunnelEvent* out, uint8_t maxOut) const;
     /** @brief Number of recorded finished sessions (up to the ring size). */

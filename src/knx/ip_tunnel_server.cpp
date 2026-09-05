@@ -63,6 +63,21 @@ const KnxIpTunnelConnection* IpTunnelServer::tunnelAt(uint8_t index) const
     return nullptr;
 }
 
+// Same length check as HandleConnectRequest: a short property must not be read as a full array.
+const uint8_t* IpTunnelServer::reservedTunnelsCtrl()
+{
+    uint16_t count = 0;
+    _ipParameters.readPropertyLength(PID_CUSTOM_RESERVED_TUNNELS_CTRL, count);
+    return count == KNX_TUNNELING ? _ipParameters.propertyData(PID_CUSTOM_RESERVED_TUNNELS_CTRL) : nullptr;
+}
+
+const uint8_t* IpTunnelServer::reservedTunnelsIp()
+{
+    uint16_t count = 0;
+    _ipParameters.readPropertyLength(PID_CUSTOM_RESERVED_TUNNELS_IP, count);
+    return count == KNX_TUNNELING ? _ipParameters.propertyData(PID_CUSTOM_RESERVED_TUNNELS_IP) : nullptr;
+}
+
 uint8_t IpTunnelServer::activeTunnels(TunnelEvent* out, uint8_t maxOut) const
 {
     uint8_t n = 0;
@@ -75,6 +90,9 @@ uint8_t IpTunnelServer::activeTunnels(TunnelEvent* out, uint8_t maxOut) const
         out[n].reason = END_ACTIVE;
         out[n].startMillis = tunnels[i].connectStart;
         out[n].endMillis = 0;
+        // Device-Mgmt slots sit above the tunnel pool and are never reservable.
+        out[n].slot = (i < KNX_TUNNELING) ? (uint8_t)i : 0xFF;
+        out[n].resSlot = (i < KNX_TUNNELING) ? tunnels[i].ReservedSlot : 0xFF;
         n++;
     }
 #ifdef OPENKNX_HW_BUSMON
@@ -86,6 +104,8 @@ uint8_t IpTunnelServer::activeTunnels(TunnelEvent* out, uint8_t maxOut) const
         out[n].reason = END_ACTIVE;
         out[n].startMillis = _busMonTunnel.connectStart;
         out[n].endMillis = 0;
+        out[n].slot = 0xFF; // the busmonitor has no reservable slot
+        out[n].resSlot = 0xFF;
         n++;
     }
 #endif
@@ -778,6 +798,7 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
 #endif
 
     uint8_t tunIdx = 0xff;
+    uint8_t tunResSlot = 0xff;      // slot the reservation table holds for this client (0xff = none)
     bool tunReservedAssign = false; // true = tunIdx is a RESERVED slot (fixed slot->IA); false = free pool
     if (connRequest.cri().type() == DEVICE_MGMT_CONNECTION)
     {
@@ -851,6 +872,7 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
 
         if (resTunActive & (firstResAndFreeTunnel >= 0 || firstResAndOccTunnel >= 0)) // tunnel reserve feature active (for this src)
         {
+            tunResSlot = (uint8_t)(firstResAndFreeTunnel >= 0 ? firstResAndFreeTunnel : firstResAndOccTunnel);
             if (firstResAndFreeTunnel >= 0)
             {
                 tunIdx = firstResAndFreeTunnel;
@@ -908,6 +930,7 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
     if (tunIdx != 0xFF)
     {
         tun = &tunnels[tunIdx];
+        tun->ReservedSlot = tunResSlot;
 
         if (connRequest.cri().type() == DEVICE_MGMT_CONNECTION)
         {
