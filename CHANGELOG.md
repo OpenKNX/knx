@@ -1,6 +1,36 @@
 # Changelog
 
 
+## unreleased
+
+Memory-safety and conformance work on the management path, plus the removal of the download counter.
+Every bound below was re-derived from the response builder and the frame buffer, not from the handler
+that reads the data. Built on OAM-IP-Interface (RP2040, RP2350, ESP32), OAM-IP-Router (RP2040, ESP32)
+and OAM-RaumController (57B0).
+
+### Reachable over the bus
+* Fix: a property that exists but is not `PDT_FUNCTION` is answered without return code and without data (03_03_07 3.4.7.3). `functionPropertyStateIndication` started with `handled = true`, so such a request was answered with `resultLength` still at its 255 initialiser: `CemiFrame(3 + 255)` truncated through the `uint8_t` parameter to `apduLength` 2 while `memcpy` wrote 255 octets from `buffer+13`, four octets past the 264-octet buffer and into the frame's own data pointer, which `sendTelegram` writes through on its next statement. Reachable with `A_FunctionPropertyState_Read` on object 0 property 1, over TP and through a tunnel, without programming mode and without authentication
+* Fix: `functionPropertyExtStateIndication` starts `resultLength` at 1, because its error paths write only `resultData[0]` and 03_03_07 3.4.8.3 says such a response carries no data field
+* Fix: the response builders are bound to the frame buffer -- `propertyValueRead` 249, `propertyValueExtRead` 245, `functionPropertyStateResponse` 251, its extended twin 248, and `systemNetworkParameterReadResponse` 250, which had no bound at all: a 250-octet `test_info` in programming mode wrapped `frame(260)` to `frame(4)` and overran by six octets
+* Fix: `CemiFrame(apduLength)` takes `uint16_t`; a request above 255 wrapped to a short frame that the caller then filled to its own length. An oversized request now leaves `octetCount` at 0 and `sendTelegram` drops it before touching any field
+* Fix: busmonitor carriers stay out of the cEMI path on every build -- a standalone acknowledge, a raw poll frame and a truncated frame are not full LPDUs, and the rejection sat inside the busmonitor build gate, so a build without it converted them and read past the buffer
+
+### Group objects
+* Fix: the association-table lookup terminates. The binary search used a closed interval, so `high = i - 1` wrapped to `0xFFFF` whenever the searched ASAP was below the table's first entry and the loop never ended -- a watchdog boot loop, not repairable over the bus, triggered by an ordinary project with group object 1 unassigned and group object 2 assigned
+* Fix: `entryCount()` no longer believes an erased segment, which reported `0xFFFF` entries and read up to 262 KiB past the table
+* Fix: the unsorted path no longer re-arms the binary search it just rejected, which made a group object silently never send
+* Fix: an unassigned ASAP is dropped instead of sent -- `groupValueSend` cast `translateAsap`'s `-1` to `0xFFFF`, which the address table maps to 0, so a group value write went out as a broadcast for every group object ETS left without a group address
+* Fix: the confirm is attributed to the right object: the ASAP slot is claimed once the telegram is going out, and cleared when nothing goes out
+
+### Datapoint types
+* Fix: negative values encode on the signed types. `signed8/16/32ToPayload` were fed `(uint64_t)value`, and for a `DoubleType` that is a cast of a negative double to an unsigned integer, which is undefined and saturates to zero on ARM -- a negative float on a DPT 6, 8 or 13 group object went on the bus as `0x00`. RP2040 and RP2350 were affected, the ESP32 arrived at the right value by accident
+
+### Device management
+* Fix: the ETS writability probe is answered. ETS probes a property with a 7-byte `M_PropWrite` request carrying no data before it writes; the branch handling `PID_DEVICE_ADDR` and `PID_SUBNET_ADDR` required a data octet, so the probe fell through to the generic branch, where both properties are declared write-protected and the answer was `Read_Only`. ETS reported the individual-address download as a memory write failure
+* Change: `PID_DOWNLOAD_COUNTER` is removed. No KNX tool reads it, and on every product but the IP interface it reported 0 after each restart because the value lived in RAM and an ETS download ends in a restart -- a counter that decreases is worse than none, and 03_05_01 5.3.2.2 defines the fallback to a full download when the property is unavailable. The implementation also incremented a `uint16_t` without a ceiling, which 03_05_01 4.2.30.2 forbids. 03_05_01 4.2.30.1 makes the property conditional, so a device without a download counter is conformant. Removing it changes the persisted stream by zero octets
+* Fix: `Frame::cemiData()` can fail its allocation, and both callers check the result
+
+
 ## ec/v2.5.0-beta.1 - 2026-08-29
 
 Conformance and hardening release on top of `ec/v2.4.0-beta.1` (`cec1b35` .. `eef0ade`). Most entries
@@ -24,7 +54,7 @@ Field-tested on OAM-IP-Interface and OAM-IP-Router (RP2040 + ESP32).
 * Fix: the `setTunnelingInfo` address buffer is hoisted out of the `else` block, where it went out of scope before use
 
 ### Tunnelling
-* Fix: the interface no longer L2-acknowledges foreign group telegrams on behalf of a tunnel client -- `isSentToTunnel()` reports true for EVERY group address while any tunnel is open, so `Bau07B0IP::isAckRequired` acknowledged group telegrams the device is not addressed by, and the TP1 repetition a receiver that missed the frame depends on never happened (observed as scene telegrams not reaching a logic module while a tunnel was connected)
+* Fix: the interface no longer L2-acknowledges foreign group telegrams on behalf of a tunnel client -- `isSentToTunnel()` reports true for EVERY group address while any tunnel is open, so `Bau07B0IP::isAckRequired` acknowledged group telegrams the device is not addressed by, and the TP1 repetition a receiver that missed the frame depends on never happened (the scene telegrams that prompted this were later traced to a REG2 powered from the KNX supply, not to the acknowledge; the acknowledge is wrong on its own terms)
 * Fix: the interface acknowledges group telegrams only for broadcast and its own address table; acknowledging on behalf is coupler behaviour and stays in `Bau091A`
 * Fix: `L_Data.con` carries the real TP result and is emitted once per request — a client could see a positive confirmation for a frame the bus never took
 * Fix: a self-addressed tunnel probe (`src == dest`) gets its `L_Data.con`
