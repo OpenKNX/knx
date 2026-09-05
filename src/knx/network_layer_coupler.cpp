@@ -253,6 +253,13 @@ void NetworkLayerCoupler::sendMsgHopCount(AckType ack, AddressType addrType, uin
                                           SystemBroadcast broadcastType, uint8_t sourceInterfaceIndex, uint16_t source)
 {
     uint8_t interfaceIndex = (sourceInterfaceIndex == kSecondaryIfIndex) ? kPrimaryIfIndex : kSecondaryIfIndex;
+#ifdef OPENKNX_ROUTE_TRACE
+    // Read before the decrement below, otherwise a forwarded telegram would be recorded one hop short
+    // and a loop would not line up as 6,5,4...0 in the list.
+    const uint8_t hopIn = npdu.hopCount();
+    const bool traceToIp = (interfaceIndex == kPrimaryIfIndex);
+    const bool traceGroup = (addrType == AddressType::GroupAddress);
+#endif
 
     uint8_t lcconfig = LCCONFIG::PHYS_FRAME_ROUT | LCCONFIG::PHYS_REPEAT | LCCONFIG::BROADCAST_REPEAT | LCCONFIG::GROUP_IACK_ROUT | LCCONFIG::PHYS_IACK_NORMAL; // default value from spec. in case prop is not availible.
     uint8_t lcgrpconfig = LCGRPCONFIG::GROUP_6FFFROUTE | LCGRPCONFIG::GROUP_7000UNLOCK | LCGRPCONFIG::GROUP_REPEAT; // default value from spec. in case prop is not availible.
@@ -287,6 +294,9 @@ void NetworkLayerCoupler::sendMsgHopCount(AckType ack, AddressType addrType, uin
                     _counters->incrementFilteredToIp();
                 else
                     _counters->incrementFilteredToKnx();
+#ifdef OPENKNX_ROUTE_TRACE
+                _trace.record(RouteTrace::FILTERED, traceToIp, traceGroup, hopIn, source, destination);
+#endif
             }
             return; // drop;
         }
@@ -318,6 +328,9 @@ void NetworkLayerCoupler::sendMsgHopCount(AckType ack, AddressType addrType, uin
                     _counters->incrementHopCountToIp();
                 else
                     _counters->incrementHopCountToKnx();
+#ifdef OPENKNX_ROUTE_TRACE
+                _trace.record(RouteTrace::HOPCOUNT, traceToIp, traceGroup, 0, source, destination);
+#endif
             }
             return;
         }
@@ -349,6 +362,9 @@ void NetworkLayerCoupler::sendMsgHopCount(AckType ack, AddressType addrType, uin
             _counters->incrementRoutedToIp();
         else
             _counters->incrementRoutedToKnx();
+#ifdef OPENKNX_ROUTE_TRACE
+        _trace.record(RouteTrace::ROUTED, traceToIp, traceGroup, hopIn, source, destination);
+#endif
     }
 
     _netLayerEntities[interfaceIndex].sendDataRequest(npdu, ack, destination, source, priority, addrType, broadcastType, doNotRepeat);
@@ -425,6 +441,10 @@ void NetworkLayerCoupler::routeDataIndividual(AckType ack, uint16_t destination,
     {
         // IGNORE_TOTALLY
         //println("NetworkLayerCoupler::routeDataIndividual locked");
+#ifdef OPENKNX_ROUTE_TRACE
+        _trace.record(RouteTrace::PHYS_LOCKED, srcIfIndex == kSecondaryIfIndex, false,
+                                           npdu.hopCount(), source, destination);
+#endif
         return;
     }
     else if((lcconfig & LCCONFIG::PHYS_FRAME) == LCCONFIG::PHYS_FRAME_UNLOCK)
@@ -444,7 +464,11 @@ void NetworkLayerCoupler::routeDataIndividual(AckType ack, uint16_t destination,
         else
         {
             //println("NetworkLayerCoupler::routeDataIndividual not routed");
-            ; // IGNORE_TOTALLY
+            // IGNORE_TOTALLY
+#ifdef OPENKNX_ROUTE_TRACE
+            _trace.record(RouteTrace::PHYS_NOT_ROUTED, srcIfIndex == kSecondaryIfIndex, false,
+                                               npdu.hopCount(), source, destination);
+#endif
         }
     }
 }

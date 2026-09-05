@@ -7,6 +7,7 @@
 #include "network_layer_entity.h"
 #include "network_layer.h"
 #include "knx_ip_counters.h"
+#include "route_trace.h" // defines nothing unless OPENKNX_ROUTE_TRACE is set
 
 class DeviceObject;
 class RouterObject;
@@ -37,9 +38,16 @@ class NetworkLayerCoupler : public NetworkLayer
 
     /** @brief Routing-decision counters (ours, not spec); null on builds that do not keep them. */
     void setCounters(KnxIpCounters* counters) { _counters = counters; }
+#ifdef OPENKNX_ROUTE_TRACE
+    /** @brief The routing decisions of this coupler. Lives here because this is where they are made. */
+    RouteTrace& routeTrace() { return _trace; }
+#endif
 
   private:
     KnxIpCounters* _counters = nullptr;
+#ifdef OPENKNX_ROUTE_TRACE
+    RouteTrace _trace;
+#endif
 
     enum CouplerType
     {

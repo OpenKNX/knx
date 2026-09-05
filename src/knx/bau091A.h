@@ -27,6 +27,11 @@ class Bau091A : public BauSystemBCoupler, public ITpUartCallBacks, public DataLi
     /** @brief Router object, for reading the filter table in diagnostics. */
     RouterObject& getRouterObject() { return _routerObj; }
 
+#ifdef OPENKNX_ROUTE_TRACE
+    /** @brief Routing decisions of the coupler network layer. */
+    RouteTrace& getRouteTrace() { return _netLayer.routeTrace(); }
+#endif
+
     IpDataLinkLayer* getPrimaryDataLinkLayer();
     TpUartDataLinkLayer* getSecondaryDataLinkLayer();
 
