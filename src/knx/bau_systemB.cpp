@@ -171,10 +171,6 @@ void BauSystemB::memoryExtReadIndication(Priority priority, HopCountType hopType
 
 void BauSystemB::doMasterReset(EraseCode eraseCode, uint8_t channel)
 {
-    // A content-erasing master reset changes the downloadable part -> bump PID_DOWNLOAD_COUNTER.
-    // A confirmed restart is not a content change, so it does not increment.
-    if (eraseCode != EraseCode::ConfirmedRestart)
-        _deviceObj.incrementDownloadCounter();
     _deviceObj.masterReset(eraseCode, channel);
     _appProgram.masterReset(eraseCode, channel);
 }

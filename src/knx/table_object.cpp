@@ -53,10 +53,6 @@ void TableObject::loadState(LoadState newState)
         return;
     beforeStateChange(newState);
     _state = newState;
-    // A completed load = the downloadable part changed -> bump PID_DOWNLOAD_COUNTER. Boot restore sets
-    // _state directly (in restore()), not via loadState(), so a reboot does not increment.
-    if (newState == LS_LOADED)
-        _memory.deviceObject().incrementDownloadCounter();
 }
 
 void TableObject::masterReset(EraseCode eraseCode, uint8_t channel)

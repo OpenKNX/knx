@@ -88,20 +88,6 @@ DeviceObject::DeviceObject()
         new DataProperty(PID_IO_LIST, false, PDT_UNSIGNED_INT, 8, ReadLv3 | WriteLv0),
         new DataProperty(PID_HARDWARE_TYPE, true, PDT_GENERIC_06, 1, ReadLv3 | WriteLv3, hardwareType),
         new DataProperty(PID_DEVICE_DESCRIPTOR, false, PDT_GENERIC_02, 1, ReadLv3 | WriteLv0),
-        new CallbackProperty<DeviceObject>(this, PID_DOWNLOAD_COUNTER, false, PDT_UNSIGNED_INT, 1, ReadLv3 | WriteLv0,
-            [](DeviceObject* io, uint16_t start, uint8_t count, uint8_t* data) -> uint8_t
-            {
-                if(start == 0)
-                {
-                    uint16_t currentNoOfElements = 1;
-                    pushWord(currentNoOfElements, data);
-                    return 1;
-                }
-
-                pushWord(io->_downloadCounter, data);
-                io->_downloadCounterArmed = true; // read re-arms: the next change increments again
-                return 1;
-            }),
 #ifdef USE_RF
         new DataProperty(PID_RF_DOMAIN_ADDRESS_CEMI_SERVER, true, PDT_GENERIC_06, 1, ReadLv3 | WriteLv3),
 #endif
@@ -137,25 +123,6 @@ void DeviceObject::masterReset(EraseCode eraseCode, uint8_t channel)
         _ownAddress = 0xFFFF; // device default 15.15.255
 #endif
     }
-}
-
-uint16_t DeviceObject::downloadCounter()
-{
-    return _downloadCounter;
-}
-
-void DeviceObject::downloadCounter(uint16_t value)
-{
-    _downloadCounter = value;
-}
-
-void DeviceObject::incrementDownloadCounter()
-{
-    // One download session = +1: only the first change after a read counts (see _downloadCounterArmed).
-    if (!_downloadCounterArmed)
-        return;
-    _downloadCounter++;
-    _downloadCounterArmed = false;
 }
 
 uint16_t DeviceObject::individualAddress()

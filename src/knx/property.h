@@ -87,6 +87,9 @@ enum PropertyID
     PID_MCB_TABLE = 27,
     PID_ERROR_CODE = 28,
     PID_OBJECT_INDEX = 29,
+    // 03_05_01 4.2.30 makes this conditional: only a device that HAS a download counter must expose it.
+    // Ours was removed because it wrapped at FFFFh, which 4.2.30.2 forbids. TODO(ec) if it ever returns:
+    // increment when the downloadable part changed since the last read, and on every erase code but 01h.
     PID_DOWNLOAD_COUNTER = 30,
     
     /** Properties in the Device Object */
