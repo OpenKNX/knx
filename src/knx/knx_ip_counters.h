@@ -14,8 +14,8 @@
  *    counted here nowhere.
  *
  * The spec requires the counts not to wrap; all four saturate at their property width.
- * routedToIp/ToKnx and filteredToIp/ToKnx are ours, not spec: the coupler's routing decision
- * per direction, for the console and the display.
+ * routedToIp/ToKnx, filteredToIp/ToKnx and hopCountToIp/ToKnx are ours, not spec: the coupler's
+ * routing decision per direction, for the console and the display.
  */
 class KnxIpCounters
 {
@@ -28,6 +28,10 @@ class KnxIpCounters
     void incrementRoutedToKnx() { inc32(_routedToKnx); }
     void incrementFilteredToIp() { inc32(_filteredToIp); }
     void incrementFilteredToKnx() { inc32(_filteredToKnx); }
+    // Telegrams that arrived with hop count 0: the coupler must not pass them on. Not a spec counter
+    // and nothing else counts them, so a vanished telegram had no trace at all before.
+    void incrementHopCountToIp() { inc32(_hopCountToIp); }
+    void incrementHopCountToKnx() { inc32(_hopCountToKnx); }
 
     uint32_t transmitToIp() const { return _transmitToIp; }
     uint32_t transmitToKnx() const { return _transmitToKnx; }
@@ -37,6 +41,8 @@ class KnxIpCounters
     uint32_t routedToKnx() const { return _routedToKnx; }
     uint32_t filteredToIp() const { return _filteredToIp; }
     uint32_t filteredToKnx() const { return _filteredToKnx; }
+    uint32_t hopCountToIp() const { return _hopCountToIp; }
+    uint32_t hopCountToKnx() const { return _hopCountToKnx; }
 
   private:
     // 03_08_03: "The count does not wrap around when the maximum is reached."
@@ -51,4 +57,6 @@ class KnxIpCounters
     volatile uint32_t _routedToKnx = 0;
     volatile uint32_t _filteredToIp = 0;
     volatile uint32_t _filteredToKnx = 0;
+    volatile uint32_t _hopCountToIp = 0;
+    volatile uint32_t _hopCountToKnx = 0;
 };

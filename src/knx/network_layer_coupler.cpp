@@ -310,7 +310,15 @@ void NetworkLayerCoupler::sendMsgHopCount(AckType ack, AddressType addrType, uin
     {
         if (npdu.hopCount() == 0)
         {
-            // IGNORE_ACKED
+            // IGNORE_ACKED -- the telegram has used up its couplers. Nothing counted this before, so a
+            // loop or a too-deep topology was invisible.
+            if (_counters != nullptr)
+            {
+                if (interfaceIndex == kPrimaryIfIndex)
+                    _counters->incrementHopCountToIp();
+                else
+                    _counters->incrementHopCountToKnx();
+            }
             return;
         }
         // ROUTE_DECREMENTED for hop count 1..7 (post-AN189: a hop-count-7 telegram no longer bypasses the filter table)
