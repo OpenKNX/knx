@@ -21,5 +21,5 @@ class AssociationTableObject : public TableObject
     uint16_t getASAP(uint16_t idx);
     void prepareBinarySearch();
     uint16_t* _tableData = 0;
-    uint16_t sortedEntryCount;
+    uint16_t sortedEntryCount = 0;
 };

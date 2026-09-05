@@ -20,10 +20,12 @@ AssociationTableObject::AssociationTableObject(Memory& memory)
 
 uint16_t AssociationTableObject::entryCount()
 {
-    // Guard like the sister tables (AddressTableObject): _tableData is only assigned at LS_LOADED. A partial ETS
-    // load (address table loaded, association not) or a selective association unload leaves it null/dangling ->
-    // ntohs(_tableData[0]) would null-deref / use-after-free on a group telegram.
-    if (loadState() != LS_LOADED || _tableData == nullptr)
+    // _tableData is cached only while loaded and cleared in beforeStateChange()/restore() otherwise. No
+    // loadState() check here: beforeStateChange() runs before _state is assigned, so a check would make
+    // prepareBinarySearch() see 0 entries after every download.
+    // 0xFFFF = erased segment marked loaded. AddressTableObject uses the same sentinel, but keeps its
+    // loadState() check, which we cannot -- see the note above.
+    if (_tableData == nullptr || _tableData[0] == 0xFFFF)
         return 0;
     return ntohs(_tableData[0]);
 }
@@ -51,6 +53,7 @@ void AssociationTableObject::prepareBinarySearch()
 {
     sortedEntryCount = 0;
 #ifdef USE_BINSEARCH
+    bool unsorted = false;
     uint16_t lastASAP = 0;
     uint16_t currentASAP = 0;
     uint16_t lookupIdx = 0;
@@ -76,6 +79,7 @@ void AssociationTableObject::prepareBinarySearch()
                 if (currentASAP < lookupASAP || lookupIdx >= sortedEntryCount)
                 {
                     // a new ASAP found, we force linear search
+                    unsorted = true;
                     sortedEntryCount = 0;
                     break; // for
                 }
@@ -87,13 +91,20 @@ void AssociationTableObject::prepareBinarySearch()
                     lastASAP = currentASAP;
                 else
                 {
+                    if (idx == 0)
+                    {
+                        // getASAP(0) == 0 (corrupt table): idx-- would wrap to 0xFFFF and loop forever
+                        unsorted = true;
+                        sortedEntryCount = 0;
+                        break; // for
+                    }
                     sortedEntryCount = idx; // last found index indicates end of sorted list
                     idx--; // current item has to be handled as remaining ASAP
                 }
             }
         }
-        // in case complete table is strictly increasing
-        if (lookupIdx == 0 && sortedEntryCount == 0)
+        // in case complete table is strictly increasing; never re-arm a table we just rejected
+        if (!unsorted && sortedEntryCount == 0)
             sortedEntryCount = entryCount();
     } 
 #endif    
@@ -102,7 +113,7 @@ void AssociationTableObject::prepareBinarySearch()
 const uint8_t* AssociationTableObject::restore(const uint8_t* buffer)
 {
     buffer = TableObject::restore(buffer);
-    _tableData = (uint16_t*)data();
+    _tableData = (loadState() == LS_LOADED) ? (uint16_t*)data() : nullptr;
     prepareBinarySearch();
     return buffer;
 }
@@ -115,19 +126,20 @@ int32_t AssociationTableObject::translateAsap(uint16_t asap)
     // represents the size of the array to search
     if (sortedEntryCount)
     {
+        // half-open interval [low, high): high = i (not i - 1) so neither bound can wrap below 0
         uint16_t low = 0;
-        uint16_t high = sortedEntryCount - 1;
+        uint16_t high = sortedEntryCount;
 
-        while(low <= high)
+        while (low < high)
         {
-            uint16_t i = (low + high) / 2;
+            uint16_t i = low + (high - low) / 2;
             uint16_t asap_i = getASAP(i);
             if (asap_i == asap)
                 return getTSAP(i);
-            if(asap_i > asap)
-                high = i - 1;
+            if (asap_i > asap)
+                high = i;
             else
-                low = i + 1 ;
+                low = i + 1;
         }
     }
     else
@@ -144,7 +156,12 @@ void AssociationTableObject::beforeStateChange(LoadState& newState)
 {
     TableObject::beforeStateChange(newState);
     if (newState != LS_LOADED)
+    {
+        // LE_UNLOAD frees _data right after the state change; drop the cached pointer before it dangles
+        _tableData = nullptr;
+        sortedEntryCount = 0;
         return;
+    }
 
     _tableData = (uint16_t*)data();
     prepareBinarySearch();
