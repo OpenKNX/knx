@@ -295,14 +295,11 @@ void TpUartDataLinkLayer::processRxFrame(TPUart::Frame &tpFrame)
     };
 #endif
 
-#if defined(OPENKNX_HW_BUSMON) && defined(KNX_TUNNELING)
-    // Busmon-only carriers (produced by the receiver only while monitoring): a 1-byte standalone L2
-    // acknowledge (isAckOnly) or a full FCS-failed frame (isErrored). Forward the raw bytes to the busmon
-    // and return before any cEMI conversion. Handled independently of the runtime isMonitoring() state so a
-    // monitor-teardown race cannot leak a 1-byte carrier into cemiData()/frameReceived, which would read
-    // past its buffer; they are never delivered up to the link layer.
+    // Busmon-only carriers are either not an LPDU at all (standalone acknowledge, raw poll frame) or their
+    // buffer is shorter than size() claims. Never convert them to cEMI, on any build; only the forward is optional.
     if (tpFrame.isAckOnly() || tpFrame.isErrored() || tpFrame.isTruncated() || tpFrame.isRaw())
     {
+#if defined(OPENKNX_HW_BUSMON) && defined(KNX_TUNNELING)
         if (_ipTunnelServer.busMonitorActive())
         {
             // rawLength() = octets actually received; size() (what the length octet promised) would read
@@ -311,9 +308,9 @@ void TpUartDataLinkLayer::processRxFrame(TPUart::Frame &tpFrame)
                                             busMonStatus(tpFrame.isErrored(), tpFrame.isBitErrored(),
                                                          tpFrame.isTruncated()));
         }
+#endif
         return;
     }
-#endif
 
     if (isMonitoring())
     {
@@ -347,6 +344,7 @@ void TpUartDataLinkLayer::processRxFrame(TPUart::Frame &tpFrame)
 #endif
 
     uint8_t *cemiData = (uint8_t *)tpFrame.cemiData();
+    if (cemiData == nullptr) return; // out of memory: drop the frame rather than dereference null
     CemiFrame cemiFrame(cemiData, tpFrame.cemiSize());
 
     if (tpFrame.isTransmitted()) {
