@@ -104,8 +104,15 @@ void TpUartDataLinkLayer::requestBusy(bool state)
     _tpuart.busyMode(state);
 }
 
+// Single funnel for every bus-monitor entry (console command and hwBusMonEnter from the tunnel server).
+// A device advertising the ROUTING service family must not offer a bus monitor (03_08_04 2.2.4), and in
+// this stack the ROUTING DIB is emitted only under mask 091A -- so the mask is the routing capability.
+// Refusing here, not only at the callers, keeps a future caller from reopening the path.
 void TpUartDataLinkLayer::monitor()
 {
+#if MASK_VERSION == 0x091A
+    return; // routing device: no bus monitor
+#else
     if (!_initialized)
         return;
 
@@ -116,6 +123,7 @@ void TpUartDataLinkLayer::monitor()
                           + _tpuart.getStatistics().getRxSearchBufferOverflow()
                           + _tpuart.getStatistics().getRxFrameBufferOverflow();
 #endif
+#endif // MASK_VERSION != 0x091A
 }
 
 void TpUartDataLinkLayer::monitorWithConsoleLog()
