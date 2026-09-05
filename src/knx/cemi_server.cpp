@@ -407,24 +407,35 @@ void CemiServer::handleMPropWrite(CemiFrame& frame, uint8_t channelId)
     // Patch request for device address in device object
     if (((ObjectType) objectType == OT_DEVICE) &&
                         (propertyId == PID_DEVICE_ADDR) &&
-                        (numberOfElements == 1) && requestDataSize >= 1) // requestData[0] must exist (dataLength >= 8)
+                        (numberOfElements == 1))
     {
-        // Temporarily store new cEMI client address in memory
-        // We also be sent back if the client requests it again
-        _clientAddress = (_clientAddress & 0xFF00) | requestData[0];
-        print("cEMI client address: ");
-        println(_clientAddress, HEX);
+        // The size check guards the dereference only, never the branch: ETS probes writability with a
+        // 7-byte no-data request first, and the server does accept a real write here. Letting the probe
+        // fall through to the generic branch answered Read_Only (the property is writeEnable false there)
+        // and ETS reported the individual-address download as failed.
+        if (requestDataSize >= 1)
+        {
+            // Temporarily store new cEMI client address in memory
+            // We also be sent back if the client requests it again
+            _clientAddress = (_clientAddress & 0xFF00) | requestData[0];
+            print("cEMI client address: ");
+            println(_clientAddress, HEX);
+        }
     }
     else if (((ObjectType) objectType == OT_DEVICE) &&
                         (propertyId == PID_SUBNET_ADDR) &&
-                        (numberOfElements == 1) && requestDataSize >= 1) // requestData[0] must exist (dataLength >= 8)
+                        (numberOfElements == 1))
     {
-        // Temporarily store new cEMI client address in memory
-        // We also be sent back if the client requests it again
-        _clientAddress = (_clientAddress & 0x00FF) | (requestData[0] << 8);
-        print("cEMI client address: ");
-        println(_clientAddress, HEX);
-    }            
+        // Same as above: the size check guards the dereference, not the branch.
+        if (requestDataSize >= 1)
+        {
+            // Temporarily store new cEMI client address in memory
+            // We also be sent back if the client requests it again
+            _clientAddress = (_clientAddress & 0x00FF) | (requestData[0] << 8);
+            print("cEMI client address: ");
+            println(_clientAddress, HEX);
+        }
+    }
     else
     {
         // KNX 03_06_03 cEMI §4.1.7.3.7.3 p.109: report the actual write failure instead of a blanket
