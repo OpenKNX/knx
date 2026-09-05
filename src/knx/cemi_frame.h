@@ -16,13 +16,18 @@
 // Mesg Code and additional info length
 #define CEMI_HEADER_SIZE 2
 
+// Largest APDU octet count the internal buffer can carry: the built LPDU occupies octetCount + 10 bytes
+// (8 header + length octet + TPCI octet), buffer is 0xFF + APDU_LPDU_DIFF = 264 -> 264 - 10 = 254.
+// 255 is the reserved escape and valid() drops it anyway; 254 is also PID_MAX_APDU_LENGTH.
+#define MAX_APDU_OCTET_COUNT 254
+
 class CemiFrame
 {
     friend class DataLinkLayer;
 
   public:
     CemiFrame(uint8_t* data, uint16_t length);
-    CemiFrame(uint8_t apduLength);
+    CemiFrame(uint16_t apduLength); // uint16_t, not uint8_t: a uint8_t parameter wrapped every apduLength > 255 silently
     CemiFrame(const CemiFrame& other);
     CemiFrame& operator=(CemiFrame other);
 
@@ -73,11 +78,14 @@ class CemiFrame
 
     uint8_t calcCrcTP(uint8_t* buffer, uint16_t len);
     bool valid() const;
+    // True when the ctor could not carry the requested apduLength. The caller may then have written
+    // past buffer[] into the members behind it, so nothing in this frame may be dereferenced.
+    bool oversized() const { return _oversized; }
 
   private:
-    // Sized with APDU_LPDU_DIFF (not NPDU_LPDU_DIFF): the CemiFrame(apduLength) ctor memsets and fills up to
-    // apduLength + APDU_LPDU_DIFF bytes. With the old NPDU_LPDU_DIFF size, apduLength==255 wrote 264 bytes into
-    // a 263-byte buffer (1-byte OOB write) and a max APDU did not fit. Valid only if additional info is zero.
+    // 264 bytes, and the size is load-bearing: the built LPDU occupies octetCount + 10 (8 header + length
+    // octet + TPCI octet), so at the maximum octetCount of 254 the last payload byte lands on buffer[263].
+    // Shrinking it reintroduces an out-of-bounds write. Valid only if additional info is zero.
     uint8_t buffer[0xff + APDU_LPDU_DIFF] = {0};
     uint8_t* _data = 0;
     uint8_t* _ctrl1 = 0;
@@ -85,6 +93,7 @@ class CemiFrame
     TPDU _tpdu;
     APDU _apdu;
     uint16_t _length = 0; // only set if created from byte array
+    bool _oversized = false; // apduLength > MAX_APDU_OCTET_COUNT was requested -> valid() is false, frame carries nothing
 
 #ifdef USE_RF
     // FIXME: integrate this propery in _data

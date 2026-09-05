@@ -84,13 +84,28 @@ CemiFrame::CemiFrame(uint8_t* data, uint16_t length)
     _length = length;
 }
 
-CemiFrame::CemiFrame(uint8_t apduLength)
+CemiFrame::CemiFrame(uint16_t apduLength)
     : _data(buffer),
       _npdu(_data + NPDU_LPDU_DIFF, *this), 
       _tpdu(_data + TPDU_LPDU_DIFF, *this), 
       _apdu(_data + APDU_LPDU_DIFF, *this)
 {
     _ctrl1 = _data + CEMI_HEADER_SIZE;
+
+    // Rejected, not clamped: a clamp would build a short telegram that the caller still fills to its own
+    // length -- a truncated-but-well-formed frame on the bus. This stops the SEND (octetCount 0,
+    // valid() false, sendTelegram() drops it); it does NOT stop the caller from writing its payload past
+    // buffer[]. Builders must bound their own length; this is the last net, not the first.
+    if (apduLength > MAX_APDU_OCTET_COUNT)
+    {
+        print("CemiFrame: apduLength ");
+        print(apduLength);
+        print(" > ");
+        print(MAX_APDU_OCTET_COUNT);
+        println(" -- frame rejected");
+        _oversized = true;
+        apduLength = 0;
+    }
 
     memset(_data, 0, apduLength + APDU_LPDU_DIFF);
     _ctrl1[0] |= Broadcast;
@@ -106,6 +121,7 @@ CemiFrame::CemiFrame(const CemiFrame & other)
 {
     _ctrl1 = _data + CEMI_HEADER_SIZE; 
     _length = other._length;
+    _oversized = other._oversized;
 
     memcpy(_data, other._data, other.totalLenght());
 }
@@ -113,6 +129,7 @@ CemiFrame::CemiFrame(const CemiFrame & other)
 CemiFrame& CemiFrame::operator=(CemiFrame other)
 {
     _length = other._length;
+    _oversized = other._oversized;
     _data = buffer;
     _ctrl1 = _data + CEMI_HEADER_SIZE;
     memcpy(_data, other._data, other.totalLenght());
@@ -376,6 +393,9 @@ APDU& CemiFrame::apdu()
 
 bool CemiFrame::valid() const
 {
+    if (_oversized) // ctor could not carry the requested apduLength -> nothing was built
+        return false;
+
     uint8_t addInfoLen = _data[1];
     // For external frames (_length != 0), bound the addInfoLen-derived index against _length before
     // dereferencing it -- otherwise valid() is itself the out-of-bounds read it is meant to guard.

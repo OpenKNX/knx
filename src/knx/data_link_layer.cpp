@@ -223,6 +223,15 @@ bool DataLinkLayer::sendTelegram(NPDU & npdu, AckType ack, uint16_t destinationA
     CemiFrame& frame = npdu.frame();
     // print("Send telegram frame valid ?: ");
     // println(frame.valid()?"true":"false");
+    // Before touching any field: an oversized frame's _data/_ctrl1 members may have been overwritten by
+    // the builder, and the writers below would dereference them. valid() cannot move up here -- it also
+    // checks ctrl1 and the frame type, which the lines below are what set.
+    if (frame.oversized())
+    {
+        println("oversized frame dropped");
+        return false;
+    }
+
     frame.messageCode(L_data_ind);
     frame.destinationAddress(destinationAddr);
     frame.sourceAddress(sourceAddr);
