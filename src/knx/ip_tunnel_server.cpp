@@ -985,6 +985,11 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
         // (E_NO_MORE_UNIQUE_CONNECTIONS 0x25).
         println(paNotUnique ? "tunnel connect rejected: no unique individual address available"
                             : "no free tunnel availible");
+        // The other three reject paths are recorded; this one was not, so a connect turned away because
+        // every slot is taken -- or because a reserved slot is busy and configured to decline -- left no
+        // trace at all. detail carries the KNX error code (0x24 / 0x25) that went back to the client.
+        recordRejectedConnect(rIp, connRequest.cri().type() == DEVICE_MGMT_CONNECTION ? TUN_CONFIG : TUN_DATA,
+                              END_REJ_BUSY, paNotUnique ? E_NO_MORE_UNIQUE_CONNECTIONS : E_NO_MORE_CONNECTIONS);
         KnxIpConnectResponse connRes(0x00, paNotUnique ? E_NO_MORE_UNIQUE_CONNECTIONS : E_NO_MORE_CONNECTIONS);
         sendCounted(rIp, rPort, connRes.data(), connRes.totalLength());
         return;
