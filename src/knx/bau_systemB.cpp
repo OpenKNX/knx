@@ -12,6 +12,11 @@ enum NmReadSerialNumberType
 };
 
 static constexpr auto kFunctionPropertyResultBufferMaxSize = 0xFF;
+// What the response frames can actually carry. CemiFrame::buffer holds indices 0..263 and apdu.data()
+// is buffer+10, so the plain response writes from buffer+13 (<= 251 octets) and the extended one from
+// buffer+16 (<= 248). Telling a callee it may write 0xFF let it overrun the frame it is built into.
+static constexpr uint8_t kFunctionPropertyResultMax = 251;
+static constexpr uint8_t kFunctionPropertyResultMaxExt = 248;
 static constexpr auto kRestartProcessTime = 3;
 
 BauSystemB::BauSystemB(Platform& platform): _memory(platform, _deviceObj),
@@ -409,7 +414,7 @@ void BauSystemB::functionPropertyCommandIndication(Priority priority, HopCountTy
                                                    uint8_t propertyId, uint8_t* data, uint8_t length)
 {
     uint8_t resultData[kFunctionPropertyResultBufferMaxSize];
-    uint8_t resultLength = sizeof(resultData); // tell the callee the maximum size of the buffer
+    uint8_t resultLength = kFunctionPropertyResultMax; // tell the callee what the response can carry
 
     bool handled = false;
 
@@ -427,6 +432,14 @@ void BauSystemB::functionPropertyCommandIndication(Priority priority, HopCountTy
             if(_functionProperty != 0)
                 if(_functionProperty(objectIndex, propertyId, length, data, resultData, resultLength))
                     handled = true;
+
+            // 03_03_07 3.4.7.3 p.88: a property that exists but is not PDT_FUNCTION shall be answered with
+            // a response carrying neither return code nor data. An unknown PID is not covered -> stay silent.
+            if (!handled && prop != nullptr)
+            {
+                resultLength = 0;
+                handled = true;
+            }
         }
     } else {
         if(_functionProperty != 0)
@@ -443,9 +456,11 @@ void BauSystemB::functionPropertyStateIndication(Priority priority, HopCountType
                                                  uint8_t propertyId, uint8_t* data, uint8_t length)
 {
     uint8_t resultData[kFunctionPropertyResultBufferMaxSize];
-    uint8_t resultLength = sizeof(resultData); // tell the callee the maximum size of the buffer
+    uint8_t resultLength = kFunctionPropertyResultMax; // tell the callee what the response can carry
 
-    bool handled = true;
+    // Was initialised to true, so the "only answer if handled" check below never suppressed anything and
+    // a response was built with the untouched resultLength. The command twin above initialises it false.
+    bool handled = false;
 
     InterfaceObject* obj = getInterfaceObject(objectIndex);
     if(obj)
@@ -461,6 +476,14 @@ void BauSystemB::functionPropertyStateIndication(Priority priority, HopCountType
             if(_functionPropertyState != 0)
                 if(_functionPropertyState(objectIndex, propertyId, length, data, resultData, resultLength))
                     handled = true;
+
+            // 03_03_07 3.4.7.3 p.88: a property that exists but is not PDT_FUNCTION shall be answered with
+            // a response carrying neither return code nor data. An unknown PID is not covered -> stay silent.
+            if (!handled && prop != nullptr)
+            {
+                resultLength = 0;
+                handled = true;
+            }
         }
     } else {
         if(_functionPropertyState != 0)
@@ -496,7 +519,7 @@ void BauSystemB::functionPropertyExtCommandIndication(Priority priority, HopCoun
             }
             else
             {
-                resultLength = sizeof(resultData); // tell the callee the maximum size of the buffer
+                resultLength = kFunctionPropertyResultMaxExt; // tell the callee what the response can carry
                 obj->command((PropertyID)propertyId, data, length, resultData, resultLength);
                 // resultLength was modified by the callee
             }
@@ -539,7 +562,12 @@ void BauSystemB::functionPropertyExtStateIndication(Priority priority, HopCountT
 {
     if (length == 0) return; // the reserved input octet data[0] must be present; drop a truncated ext function-property state read
     uint8_t resultData[kFunctionPropertyResultBufferMaxSize];
-    uint8_t resultLength = sizeof(resultData); // tell the callee the maximum size of the buffer
+    // Like the ExtCommand twin: start at the return code alone. The error paths below set only
+    // resultData[0] and never touch resultLength, and 03_03_07 3.4.8.3 p.93 says such a response carries
+    // no data field -- announcing the full buffer here would put uninitialised stack on the bus.
+    // Only the length is fixed here: the codes those paths send still differ from the table on p.94,
+    // which defines E_ADDRESS_VOID for a missing object or property. Changing them is a wire change.
+    uint8_t resultLength = 1;
 
     InterfaceObject* obj = getInterfaceObject(objectType, objectInstance);
     if(obj)
@@ -557,7 +585,7 @@ void BauSystemB::functionPropertyExtStateIndication(Priority priority, HopCountT
             }
             else
             {
-                resultLength = sizeof(resultData); // tell the callee the maximum size of the buffer
+                resultLength = kFunctionPropertyResultMaxExt; // tell the callee what the response can carry
                 obj->state((PropertyID)propertyId, data, length, resultData, resultLength);
                 // resultLength was modified by the callee
             }
