@@ -30,6 +30,11 @@ and OAM-RaumController (57B0).
 * Change: `PID_DOWNLOAD_COUNTER` is removed. No KNX tool reads it, and on every product but the IP interface it reported 0 after each restart because the value lived in RAM and an ETS download ends in a restart -- a counter that decreases is worse than none, and 03_05_01 5.3.2.2 defines the fallback to a full download when the property is unavailable. The implementation also incremented a `uint16_t` without a ceiling, which 03_05_01 4.2.30.2 forbids. 03_05_01 4.2.30.1 makes the property conditional, so a device without a download counter is conformant. Removing it changes the persisted stream by zero octets
 * Fix: `Frame::cemiData()` can fail its allocation, and both callers check the result
 
+### Tunnelling
+* Fix: a connect that is turned away is recorded. Three of the four reject paths wrote a history entry; the fourth -- no slot free, or a reserved slot busy and configured to decline -- sent the error response and left no trace. `detail` now carries the code the client received, 0x24 for no free connection and 0x25 for no unique individual address. Repeated identical refusals still fold into one entry
+* Feature: `TunnelEvent` reports `slot` and `resSlot`, and the connection stores the slot the reservation table held for its client at connect time. Recomputing it afterwards cannot work: the reservation is matched against the control HPAI while `IpAddress` is the data HPAI, and the two need not carry the same address. Device-management and busmonitor connections report 0xFF, they sit outside the reservable pool
+* Feature: `reservedTunnelsCtrl()` and `reservedTunnelsIp()` read back the ETS reservation table for diagnostics, with the same length check the connect path uses. The returned memory belongs to the property and is freed on the next ETS write, so both are for the KNX loop only
+
 
 ## ec/v2.5.0-beta.1 - 2026-08-29
 
