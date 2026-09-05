@@ -362,16 +362,18 @@ void ApplicationLayer::groupValueReadRequest(AckType ack, uint16_t asap, Priorit
     if (_assocTable == nullptr)
         return;
 
-    _savedAsapReadRequest = asap;
     CemiFrame frame(1);
     APDU& apdu = frame.apdu();
     apdu.type(GroupValueRead);
-    
+
     int32_t value = _assocTable->translateAsap(asap);
     if (value < 0)
         return; // there is no tsap in association table for this asap
-    
+
     uint16_t tsap = (uint16_t)value;
+    // Claimed only once the telegram is actually going out. Set before the check, an unassigned ASAP
+    // left it stale and the next GroupValueRead confirm was reported against the wrong ASAP.
+    _savedAsapReadRequest = asap;
 
     // first to bus then to itself
     dataGroupRequest(ack, hopType, priority, tsap, apdu, secCtrl);
@@ -1060,8 +1062,21 @@ void ApplicationLayer::groupValueSend(ApduType type, AckType ack, uint16_t asap,
     {
         memcpy(apdudata + 1, data, dataLength);
     }
-    // no need to check if there is a tsap. This is a response, so the read got through
-    uint16_t tsap = (uint16_t)_assocTable->translateAsap(asap);
+    // Not only responses arrive here: groupValueWriteRequest sends through this function too, so an
+    // unassigned ASAP is reachable and -1 must not be cast -- 0xFFFF resolves to group address 0/0/0.
+    int32_t value = _assocTable->translateAsap(asap);
+    if (value < 0)
+    {
+        // Nothing goes on the bus, so no dataGroupConfirm will arrive: clear the slot the caller just
+        // filled, or the NEXT telegram's confirm is attributed to this ASAP.
+        if (type == GroupValueWrite && _savedAsapWriteRequest == asap)
+            _savedAsapWriteRequest = 0;
+        if (type == GroupValueResponse && _savedAsapResponse == asap)
+            _savedAsapResponse = 0;
+        return; // no tsap in the association table for this asap
+    }
+
+    uint16_t tsap = (uint16_t)value;
     dataGroupRequest(ack, hopType, priority, tsap, apdu, secCtrl);
     dataGroupIndication(hopType, priority, tsap, apdu, secCtrl);
 }
