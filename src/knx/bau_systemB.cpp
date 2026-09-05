@@ -347,9 +347,9 @@ void BauSystemB::propertyValueReadIndication(Priority priority, HopCountType hop
             // EC: clamp count so elementSize*count fits the uint8 buffer -> no size truncation mismatch and no
             // oversized stack VLA (a PropertyValueRead with a large count would otherwise overflow data[]).
             uint16_t total = (uint16_t)elementSize * numberOfElements;
-            if (total > 255)
+            if (total > 249)
             {
-                elementCount = elementSize ? (uint8_t)(255 / elementSize) : 0;
+                elementCount = elementSize ? (uint8_t)(249 / elementSize) : 0;
                 total = (uint16_t)elementSize * elementCount;
             }
             size = (uint8_t)total;
@@ -386,9 +386,9 @@ void BauSystemB::propertyValueExtReadIndication(Priority priority, HopCountType 
             // oversized stack VLA (a PropertyValueExtRead with numberOfElements up to 255 over the tunnel would
             // otherwise overflow data[]).
             uint16_t total = (uint16_t)elementSize * numberOfElements;
-            if (total > 255)
+            if (total > 245)
             {
-                elementCount = elementSize ? (uint8_t)(255 / elementSize) : 0;
+                elementCount = elementSize ? (uint8_t)(245 / elementSize) : 0;
                 total = (uint16_t)elementSize * elementCount;
             }
             size = (uint8_t)total;
@@ -720,6 +720,16 @@ void BauSystemB::propertyValueReadAppLayerConfirm(Priority priority, HopCountTyp
 bool BauSystemB::ftcSendPropertyValueWrite(uint16_t asap, const SecurityControl secCtrl, uint8_t objectIndex, uint8_t propertyId,
                                            uint8_t count, uint16_t startIndex, uint8_t* data, uint8_t length)
 {
+    // Derived from propertyDataSend: it builds frame(5 + length) and its last payload byte lands on
+    // buffer[14 + length], with buffer ending at 263. Callers pass a literal today and ignore the result.
+    if (length > 249)
+    {
+        print("ftcSendPropertyValueWrite: length ");
+        print(length);
+        println(" > 249 -- rejected (would overflow the CemiFrame buffer)");
+        return false;
+    }
+
     // Fire-and-forget (`ftc <pa> led`): the target echoes a PropertyValue_Response onto _ftcPropCb; ignored.
     applicationLayer().propertyValueWriteRequest(AckRequested, LowPriority, NetworkLayerParameter, asap, secCtrl,
                                                  objectIndex, propertyId, count, startIndex, data, length);

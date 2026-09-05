@@ -544,6 +544,14 @@ void ApplicationLayer::systemNetworkParameterReadResponse(Priority priority, Hop
                                                           uint8_t* testInfo, uint16_t testInfoLength,
                                                           uint8_t* testResult, uint16_t testResultLength)
 {
+    // testInfo is attacker-sized (echoed from the request). The frame is an exact fill: the last written
+    // byte is at buffer offset 13 + testInfoLength + testResultLength and the octet count below is
+    // testInfoLength + testResultLength + 4, so both bounds are the same -- the two lengths together may
+    // not exceed MAX_APDU_OCTET_COUNT - 4 = 250. testInfo[0] holds only reserved bits and is not echoed,
+    // so at least 2 octets are needed. Dropped rather than truncated: a short echo would not match the request.
+    if (testInfoLength < 2 || testInfoLength + testResultLength > MAX_APDU_OCTET_COUNT - 4)
+        return;
+
     CemiFrame frame(testInfoLength + testResultLength + 3 + 1); // PID and testInfo share an octet (+3) and +1 for APCI byte(?)
     APDU& apdu = frame.apdu();
     apdu.type(SystemNetworkParameterResponse);
@@ -682,6 +690,11 @@ void ApplicationLayer::adcReadRequest(AckType ack, Priority priority, HopCountTy
 void ApplicationLayer::functionPropertyStateResponse(AckType ack, Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl& secCtrl,
                                                      uint8_t objectIndex, uint8_t propertyId, uint8_t* resultData, uint8_t resultLength)
 {
+    // The payload starts at buffer+13 of a 264 byte frame, so more than 251 octets would run past it.
+    // The caller is told the same limit, but a misbehaving callee must not be able to overrun us.
+    if (resultLength > 251)
+        resultLength = 251;
+
     CemiFrame frame(3 + resultLength);
     APDU& apdu = frame.apdu();
     apdu.type(FunctionPropertyStateResponse);
@@ -723,6 +736,10 @@ void ApplicationLayer::functionPropertyCommandRequest(AckType ack, Priority prio
 void ApplicationLayer::functionPropertyExtStateResponse(AckType ack, Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl& secCtrl,
                                                         uint16_t objectType, uint8_t objectInstance, uint16_t propertyId, uint8_t* resultData, uint8_t resultLength)
 {
+    // Payload starts at buffer+16 -> at most 248 octets. Same reason as the plain response above.
+    if (resultLength > 248)
+        resultLength = 248;
+
     CemiFrame frame(5 + resultLength + 1);
     APDU& apdu = frame.apdu();
     apdu.type(FunctionPropertyExtStateResponse);
