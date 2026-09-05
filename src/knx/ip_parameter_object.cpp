@@ -113,8 +113,12 @@ IpParameterObject::IpParameterObject(DeviceObject& deviceObject, Platform& platf
 #ifdef KNX_IS_ROUTER
         new DataProperty(PID_ROUTING_MULTICAST_ADDRESS, true, PDT_UNSIGNED_LONG, 1, ReadLv3 | WriteLv3, DEFAULT_MULTICAST_ADDR),
 #else
-        // Non-routing device: PID_ROUTING_MULTICAST_ADDRESS always reads 0.0.0.0 (03_08_02 §7.5.4.2). Callback
-        // (read 0, write accepted+ignored) so a persisted value can't surface a non-zero routing multicast.
+        // Non-routing device: PID_ROUTING_MULTICAST_ADDRESS always reads 0.0.0.0 (03_08_02 §7.5.4.2).
+        // Callback (read 0, write accepted+ignored) so a persisted value can't surface a non-zero routing
+        // multicast. It must stay a CallbackProperty and must NOT gain save/restore: InterfaceObject walks
+        // the WriteEnable properties into one packed stream with no per-object length, the table objects are
+        // restored from the same cursor, and the version check compares only the ETS application -- so any
+        // change to the number of bytes this property persists misaligns every device already in the field.
         new CallbackProperty<IpParameterObject>(this, PID_ROUTING_MULTICAST_ADDRESS, true, PDT_UNSIGNED_LONG, 1, ReadLv3 | WriteLv3,
             [](IpParameterObject* io, uint16_t start, uint8_t count, uint8_t* data) -> uint8_t
             {

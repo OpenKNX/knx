@@ -302,6 +302,8 @@ void IpDataLinkLayer::enabled(bool value)
         _platform.setupMultiCast(_ipParameters.propertyValue<uint32_t>(PID_ROUTING_MULTICAST_ADDRESS), KNXIP_MULTICAST_PORT);
 #else
         // Non-routing device: join the fixed system-setup multicast (PID 65) so SEARCH_REQUEST still reaches us.
+        // Only one group is joined, so moving 57B0 to PID 66 would cut it off from SEARCH_REQUEST as soon as
+        // ETS configures a non-default routing multicast.
         _platform.setupMultiCast(_ipParameters.propertyValue<uint32_t>(PID_SYSTEM_SETUP_MULTICAST_ADDRESS), KNXIP_MULTICAST_PORT);
 #endif
         _enabled = true;
