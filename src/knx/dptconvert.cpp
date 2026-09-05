@@ -921,7 +921,7 @@ int valueToBusValueStepControl(const KNXValue& value, uint8_t* payload, size_t p
 
 int valueToBusValueCharacter(const KNXValue& value, uint8_t* payload, size_t payload_length, const Dpt& datatype)
 {
-    if ((uint64_t)value > INT64_C(255) || (datatype.subGroup == 1 && (uint64_t)value > INT64_C(127)))
+    if ((int64_t)value < 0 || (int64_t)value > INT64_C(255) || (datatype.subGroup == 1 && (int64_t)value > INT64_C(127)))
         return false;
     unsigned8ToPayload(payload, payload_length, 0, (uint64_t)value, 0xFF);
     return true;
@@ -971,7 +971,7 @@ int valueToBusValueSigned8(const KNXValue& value, uint8_t* payload, size_t paylo
     if ((int64_t)value < INT64_C(-128) || (int64_t)value > INT64_C(127))
         return false;
 
-    signed8ToPayload(payload, payload_length, 0, (uint64_t)value, 0xFF);
+    signed8ToPayload(payload, payload_length, 0, (int64_t)value, 0xFF);  // int64_t: (uint64_t) of a negative double is UB
     return true;
 }
 
@@ -1024,7 +1024,7 @@ int valueToBusValueSigned16(const KNXValue& value, uint8_t* payload, size_t payl
         signed16ToPayload(payload, payload_length, 0, (int16_t)((double)value * 100.0), 0xFFFF);
     }
     else
-        signed16ToPayload(payload, payload_length, 0, (uint64_t)value, 0xffff);
+        signed16ToPayload(payload, payload_length, 0, (int64_t)value, 0xffff);  // int64_t: (uint64_t) of a negative double is UB
 
     return true;
 }
@@ -1144,7 +1144,7 @@ int valueToBusValueSigned32(const KNXValue& value, uint8_t* payload, size_t payl
     if ((int64_t)value < INT64_C(-2147483648) || (int64_t)value > INT64_C(2147483647))
         return false;
 
-    signed32ToPayload(payload, payload_length, 0, (uint64_t)value, 0xFFFFFFFF);
+    signed32ToPayload(payload, payload_length, 0, (int64_t)value, 0xFFFFFFFF);  // int64_t: (uint64_t) of a negative double is UB
     return true;
 }
 
@@ -1153,7 +1153,7 @@ int valueToBusValueLongTimePeriod(const KNXValue& value, uint8_t* payload, size_
     if ((int64_t)value < INT64_C(-2147483648) || (int64_t)value > INT64_C(2147483647))
         return false;
 
-    signed32ToPayload(payload, payload_length, 0, (uint64_t)value, 0xFFFFFFFF);
+    signed32ToPayload(payload, payload_length, 0, (int64_t)value, 0xFFFFFFFF);  // int64_t: (uint64_t) of a negative double is UB
     return true;
 }
 
@@ -1188,7 +1188,7 @@ int valueToBusValueAccess(const KNXValue& value, uint8_t* payload, size_t payloa
             break;
         case 5:
         {
-            if ((uint64_t)value > INT64_C(15))
+            if ((int64_t)value < 0 || (int64_t)value > INT64_C(15))
                 return false;
             bcdToPayload(payload, payload_length, 7, (uint64_t)value);
             break;
