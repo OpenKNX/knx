@@ -1136,6 +1136,20 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
     println();
 
     KnxIpConnectResponse connRes(_ipParameters, tun->IndividualAddress, 3671, tun->ChannelId, connRequest.cri().type());
+    // Route back (03_08_02 8.6.2.2 p.49): a client behind NAT sends a CONNECT_REQUEST whose data endpoint
+    // HPAI is all zeroes, because it cannot know which address the server has to answer to. The reply then
+    // must not push an address back at it either -- 08_TSSH 5.4.1 p.93 and 5.4.4 p.98 pin the expected
+    // CONNECT_RESPONSE for exactly this case and show the data endpoint HPAI as 00000000h : 0000h, and the
+    // same symmetry is spelled out for the TCP case in 03_08_02 8.4.3.4.3 p.45 ("If Client requested Route
+    // Back Data Endpoint, Server shall also select Route Back Data Endpoint of same type"). Filling in
+    // PID_CURRENT_IP_ADDRESS here hands a NATed client an address it cannot reach.
+    // Only the fully zeroed HPAI counts: 8.6.2.2 p.49 declares an HPAI with only the address OR only the
+    // port set to zero invalid, so a half-zero one is not a route-back request and keeps the real address.
+    if (connRequest.hpaiData().ipAddress() == 0 && connRequest.hpaiData().ipPortNumber() == 0)
+    {
+        connRes.controlEndpoint().ipAddress(0);
+        connRes.controlEndpoint().ipPortNumber(0);
+    }
     sendCounted(tun->IpAddress, tun->PortCtrl, connRes.data(), connRes.totalLength());
 }
 
@@ -1474,6 +1488,12 @@ void IpTunnelServer::HandleBusMonitorConnect(KnxIpConnectRequest& connRequest, u
     println(" (routing paused until disconnect)");
 
     KnxIpConnectResponse connRes(_ipParameters, _deviceObject.individualAddress(), 3671, _busMonTunnel.ChannelId, TUNNEL_CONNECTION);
+    // Same route-back symmetry as the data/management path above (03_08_02 8.6.2.2 p.49).
+    if (connRequest.hpaiData().ipAddress() == 0 && connRequest.hpaiData().ipPortNumber() == 0)
+    {
+        connRes.controlEndpoint().ipAddress(0);
+        connRes.controlEndpoint().ipPortNumber(0);
+    }
     sendCounted(_busMonTunnel.IpAddress, _busMonTunnel.PortCtrl, connRes.data(), connRes.totalLength());
 }
 
