@@ -55,6 +55,13 @@ class CemiServer
     uint16_t clientAddress() const;
     void clientAddress(uint16_t value);
 
+#ifdef KNX_TUNNELING
+    /** @brief Report an evented property with M_PropInfo.ind on every device management connection.
+     *  03_08_03 4.2.5 p.23; frame layout per 08_TSSH 4.2.12 p.41. Reads element 1, count 1. */
+    void propertyInfoIndication(uint16_t objectType, uint8_t objectInstance, uint8_t propertyId,
+                                const uint8_t* data, uint8_t length);
+#endif
+
     void loop();
     
   private:

@@ -272,6 +272,34 @@ void CemiServer::handleLData(CemiFrame& frame)
     _dataLinkLayer->dataRequestFromTunnel(frame);
 }
 
+#ifdef KNX_TUNNELING
+void CemiServer::propertyInfoIndication(uint16_t objectType, uint8_t objectInstance, uint8_t propertyId,
+                                        const uint8_t* data, uint8_t length)
+{
+    // 08_TSSH 4.2.12 p.41: MC | object type (2) | object instance | PID | NoE/start index (2) | value.
+    // NoE = 1, start index = 1 -> 0x1001. The frame carries no cEMI additional info, exactly like the
+    // M_PropRead.con built above, and is handed on by reference (never copied) so no CemiFrame view is
+    // placed over it. Bounded to the buffer; a longer value is not an evented property we emit.
+    // objectType > 0xFF would put a non-zero octet where the pointer CemiFrame constructor reads the
+    // additional-info length, and its views would be computed past this buffer. No interface object type
+    // is that large, so refuse it rather than leave the assumption implicit.
+    if (data == nullptr || length == 0 || length > 8 || objectType > 0xFF)
+        return;
+
+    uint8_t infoData[7 + 8];
+    infoData[0] = M_PropInfo_ind;
+    pushWord(objectType, &infoData[1]);
+    infoData[3] = objectInstance;
+    infoData[4] = propertyId;
+    infoData[5] = 0x10; // number of elements = 1, start index high nibble = 0
+    infoData[6] = 0x01; // start index low octet = 1
+    memcpy(&infoData[7], data, length);
+
+    CemiFrame infoFrame(infoData, (uint16_t)(7 + length));
+    _ipTunnelServer.dataRequestToAllDevMgmt(infoFrame);
+}
+#endif
+
 void CemiServer::handleMPropRead(CemiFrame& frame, uint8_t channelId)
 {
 #ifdef KNX_LOG_TUNNELING
