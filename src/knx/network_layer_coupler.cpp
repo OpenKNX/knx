@@ -249,9 +249,17 @@ bool NetworkLayerCoupler::isRoutedIndividualAddress(uint16_t individualAddress, 
     }
 }
 
-void NetworkLayerCoupler::sendMsgHopCount(AckType ack, AddressType addrType, uint16_t destination, NPDU& npdu, Priority priority,
+void NetworkLayerCoupler::sendMsgHopCount(AckType ack, AddressType addrType, uint16_t destination, NPDU& npduIn, Priority priority,
                                           SystemBroadcast broadcastType, uint8_t sourceInterfaceIndex, uint16_t source)
 {
+    // Route from a copy. The caller's frame belongs to the receive path and can still be used after this
+    // returns: dataRequestFromTunnel() hands the same object to the local stack and then to the line, so
+    // decrementing the hop count and setting the repeat flag for the OTHER medium here changed what the
+    // incoming side transmitted. The copy lives until the send below has serialized it, which every
+    // medium does before returning. Same idiom as dataBroadcastRequest() further down.
+    CemiFrame outFrame(npduIn.frame());
+    NPDU& npdu = outFrame.npdu();
+
     uint8_t interfaceIndex = (sourceInterfaceIndex == kSecondaryIfIndex) ? kPrimaryIfIndex : kSecondaryIfIndex;
 #ifdef OPENKNX_ROUTE_TRACE
     // Read before the decrement below, otherwise a forwarded telegram would be recorded one hop short
