@@ -108,6 +108,9 @@ class IpTunnelServer
     /** @brief i-th finished session, index 0 = newest; nullptr if out of range. */
     const TunnelEvent* tunnelHistoryAt(uint8_t index) const;
 
+    /** @brief True if the channel is a KNXnet/IP Device Management connection (not a tunnel). */
+    bool isConfigChannel(uint8_t channelId) const;
+
 #ifdef OPENKNX_HW_BUSMON
     /** @brief Register the TP DLL bridge used to enter/leave HW busmonitor mode (router BAU only). */
     void setHwBusMonitorDll(IHwBusMonitorDll* dll) { _hwBusMon = dll; }

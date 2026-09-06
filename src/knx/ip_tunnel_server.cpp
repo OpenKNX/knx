@@ -156,6 +156,16 @@ const IpTunnelServer::TunnelEvent* IpTunnelServer::tunnelHistoryAt(uint8_t index
     return &_history[slot];
 }
 
+bool IpTunnelServer::isConfigChannel(uint8_t channelId) const
+{
+    if (channelId == 0) return false; // 0 marks an unused slot and never identifies a connection
+    // Keyed on IsConfig, not on the slot range: IsConfig is what the connect handler sets and what every
+    // other config-vs-data decision in this file reads.
+    for (int i = 0; i < KNX_TUNNELING + KNX_TUNNELING_DEVMGMT; i++)
+        if (tunnels[i].ChannelId == channelId) return tunnels[i].IsConfig;
+    return false;
+}
+
 #ifdef OPENKNX_CON_DIAG
 // L_Data.con-generation diagnostics: counters filled across the tpuart RX/TX path and this tunnel server,
 // dumped once a probe burst settles. Gated by OPENKNX_CON_DIAG (off in normal builds).
