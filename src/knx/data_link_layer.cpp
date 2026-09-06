@@ -70,6 +70,14 @@ void DataLinkLayer::dataRequestFromTunnel(CemiFrame& frame)
     // bit = 0 = "no error". Frames handled locally below never reach TP, so they confirm immediately at return.
     frame.messageCode(L_data_ind);
 
+    // 03_06_03 4.1.5.3.3: the system-broadcast flag applies to open media only, and a cEMI server to a
+    // closed medium shall ignore it. The flag is the client's, and frameReceived() below dispatches on
+    // it: a broadcast service sent with the flag cleared reached the system-broadcast handler, which
+    // serves a different set of services and drops the rest. Normalizing it here also keeps the local
+    // view in step with the line, where fillTelegramTP() has to force the same bit anyway.
+    if (mediumType() == DptMedium::KNX_TP1 || mediumType() == DptMedium::KNX_IP)
+        frame.systemBroadcast(Broadcast);
+
     // Send to local stack ( => cemiServer for potential other tunnel and network layer for routing)
     frameReceived(frame);
 
