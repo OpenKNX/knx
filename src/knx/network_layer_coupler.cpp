@@ -526,10 +526,16 @@ void NetworkLayerCoupler::broadcastIndication(AckType ack, FrameFormat format, N
         {
             npdu.frame().systemBroadcast(SysBroadcast);
             _transportLayer.dataSystemBroadcastIndication(hopType, priority, source, npdu.tpdu());
-            return;
+            // No return: 03_03_03 2.4.2.4.5.7.2 requires FORWARD_LOCALLY *and* ROUTE_DECREMENTED for a
+            // system broadcast between closed media. Returning here delivered it to our own management
+            // and never routed it onward, so an answer a device gives on the sub line -- a system network
+            // parameter response to ETS -- never reached the other side. A device may return at this
+            // point because it has nothing to route; a coupler may not.
         }
-
-        _transportLayer.dataBroadcastIndication(hopType, priority, source, npdu.tpdu());
+        else
+        {
+            _transportLayer.dataBroadcastIndication(hopType, priority, source, npdu.tpdu());
+        }
     }
 
     uint8_t lcconfig = LCCONFIG::PHYS_FRAME_ROUT | LCCONFIG::PHYS_REPEAT | LCCONFIG::BROADCAST_REPEAT | LCCONFIG::GROUP_IACK_ROUT | LCCONFIG::PHYS_IACK_NORMAL; // default value from spec. in case prop is not availible.
