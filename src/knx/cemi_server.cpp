@@ -313,13 +313,31 @@ void CemiServer::handleMPropRead(CemiFrame& frame, uint8_t channelId)
     // Each tunnel has its own cEMI client address which is based on the main device address.
     // Only patch the actual address element (startIndex != 0). A start_index==0 read returns the element
     // COUNT (2 bytes); patching data[0] there corrupts the count the client reads (e.g. 0x0A01 not 0x0001).
-    if (((ObjectType) objectType == OT_DEVICE) &&
+    //
+    // NOT on a KNXnet/IP Device Management connection: there the client performs local device management
+    // and reads the address OF THE DEVICE. 03_06_03 4.2.2.2 Table 15 p.114 assigns PID_SUBNET_ADDR /
+    // PID_DEVICE_ADDR in the Device Object to the individual address of the cEMI server device, and
+    // Vol.6 Profiles A.3.2 fn.79 p.153 states they denote the address of the end device hosting the
+    // interface; the cEMI CLIENT address has its own home in the cEMI Server Object (PID_CLIENT_SNA /
+    // PID_CLIENT_DEVICE_ADDRESS, 03_06_03 Table 16 p.115). 08_TSSH 4.2.7/4.2.8 p.36 reads exactly this
+    // over a device management connection and expects 0x12 / 0x00 after the address was set to 0x1200.
+    // The substitution stays on the paths it was written for: USB, and a tunnelling connection, where the
+    // client writes the value itself (handleMPropWrite below) before reading it back.
+    bool patchClientAddress = true;
+#ifdef KNX_TUNNELING
+    if (_ipTunnelServer.isConfigChannel(channelId))
+        patchClientAddress = false;
+#endif
+
+    if (patchClientAddress && data &&
+                        ((ObjectType) objectType == OT_DEVICE) &&
                         (propertyId == PID_DEVICE_ADDR) &&
                         (numberOfElements == 1) && startIndex != 0)
     {
         data[0] = (uint8_t) (_clientAddress & 0xFF);
     }
-    else if (((ObjectType) objectType == OT_DEVICE) &&
+    else if (patchClientAddress && data &&
+                        ((ObjectType) objectType == OT_DEVICE) &&
                         (propertyId == PID_SUBNET_ADDR) &&
                         (numberOfElements == 1) && startIndex != 0)
     {
