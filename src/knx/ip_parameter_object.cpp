@@ -81,9 +81,17 @@ IpParameterObject::IpParameterObject(DeviceObject& deviceObject, Platform& platf
                 pushInt(htonl(io->_platform.currentDefaultGateway()), data);
                 return 1;
             }),
-        new DataProperty(PID_IP_ADDRESS, true, PDT_UNSIGNED_LONG, 1, ReadLv3 | WriteLv3),
-        new DataProperty(PID_SUBNET_MASK, true, PDT_UNSIGNED_LONG, 1, ReadLv3 | WriteLv3),
-        new DataProperty(PID_DEFAULT_GATEWAY, true, PDT_UNSIGNED_LONG, 1, ReadLv3 | WriteLv3),
+        // Default 0.0.0.0, not "no element": these carry the CONFIGURED address a configuration tool wrote
+        // (03_08_03 2.5.11-2.5.13 p.12) and are only used while manual assignment is enabled. Without a
+        // default a DataProperty allocates nothing, so a read of element 1 returns 0 elements and the cEMI
+        // server answers Void_DP -- a management client cannot tell that from "the property does not exist"
+        // and reports it missing. "Not configured" is the VALUE 0.0.0.0.
+        // This does grow the saved stream by one element each: DataProperty::save() writes _currentElements
+        // and exactly that many elements (saveSize() only reports an upper bound). restore() reads back with
+        // the same convention, so the stream stays self-describing and no following object shifts.
+        new DataProperty(PID_IP_ADDRESS, true, PDT_UNSIGNED_LONG, 1, ReadLv3 | WriteLv3, (uint32_t)0),
+        new DataProperty(PID_SUBNET_MASK, true, PDT_UNSIGNED_LONG, 1, ReadLv3 | WriteLv3, (uint32_t)0),
+        new DataProperty(PID_DEFAULT_GATEWAY, true, PDT_UNSIGNED_LONG, 1, ReadLv3 | WriteLv3, (uint32_t)0),
         new CallbackProperty<IpParameterObject>(this, PID_MAC_ADDRESS, false, PDT_GENERIC_06, 1, ReadLv3 | WriteLv0,
             [](IpParameterObject* io, uint16_t start, uint8_t count, uint8_t* data) -> uint8_t 
             { 
