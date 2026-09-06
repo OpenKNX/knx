@@ -67,6 +67,11 @@ public:
     // into the local app layer, capture its response into out. connected selects the primitive; returns the
     // response length (0 = none). Synchronous.
     uint16_t localTransportRequest(APDU& apdu, bool connected, uint8_t* out, uint16_t outMax);
+
+    // 03_08_03 2.6.1.2 p.18: an open KNXnet/IP Device Management connection implicitly puts the Transport
+    // Layer into cEMI Transport Layer mode for the duration of that connection. Idempotent, and it does not
+    // touch the state machine -- see the implementation for what the mode does and deliberately does not do.
+    void cemiTransportMode(bool active);
 #endif
 
 #pragma region other
@@ -111,6 +116,9 @@ private:
     void enableAckTimeout();
     void disableAckTimeout();
     uint16_t _connectionAddress = 0;
+#ifdef KNX_CEMI_TRANSPORT_LAYER
+    bool _cemiTransportMode = false; // a device management connection is open (03_08_03 2.6.1.2 p.18)
+#endif
     uint8_t _seqNoSend = 0;
     uint8_t _seqNoRecv = 0;
     bool _connectionTimeoutEnabled = false;

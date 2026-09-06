@@ -111,6 +111,19 @@ void TransportLayer::dataIndividualIndication(uint16_t destination, HopCountType
         }
         break;
     case Connect:
+#ifdef KNX_CEMI_TRANSPORT_LAYER
+        // 03_08_03 2.6.1.2 p.18: while a KNXnet/IP Device Management connection holds the Transport Layer in
+        // cEMI Transport Layer mode, it serves that connection and no other, so a T_Connect is refused with
+        // T_Disconnect (A10) whatever the state machine would otherwise do. Refusing is all this does: no
+        // state is entered, nothing already open is torn down, and a connection this device starts itself is
+        // untouched. It applies to a tunnel client too -- a tunnelling connection has its own individual
+        // address and is a transport peer like any device on the line (03_08_04 2.2.2).
+        if (_cemiTransportMode)
+        {
+            A10(source);
+            break;
+        }
+#endif
         if (source == _connectionAddress)
         {
             //E0
@@ -464,6 +477,21 @@ uint16_t TransportLayer::localTransportRequest(APDU& apdu, bool connected, uint8
     _localCaptureActive = false;
     _localCaptureBuf = nullptr;
     return _localCaptureLen;
+}
+
+// 03_08_03 2.6.1.2 p.18 / 2.6.1.6 p.19: an established KNXnet/IP Device Management connection switches the
+// Transport Layer to cEMI Transport Layer mode for the duration of that connection, and a T_Connect that
+// arrives while the mode is active is refused with T_Disconnect (08_TSSH 6.2 / test 60202).
+//
+// The mode is a flag, NOT a simulated connection. Taking the layer over -- setting _connectionAddress and
+// the state to OpenIdle -- would have to be undone on every exit, would evict or be evicted by a real
+// connection (the file transfer client opens one to program another device), and would answer a T_Connect
+// the way a BUSY layer does rather than the way the mode should. The two primitives the clause names,
+// T_Connect.ind and T_Disconnect.ind, are internal to the Application Layer; the only behaviour visible on
+// the wire is the refusal, and that is what this flag produces in dataIndividualIndication().
+void TransportLayer::cemiTransportMode(bool active)
+{
+    _cemiTransportMode = active;
 }
 #endif
 
