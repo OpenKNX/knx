@@ -113,29 +113,46 @@ CemiFrame::CemiFrame(uint16_t apduLength)
     _length = _npdu.length() + NPDU_LPDU_DIFF;
 }
 
+// The offsets follow the additional-info length the way the pointer constructor does. Taking them from
+// a fixed header size only holds for a frame without additional info; on a copy of a frame that carries
+// some -- a cEMI client may send one -- every PDU view and _ctrl1 pointed that many octets too early.
 CemiFrame::CemiFrame(const CemiFrame & other)
     : _data(buffer),
-      _npdu(_data + NPDU_LPDU_DIFF, *this),
-      _tpdu(_data + TPDU_LPDU_DIFF, *this),
-      _apdu(_data + APDU_LPDU_DIFF, *this)
+      _npdu(_data + other._data[1] + NPDU_LPDU_DIFF, *this),
+      _tpdu(_data + other._data[1] + TPDU_LPDU_DIFF, *this),
+      _apdu(_data + other._data[1] + APDU_LPDU_DIFF, *this)
 {
-    _ctrl1 = _data + CEMI_HEADER_SIZE; 
+    _ctrl1 = _data + other._data[1] + CEMI_HEADER_SIZE;
     _length = other._length;
     _oversized = other._oversized;
+
+    // A frame longer than the buffer cannot be represented. It is reported as oversized and empty, which
+    // valid() rejects, rather than copied past the end of buffer[] into the members behind it. An
+    // extended telegram off the bus reaches 265 octets, one more than the buffer holds.
+    if (other.totalLenght() > sizeof(buffer))
+    {
+        _oversized = true;
+        _length = 0;
+        return;
+    }
 
     memcpy(_data, other._data, other.totalLenght());
 }
 
+// Offsets follow the additional-info length, as in the copy constructor above: a frame that carries some
+// otherwise gets every PDU view and _ctrl1 that many octets too early. The parameter is taken by value,
+// so the copy constructor has already rejected a frame longer than the buffer.
 CemiFrame& CemiFrame::operator=(CemiFrame other)
 {
     _length = other._length;
     _oversized = other._oversized;
     _data = buffer;
-    _ctrl1 = _data + CEMI_HEADER_SIZE;
+    const uint8_t addInfoLen = other._data[1];
+    _ctrl1 = _data + addInfoLen + CEMI_HEADER_SIZE;
     memcpy(_data, other._data, other.totalLenght());
-    _npdu._data = _data + NPDU_LPDU_DIFF;
-    _tpdu._data = _data + TPDU_LPDU_DIFF;
-    _apdu._data = _data + APDU_LPDU_DIFF;
+    _npdu._data = _data + addInfoLen + NPDU_LPDU_DIFF;
+    _tpdu._data = _data + addInfoLen + TPDU_LPDU_DIFF;
+    _apdu._data = _data + addInfoLen + APDU_LPDU_DIFF;
     return *this;
 }
 
