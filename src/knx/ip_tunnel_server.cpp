@@ -253,6 +253,17 @@ void IpTunnelServer::loop()
         }
     }
 
+#ifdef KNX_CEMI_TRANSPORT_LAYER
+    // 03_08_03 2.6.1.2 p.18 / 2.6.1.6 p.19: the cEMI Transport Layer mode lasts exactly as long as a device
+    // management connection is open. Driven as a state, not as an edge, so EVERY way such a connection can
+    // end (DISCONNECT_REQUEST, heartbeat timeout, resend exhaustion, busmonitor takeover) clears the mode.
+    bool devMgmtOpen = false;
+    for (int i = 0; i < KNX_TUNNELING + KNX_TUNNELING_DEVMGMT; i++)
+        if (tunnels[i].ChannelId != 0 && tunnels[i].IsConfig) { devMgmtOpen = true; break; }
+
+    _cemiServer.cemiTransportMode(devMgmtOpen);
+#endif
+
 #ifdef OPENKNX_HW_BUSMON
     // Busmon self-heal safety-net: if ETS vanishes, the heartbeat times out -> leave monitor mode so
     // routing is never permanently stuck off (plan 5b.3).

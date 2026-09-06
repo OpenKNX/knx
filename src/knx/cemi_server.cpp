@@ -50,6 +50,13 @@ void CemiServer::transportLayer(TransportLayer& layer)
 {
     _transportLayer = &layer;
 }
+
+void CemiServer::cemiTransportMode(bool active)
+{
+    if (_transportLayer != nullptr)
+        _transportLayer->cemiTransportMode(active);
+}
+
 #endif
 uint16_t CemiServer::clientAddress() const
 {

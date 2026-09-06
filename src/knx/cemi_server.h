@@ -42,6 +42,8 @@ class CemiServer
 #ifdef KNX_CEMI_TRANSPORT_LAYER
     // Wire the device transport layer for the local T_Data_Individual/Connected services (03_06_03 §4.1.6).
     void transportLayer(TransportLayer& layer);
+    // Track whether a device management connection is open (03_08_03 2.6.1.2 p.18). Idempotent.
+    void cemiTransportMode(bool active);
 #endif
 
     // from data link layer
