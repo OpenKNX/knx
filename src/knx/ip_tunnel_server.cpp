@@ -156,6 +156,16 @@ const IpTunnelServer::TunnelEvent* IpTunnelServer::tunnelHistoryAt(uint8_t index
     return &_history[slot];
 }
 
+void IpTunnelServer::dataRequestToAllDevMgmt(CemiFrame& frame)
+{
+    // 03_08_03 4.2.5 p.23: M_PropInfo.ind is a server->client service of the device management connection.
+    // It goes to every open one; sendFrameToTunnel() picks DEVICE_CONFIGURATION_REQUEST for a non-L_Data
+    // message code and the config resend timing (10 s / 3x) applies as for any other one.
+    for (int i = 0; i < KNX_TUNNELING + KNX_TUNNELING_DEVMGMT; i++)
+        if (tunnels[i].ChannelId != 0 && tunnels[i].IsConfig)
+            sendFrameToTunnel(&tunnels[i], frame);
+}
+
 bool IpTunnelServer::isConfigChannel(uint8_t channelId) const
 {
     if (channelId == 0) return false; // 0 marks an unused slot and never identifies a connection

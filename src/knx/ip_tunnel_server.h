@@ -111,6 +111,9 @@ class IpTunnelServer
     /** @brief True if the channel is a KNXnet/IP Device Management connection (not a tunnel). */
     bool isConfigChannel(uint8_t channelId) const;
 
+    /** @brief Send one cEMI frame to every open device management connection (evented M_PropInfo.ind). */
+    void dataRequestToAllDevMgmt(CemiFrame& frame);
+
 #ifdef OPENKNX_HW_BUSMON
     /** @brief Register the TP DLL bridge used to enter/leave HW busmonitor mode (router BAU only). */
     void setHwBusMonitorDll(IHwBusMonitorDll* dll) { _hwBusMon = dll; }
