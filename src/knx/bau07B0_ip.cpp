@@ -169,6 +169,41 @@ void Bau07B0IP::loop()
     _tpLayer.loop();   // bus
     BauSystemBDevice::loop();
     _ipTunnelServer.loop();
+    updateDeviceState();
+}
+
+// 03_08_03 3.5.2 p.20: the KNX-fault bit is set once telegrams cannot be transmitted on the KNX subnetwork
+// for five seconds and cleared when communication resumes. busOperational() is the driver's debounced
+// "chip link up and bus voltage present" answer, so this only adds the five-second qualification on top.
+// The IP-fault bit is fed from the network module, which owns the link state; both share the change flag.
+// Non-blocking: two comparisons and, on an edge, one queued datagram per open device management connection.
+void Bau07B0IP::updateDeviceState()
+{
+    const bool busDown = !_tpLayer.getTPUart().busOperational();
+    const uint32_t now = millis();
+
+    if (!busDown)
+        _knxFaultSince = 0;
+    else if (_knxFaultSince == 0)
+        _knxFaultSince = now ? now : 1; // 0 marks "no fault pending", so never store it as a timestamp
+
+    const bool knxFault = (_knxFaultSince != 0) && (now - _knxFaultSince >= 5000);
+    _ipParameters.deviceStateBit(IpParameterObject::DeviceStateKnxFault, knxFault);
+
+    if (!_deviceStateInit)
+    {
+        // Seed the state at start-up without reporting it: there is no client to inform yet, and the bus
+        // is briefly "not operational" until the driver has the chip connected.
+        _deviceStateInit = true;
+        _ipParameters.takeDeviceStateChanged();
+        return;
+    }
+
+    if (_ipParameters.takeDeviceStateChanged())
+    {
+        const uint8_t state = _ipParameters.deviceState();
+        _cemiServer.propertyInfoIndication(OT_IP_PARAMETER, 1, PID_KNXNETIP_DEVICE_STATE, &state, 1);
+    }
 }
 
 TPAckType Bau07B0IP::isAckRequired(uint16_t address, bool isGrpAddr)
