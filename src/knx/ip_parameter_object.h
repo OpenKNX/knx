@@ -18,6 +18,12 @@ class IpParameterObject : public InterfaceObject
     // the IP stack re-resolves. ETS re-writes the object on the next download.
     void masterReset(EraseCode eraseCode, uint8_t channel) override;
 
+    // A device saved before PID_IP_ADDRESS / PID_SUBNET_MASK / PID_DEFAULT_GATEWAY carried a default holds
+    // "0 elements" for them, and DataProperty::restore() writes that count straight over the constructor
+    // default. Restoring the stored state and then seeding the empty ones keeps them readable on every
+    // device, not just on one that was never saved.
+    const uint8_t* restore(const uint8_t* buffer) override;
+
   private:
     DeviceObject& _deviceObject;
     Platform& _platform;

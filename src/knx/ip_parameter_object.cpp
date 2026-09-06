@@ -195,6 +195,35 @@ IpParameterObject::IpParameterObject(DeviceObject& deviceObject, Platform& platf
     initializeProperties(sizeof(properties), properties);
 }
 
+// Give a property that came back empty its 0.0.0.0 default (03_08_03 2.5.11-2.5.13 p.12: "not configured"
+// is the value, not an absent element). Uses the same write path ETS uses, so nothing else can diverge.
+static void seedEmptyProperty(Property* p)
+{
+    if (p == nullptr || p->ElementSize() != 4)
+        return;
+    uint8_t probe[4];
+    if (p->read(1, 1, probe) != 0)
+        return; // already holds a value -- a stored configuration must never be overwritten
+    const uint8_t zero[4] = {0, 0, 0, 0};
+    p->write((uint16_t)1, (uint8_t)1, zero);
+}
+
+const uint8_t* IpParameterObject::restore(const uint8_t* buffer)
+{
+    buffer = InterfaceObject::restore(buffer);
+
+    // The saved element count wins over the constructor default, so a device that was written before these
+    // properties had one comes back with 0 elements and answers Void_DP -- which a management client reads
+    // as "the property is missing" (KNXA validation tool 20204). Seed them after the restore instead.
+    // DataProperty::save() writes _currentElements and only that many elements, and restore() reads with the
+    // same convention, so the stream stays self-describing and no offset moves.
+    seedEmptyProperty(property(PID_IP_ADDRESS));
+    seedEmptyProperty(property(PID_SUBNET_MASK));
+    seedEmptyProperty(property(PID_DEFAULT_GATEWAY));
+
+    return buffer;
+}
+
 // Zero every element of a property via the tested write path (ETS uses the same write to set them).
 static void clearProperty(Property* p)
 {
