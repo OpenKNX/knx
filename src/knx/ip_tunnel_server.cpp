@@ -833,6 +833,25 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
     bool tunReservedAssign = false; // true = tunIdx is a RESERVED slot (fixed slot->IA); false = free pool
     if (connRequest.cri().type() == DEVICE_MGMT_CONNECTION)
     {
+#ifdef KNX_CEMI_TRANSPORT_LAYER
+        // 03_08_03 2.6.1.2 p.18: opening a device management connection switches the Transport Layer into
+        // cEMI Transport Layer mode. A layer that already carries a connection cannot be switched, so the
+        // request is refused instead of quietly serving two transport peers at once -- 08_TSSH 8.3.2 p.158
+        // (fn 60202) opens a transport connection first and then requires CONNECT_RESPONSE
+        // E_NO_MORE_CONNECTIONS. Leaving tunIdx at 0xFF produces exactly that answer below.
+        //
+        // This covers a connection in EITHER direction, including one this device opened itself (the file
+        // transfer client programming another device): the layer is equally unavailable then, and the
+        // clause draws no distinction. The connection is not torn down -- the management client is asked
+        // to come back, which is the outcome that loses no work.
+        if (_cemiServer.transportLayerBusy())
+        {
+#ifdef KNX_LOG_TUNNELING
+            println("device management refused: the transport layer already carries a connection");
+#endif
+        }
+        else
+#endif
         for (int i = KNX_TUNNELING; i < KNX_TUNNELING + KNX_TUNNELING_DEVMGMT; i++)
         {
             if (tunnels[i].ChannelId == 0)

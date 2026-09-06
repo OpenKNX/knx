@@ -44,6 +44,8 @@ class CemiServer
     void transportLayer(TransportLayer& layer);
     // Track whether a device management connection is open (03_08_03 2.6.1.2 p.18). Idempotent.
     void cemiTransportMode(bool active);
+    /** @brief True while the device transport layer already carries a connection. */
+    bool transportLayerBusy() const;
 #endif
 
     // from data link layer

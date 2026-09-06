@@ -57,6 +57,10 @@ void CemiServer::cemiTransportMode(bool active)
         _transportLayer->cemiTransportMode(active);
 }
 
+bool CemiServer::transportLayerBusy() const
+{
+    return _transportLayer != nullptr && _transportLayer->hasOpenConnection();
+}
 #endif
 uint16_t CemiServer::clientAddress() const
 {

@@ -72,6 +72,8 @@ public:
     // Layer into cEMI Transport Layer mode for the duration of that connection. Idempotent, and it does not
     // touch the state machine -- see the implementation for what the mode does and deliberately does not do.
     void cemiTransportMode(bool active);
+    /** @brief True while the layer carries a connection, in either direction. */
+    bool hasOpenConnection() const { return _currentState != Closed; }
 #endif
 
 #pragma region other
