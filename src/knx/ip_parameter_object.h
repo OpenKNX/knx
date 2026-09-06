@@ -24,7 +24,23 @@ class IpParameterObject : public InterfaceObject
     // device, not just on one that was never saved.
     const uint8_t* restore(const uint8_t* buffer) override;
 
+    /** @brief Bits of PID_KNXNETIP_DEVICE_STATE (03_08_03 2.5.20 Table 3 p.14). */
+    static constexpr uint8_t DeviceStateKnxFault = 0x01;
+    static constexpr uint8_t DeviceStateIpFault = 0x02;
+
+    /** @brief Current PID_KNXNETIP_DEVICE_STATE octet. */
+    uint8_t deviceState() const { return _deviceState; }
+    /** @brief Set or clear one state bit. Returns true if the octet changed. */
+    bool deviceStateBit(uint8_t mask, bool set);
+    /** @brief Consume the "value changed" flag; true means an M_PropInfo.ind is due (03_08_03 2.5.20). */
+    bool takeDeviceStateChanged();
+
   private:
+    // Written through the property write callback as well, so a module that only has the generic
+    // propertyValueWrite() path (OFM-Network for the IP fault bit) can reach it.
+    uint8_t _deviceState = 0;
+    bool _deviceStateChanged = false;
+
     DeviceObject& _deviceObject;
     Platform& _platform;
     KnxIpCounters* _counters;

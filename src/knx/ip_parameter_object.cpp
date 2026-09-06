@@ -190,6 +190,34 @@ IpParameterObject::IpParameterObject(DeviceObject& deviceObject, Platform& platf
                 pushWord(0x1, data);
                 return 1;
             }),
+        // 03_08_03 2.5.20 p.14: "shall be implemented by any KNXnet/IP Server". Bit 0 KNX fault, bit 1 IP
+        // fault (set after 5 s of failure, cleared when communication resumes -- 3.5.2/3.5.3 p.20). The value
+        // is evented: a change is reported with M_PropInfo.ind, which the BAU emits from the change flag.
+        // Read-only to a management client (WriteEnable false -> handleMPropWrite answers Read_Only); the
+        // write callback exists so the stack itself can set the octet through the generic property path.
+        new CallbackProperty<IpParameterObject>(this, PID_KNXNETIP_DEVICE_STATE, false, PDT_UNSIGNED_CHAR, 1, ReadLv3 | WriteLv0,
+            [](IpParameterObject* io, uint16_t start, uint8_t count, uint8_t* data) -> uint8_t
+            {
+                if (start == 0)
+                {
+                    uint16_t currentNoOfElements = 1;
+                    pushWord(currentNoOfElements, data);
+                    return 1;
+                }
+                *data = io->_deviceState;
+                return 1;
+            },
+            [](IpParameterObject* io, uint16_t start, uint8_t count, const uint8_t* data) -> uint8_t
+            {
+                if (start == 0)
+                    return 1;
+                if (io->_deviceState != *data)
+                {
+                    io->_deviceState = *data;
+                    io->_deviceStateChanged = true;
+                }
+                return 1;
+            }),
         new DataProperty(PID_FRIENDLY_NAME, true, PDT_UNSIGNED_CHAR, 30, ReadLv3 | WriteLv3)
     };
     initializeProperties(sizeof(properties), properties);
@@ -222,6 +250,24 @@ const uint8_t* IpParameterObject::restore(const uint8_t* buffer)
     seedEmptyProperty(property(PID_DEFAULT_GATEWAY));
 
     return buffer;
+}
+
+bool IpParameterObject::deviceStateBit(uint8_t mask, bool set)
+{
+    const uint8_t next = set ? (uint8_t)(_deviceState | mask) : (uint8_t)(_deviceState & ~mask);
+    if (next == _deviceState)
+        return false;
+    _deviceState = next;
+    _deviceStateChanged = true;
+    return true;
+}
+
+bool IpParameterObject::takeDeviceStateChanged()
+{
+    if (!_deviceStateChanged)
+        return false;
+    _deviceStateChanged = false;
+    return true;
 }
 
 // Zero every element of a property via the tested write path (ETS uses the same write to set them).
