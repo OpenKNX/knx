@@ -35,8 +35,12 @@ bool TpUartDataLinkLayer::sendFrame(CemiFrame &cemiFrame)
     cemiFrame.fillTelegramTP(tpData);
 
     TPUart::Frame *tpFrame = new TPUart::Frame((char *)tpData, tpLen);
-    if (!tpFrame) // heap exhaustion under an IP->TP routing flood -> bail instead of null-deref downstream
+    // Both allocations can fail under an IP->TP routing flood: the frame object itself, and the octet
+    // buffer it copies into. An empty frame reports data() == nullptr -> bail instead of transmitting
+    // from a null pointer.
+    if (!tpFrame || tpFrame->data() == nullptr)
     {
+        delete tpFrame; // no-op on nullptr; the queue never took ownership
         dataConReceived(cemiFrame, false);
         return false;
     }
