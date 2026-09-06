@@ -1022,7 +1022,9 @@ bool SecureApplicationLayer::decodeSecureApdu(APDU& secureApdu, APDU& plainApdu,
     uint16_t srcAddress = secureApdu.frame().sourceAddress();
     uint16_t dstAddress = secureApdu.frame().destinationAddress();
     bool isDstAddrGroupAddr = secureApdu.frame().addressType() == GroupAddress;
-    bool isSystemBroadcast = secureApdu.frame().systemBroadcast();
+    // systemBroadcast() returns the ctrl1 flag itself, and the flag is 0 on a system broadcast
+    // (SysBroadcast = 0, Broadcast = 0x10), so the value has to be compared, not converted to bool.
+    bool isSystemBroadcast = secureApdu.frame().systemBroadcast() == SysBroadcast;
     uint8_t tpci = secureApdu.frame().data()[TPDU_LPDU_DIFF]; // FIXME: when cEMI class is refactored, there might be additional info fields in cEMI [fixed TPDU_LPDU_DIFF]
     print("decodeSecureApdu: TPCI: ");
     println(tpci, HEX);
@@ -1213,7 +1215,8 @@ bool SecureApplicationLayer::createSecureApdu(APDU& plainApdu, APDU& secureApdu,
     uint16_t srcAddress = plainApdu.frame().sourceAddress();
     uint16_t dstAddress = plainApdu.frame().destinationAddress();
     bool isDstAddrGroupAddr = plainApdu.frame().addressType() == GroupAddress;
-    bool isSystemBroadcast = plainApdu.frame().systemBroadcast();
+    // Same as in decodeSecureApdu: the flag is 0 on a system broadcast, so compare it.
+    bool isSystemBroadcast = plainApdu.frame().systemBroadcast() == SysBroadcast;
     uint8_t tpci = 0x00;
     if (isConnected())
     {
