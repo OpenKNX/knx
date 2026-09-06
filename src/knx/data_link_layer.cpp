@@ -78,6 +78,14 @@ void DataLinkLayer::dataRequestFromTunnel(CemiFrame& frame)
     if (mediumType() == DptMedium::KNX_TP1 || mediumType() == DptMedium::KNX_IP)
         frame.systemBroadcast(Broadcast);
 
+    // 03_02_02 2.2.5.1: the extended frame shall not be used where the standard frame is sufficient. A
+    // client can ask for either, and sendTelegram() already picks the standard frame for a short APDU on
+    // the network-layer path, which a tunnelled frame bypasses. "Sufficient" also requires an empty
+    // extended frame format field, because the standard frame cannot carry one -- valid() rejects a
+    // non-zero one, so asking it here keeps an LTE frame extended instead of dropping its address type.
+    if (mediumType() == DptMedium::KNX_TP1 && frame.valid() && frame.npdu().octetCount() <= 15)
+        frame.frameType(StandardFrame);
+
     // Send to local stack ( => cemiServer for potential other tunnel and network layer for routing)
     frameReceived(frame);
 
