@@ -28,6 +28,7 @@ For usage of KNX-IP you have to define either
 #ifdef ARDUINO_ARCH_RP2040
 #include "knx/bits.h"
 
+
 #include <Arduino.h>
 
 // Pi Pico specific libs
@@ -46,6 +47,10 @@ For usage of KNX-IP you have to define either
 #if KNX_FLASH_OFFSET % 4096
 #error "KNX_FLASH_OFFSET must be multiple of 4096"
 #endif
+#endif
+
+#ifdef KNX_IP_LAN
+#include <lwip/igmp.h> // closeMultiCast(): WiFiUDP::stop() does not leave the group
 #endif
 
 #ifdef KNX_IP_LAN
@@ -244,7 +249,7 @@ void RP2040ArduinoPlatform::macAddress(uint8_t* addr)
 }
 
 // multicast
-void RP2040ArduinoPlatform::setupMultiCast(uint32_t addr, uint16_t port)
+bool RP2040ArduinoPlatform::setupMultiCast(uint32_t addr, uint16_t port)
 {
     mcastaddr = IPAddress(htonl(addr));
     println("Initializing KNX multicast.");
@@ -254,8 +259,8 @@ void RP2040ArduinoPlatform::setupMultiCast(uint32_t addr, uint16_t port)
     println(port);
 
     _port = port;
-    uint8_t result = _udp.beginMulticast(mcastaddr, port);
-    (void)result;
+    const bool joined = (_udp.beginMulticast(mcastaddr, port) != 0);
+    if (!joined) println("  KNX multicast join FAILED");
 
 #ifdef KNX_IP_GENERIC
 // if(!_unicast_socket_setup)
@@ -268,10 +273,15 @@ void RP2040ArduinoPlatform::setupMultiCast(uint32_t addr, uint16_t port)
     // print(port);
     // print(" result ");
     // println(result);
+    return joined;
 }
 
 void RP2040ArduinoPlatform::closeMultiCast()
 {
+    // WiFiUDP::stop() does not leave the group, and igmp_joingroup only reports for a NON_MEMBER group:
+    // without this pairing the re-join is silent on the wire and group->use grows unbounded.
+    if ((uint32_t)mcastaddr != 0)
+        igmp_leavegroup(IP4_ADDR_ANY4, mcastaddr);
     _udp.stop();
 }
 
