@@ -292,21 +292,63 @@ void IpDataLinkLayer::loopHandleSearchRequestExtended(uint8_t* buffer, uint16_t 
 
 
 
+uint32_t IpDataLinkLayer::multiCastAddress()
+{
+#ifdef KNX_IS_ROUTER
+    return _ipParameters.propertyValue<uint32_t>(PID_ROUTING_MULTICAST_ADDRESS);
+#else
+    // Non-routing device: the fixed system-setup multicast (PID 65) so SEARCH_REQUEST still reaches us.
+    // Only one group is joined, so moving 57B0 to PID 66 would cut it off from SEARCH_REQUEST as soon as
+    // ETS configures a non-default routing multicast.
+    return _ipParameters.propertyValue<uint32_t>(PID_SYSTEM_SETUP_MULTICAST_ADDRESS);
+#endif
+}
+
+bool IpDataLinkLayer::joinMultiCast()
+{
+    return _platform.setupMultiCast(_joinedGroup, KNXIP_MULTICAST_PORT);
+}
+
+/** @brief Rebuild the endpoint after the IP interface changed. Also re-opens unicast where both share a socket. */
+// Returns false only when a rebuild was attempted and failed, so the caller can retry; "nothing to
+// rebuild" and "address not joinable, socket kept" are both an intact endpoint.
+bool IpDataLinkLayer::networkChanged(bool afterOutage)
+{
+    // No endpoint at all -- including a join that failed at boot. Always try, outage or not: without this
+    // the device would keep link and address but answer no SEARCH_REQUEST for the rest of its runtime.
+    if (!_enabled)
+    {
+        // beginMulticast() joins before it binds and never rolls the join back, so a previous attempt may
+        // still hold the membership. Leave first, else every retry only bumps lwIP's use counter silently.
+        _platform.closeMultiCast();
+        enabled(true);
+        return _enabled;
+    }
+
+    if (!afterOutage) return true; // endpoint is fresh; a needless Leave prunes the group on a switch
+
+    _platform.closeMultiCast();
+    _enabled = joinMultiCast(); // the socket is gone if this failed; enabled() must not claim otherwise
+    return _enabled;
+}
+
 void IpDataLinkLayer::enabled(bool value)
 {
 //    _print("own address: ");
 //    _println(_deviceObject.individualAddress());
     if (value && !_enabled)
     {
-#ifdef KNX_IS_ROUTER
-        _platform.setupMultiCast(_ipParameters.propertyValue<uint32_t>(PID_ROUTING_MULTICAST_ADDRESS), KNXIP_MULTICAST_PORT);
-#else
-        // Non-routing device: join the fixed system-setup multicast (PID 65) so SEARCH_REQUEST still reaches us.
-        // Only one group is joined, so moving 57B0 to PID 66 would cut it off from SEARCH_REQUEST as soon as
-        // ETS configures a non-default routing multicast.
-        _platform.setupMultiCast(_ipParameters.propertyValue<uint32_t>(PID_SYSTEM_SETUP_MULTICAST_ADDRESS), KNXIP_MULTICAST_PORT);
-#endif
-        _enabled = true;
+        // 03_08_03 2.5.17: a runtime write to PID 66 becomes active on reset, so read the property once
+        // per device lifetime. An unusable value falls back to the default instead of leaving no endpoint.
+        if (_joinedGroup == 0)
+        {
+            _joinedGroup = multiCastAddress();
+            const uint8_t firstOctet = (uint8_t)(_joinedGroup >> 24);
+            const bool linkLocal = (_joinedGroup >> 8) == 0xE00000; // 224.0.0.0/24: lwIP refuses these
+            if (firstOctet < 224 || firstOctet > 239 || linkLocal)
+                _joinedGroup = 0xE000170C; // 224.0.23.12, 03_08_02 8.5.2.1
+        }
+        _enabled = joinMultiCast();        // no endpoint, no enabled(): enabled() must not report a lie
         return;
     }
 

@@ -13,6 +13,7 @@ class Bau57B0 : public BauSystemBDevice, public DataLinkLayerCallbacks
   public:
     Bau57B0(Platform& platform);
     void loop() override;
+    bool networkChanged(bool afterOutage) override;
     bool enabled() override;
     void enabled(bool value) override;
     

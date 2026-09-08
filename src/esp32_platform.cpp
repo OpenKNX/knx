@@ -61,7 +61,7 @@ void Esp32Platform::restart()
     ESP.restart();
 }
 
-void Esp32Platform::setupMultiCast(uint32_t addr, uint16_t port)
+bool Esp32Platform::setupMultiCast(uint32_t addr, uint16_t port)
 {
 #ifdef KNX_IP_LAN
     esp_netif_t* check = esp_netif_get_handle_from_ifkey("ETH_DEF");
@@ -70,8 +70,8 @@ void Esp32Platform::setupMultiCast(uint32_t addr, uint16_t port)
 #endif
     if (check == nullptr)
     {
-        println("No network interface initialized");
-        fatalError();
+        println("No network interface initialized"); // recoverable: the caller retries on the next edge
+        return false;
     }
     IPAddress mcastaddr(htonl(addr));
 
@@ -80,9 +80,9 @@ void Esp32Platform::setupMultiCast(uint32_t addr, uint16_t port)
     print(mcastaddr.toString().c_str());
     print(":");
     println(port);
-    uint8_t result = _udp.beginMulticast(mcastaddr, port);
-    (void)result; // Suppress unused variable warning
-    // KNX_DEBUG_SERIAL.printf("result %d\n", result);
+    const bool joined = (_udp.beginMulticast(mcastaddr, port) != 0);
+    if (!joined) println("  KNX multicast join FAILED");
+    return joined;
 }
 
 void Esp32Platform::closeMultiCast()

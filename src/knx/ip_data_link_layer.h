@@ -28,6 +28,9 @@ class IpDataLinkLayer : public DataLinkLayer
     void loop();
     void enabled(bool value);
     bool enabled() const;
+
+    /** @brief Link returned: rebuild the endpoint (03_08_02 Core 4.2). false only if the rebuild failed. */
+    bool networkChanged(bool afterOutage);
     DptMedium mediumType() const override;
 
     // Interface mode: when false, inbound KNXnet/IP RoutingIndications are ignored. A Tunnelling-only
@@ -36,6 +39,9 @@ class IpDataLinkLayer : public DataLinkLayer
     void enableRoutingIndications(bool value) { _rxRoutingIndications = value; }
 
   private:
+    bool joinMultiCast();        // join _joinedGroup
+    uint32_t multiCastAddress(); // property source; read once at enable, then latched
+    uint32_t _joinedGroup = 0; // 03_08_03 2.5.17: PID 66 becomes active on reset, not at runtime
     KnxIpCounters* _counters = nullptr;
     bool sendUniCastCounted(uint32_t addr, uint16_t port, uint8_t* buffer, uint16_t len);
     bool _enabled = false;

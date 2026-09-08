@@ -52,7 +52,7 @@ class Platform
     virtual void fatalError() = 0;
 
     //multicast socket
-    virtual void setupMultiCast(uint32_t addr, uint16_t port);
+    virtual bool setupMultiCast(uint32_t addr, uint16_t port); // false: the group was not joined
     virtual void closeMultiCast();
     virtual bool sendBytesMultiCast(uint8_t* buffer, uint16_t len);
     virtual int readBytesMultiCast(uint8_t* buffer, uint16_t maxLen);

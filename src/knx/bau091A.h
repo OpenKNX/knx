@@ -17,6 +17,7 @@ class Bau091A : public BauSystemBCoupler, public ITpUartCallBacks, public DataLi
   public:
     Bau091A(Platform& platform);
     void loop() override;
+    bool networkChanged(bool afterOutage) override;
     bool enabled() override;
     void enabled(bool value) override;
     bool configured() override;

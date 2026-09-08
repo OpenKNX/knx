@@ -163,6 +163,13 @@ void Bau07B0IP::enabled(bool value)
     _ipLayer.enabled(value);
 }
 
+// Rebuild the KNXnet/IP endpoint after the IP interface changed, so the device keeps answering
+// SEARCH_REQUEST for its whole operational life.
+bool Bau07B0IP::networkChanged(bool afterOutage)
+{
+    return _ipLayer.networkChanged(afterOutage);
+}
+
 void Bau07B0IP::loop()
 {
     _ipLayer.loop();   // KNXnet/IP endpoint: pumps discovery + tunnel

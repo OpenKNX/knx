@@ -99,8 +99,12 @@ uint32_t Platform::uniqueSerialNumber()
     return 0x01020304;
 }
 
-void Platform::setupMultiCast(uint32_t addr, uint16_t port)
-{}
+bool Platform::setupMultiCast(uint32_t addr, uint16_t port)
+{
+    (void)addr;
+    (void)port;
+    return true; // a platform without multicast has nothing that can fail
+}
 
 void Platform::closeMultiCast()
 {}

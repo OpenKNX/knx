@@ -53,7 +53,7 @@ void EspPlatform::restart()
     ESP.reset();
 }
 
-void EspPlatform::setupMultiCast(uint32_t addr, uint16_t port)
+bool EspPlatform::setupMultiCast(uint32_t addr, uint16_t port)
 {
     _multicastAddr = htonl(addr);
     _multicastPort = port;
@@ -63,6 +63,7 @@ void EspPlatform::setupMultiCast(uint32_t addr, uint16_t port)
         WiFi.localIP().toString().c_str());
     uint8 result = _udp.beginMulticast(WiFi.localIP(), mcastaddr, port);
     KNX_DEBUG_SERIAL.printf("result %d\n", result);
+    return result != 0;
 }
 
 void EspPlatform::closeMultiCast()

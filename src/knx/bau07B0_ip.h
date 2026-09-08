@@ -21,6 +21,7 @@ class Bau07B0IP : public BauSystemBDevice, public ITpUartCallBacks, public DataL
   public:
     Bau07B0IP(Platform& platform);
     void loop() override;
+    bool networkChanged(bool afterOutage) override;
     bool enabled() override;
     void enabled(bool value) override;
 

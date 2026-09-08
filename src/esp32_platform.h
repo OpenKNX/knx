@@ -24,7 +24,7 @@ public:
     void restart();
 
     //multicast
-    void setupMultiCast(uint32_t addr, uint16_t port) override;
+    bool setupMultiCast(uint32_t addr, uint16_t port) override;
     void closeMultiCast() override;
     bool sendBytesMultiCast(uint8_t* buffer, uint16_t len) override;
     int readBytesMultiCast(uint8_t* buffer, uint16_t maxLen, uint32_t& src_addr, uint16_t& src_port) override;

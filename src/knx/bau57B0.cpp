@@ -136,6 +136,13 @@ void Bau57B0::enabled(bool value)
     _dlLayer.enabled(value);
 }
 
+// Rebuild the KNXnet/IP endpoint after the IP interface changed, so the device keeps answering
+// SEARCH_REQUEST for its whole operational life.
+bool Bau57B0::networkChanged(bool afterOutage)
+{
+    return _dlLayer.networkChanged(afterOutage);
+}
+
 void Bau57B0::loop()
 {
     _dlLayer.loop();

@@ -31,6 +31,10 @@ class BauSystemB : protected BusAccessUnit
     void addSaveRestore(SaveRestore* obj);
 
     bool restartRequest(uint16_t asap, const SecurityControl secCtrl);
+    /** @brief IP interface changed: a BAU owning a KNXnet/IP endpoint rebuilds it (03_08_02 Core 4.2).
+     *  false means a rebuild was attempted and failed; a BAU without an endpoint has nothing to fail. */
+    virtual bool networkChanged(bool afterOutage) { (void)afterOutage; return true; }
+
 #ifdef OPENKNX_FTC_CLIENT
     // OPENKNX_FTC_CLIENT: client role for KnxFileTransfer (ObjectIndex 159). Connectionless by design; the
     // reply arrives via the callback.
@@ -73,6 +77,7 @@ class BauSystemB : protected BusAccessUnit
     // rate to the measured delivered rate (the true wire ceiling, not a guess); deliveredBps==0 && !clean = a
     // report-timeout kick -> back off. Base/embedded is a no-op (the real TP FIFO back-pressures the pump).
     virtual void ftcPacingRate(uint32_t deliveredBps, bool clean) { (void)deliveredBps; (void)clean; }
+
 #endif
 
     uint8_t checkmasterResetValidity(EraseCode eraseCode, uint8_t channel);

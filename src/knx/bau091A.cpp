@@ -184,6 +184,13 @@ void Bau091A::enabled(bool value)
     //_dlLayerSecondary.setFrameRepetition(3,3);
 }
 
+// Rebuild the KNXnet/IP endpoint after the IP interface changed, so the device keeps answering
+// SEARCH_REQUEST for its whole operational life.
+bool Bau091A::networkChanged(bool afterOutage)
+{
+    return _dlLayerPrimary.networkChanged(afterOutage);
+}
+
 void Bau091A::loop()
 {
     _dlLayerPrimary.loop();
