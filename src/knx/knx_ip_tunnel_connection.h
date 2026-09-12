@@ -15,12 +15,26 @@ class KnxIpTunnelConnection
     uint8_t SequenceCounter_S = 0;
     uint8_t SequenceCounter_R = 255;
     unsigned long lastHeartbeat = 0;
-    unsigned long connectStart = 0; // millis() when this connection was established (for session duration)
+    unsigned long connectStart = 0; // millis() when this connection was established (wall-clock stamp)
+    uint32_t ConnectUptimeS = 0;    // uptime seconds at connect; the duration is derived from this
     bool IsConfig = false;
     // Which slot the reservation table held for this client at connect time, 0xFF for none. Recorded
     // here because only the connect knows it: the reservation is matched against the CONTROL HPAI,
     // while IpAddress above is the DATA HPAI, and the two need not carry the same address.
     uint8_t ReservedSlot = 0xFF;
+
+    // Per-session counters for the diagnostics UI. Kept for the whole session and copied into the
+    // history on disconnect. StatFromClient is what was ACCEPTED from the client, not what reached TP:
+    // a self-addressed or tunnel-PA frame is answered locally and never put on the bus.
+    uint32_t StatToClient = 0;  // requests put on the wire for this client (resends not counted again)
+    uint32_t StatFromClient = 0;
+    uint16_t StatResend = 0;    // repeats of an unacked request
+    uint16_t StatSeqGap = 0;    // datagrams discarded: sequence counter was not the expected one
+    uint16_t StatTxDrop = 0;    // frames for this client that were never sent: oversize, FIFO full,
+                                // still queued at teardown, or refused with no retry behind it
+    uint16_t StatGrpDrop = 0;   // group frames dropped because the FIFO was full -- best-effort by design
+                                // (03_08_04 2.6.1), kept apart so one does not paint a loaded tunnel red
+    uint8_t StatQueuePeak = 0;  // deepest send-FIFO fill reached (stays 0 without KNX_TUNNEL_RESEND)
 
 #ifdef KNX_TUNNEL_RESEND
     // Server->client TUNNELLING_REQUEST reliability (KNX 03_08_04 Tunnelling §2.6.1 p.9): a per-tunnel FIFO
@@ -47,6 +61,7 @@ class KnxIpTunnelConnection
     uint8_t _txTail = 0;    // next free slot to enqueue
     uint8_t _txCount = 0;   // queued slots (0..DEPTH)
     bool _armed = false;    // head is on the wire, awaiting ACK
+    bool _headSent = false; // the head left the device at least once (first try or a repeat)
     uint8_t _seq = 0;       // sequence counter stamped into the in-flight head
     uint8_t _retries = 0;   // repeats already sent for the in-flight head (0 = original only; max 1 data / 3 config)
     uint32_t _sentAt = 0;   // millis() of the last (re)send of the head

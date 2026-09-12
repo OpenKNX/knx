@@ -233,10 +233,16 @@ TPAckType Bau07B0IP::isAckRequired(uint16_t address, bool isGrpAddr)
     if (address == _deviceObj.individualAddress())
         return TPAckType::AckReqAck;
 #ifdef KNX_TUNNEL_IA_DEFENCE
-    // KNX 03_08_04 Tunnelling §2.2.2 p.7: defend every CONFIGURED additional tunnel IA (connected or not),
-    // so an address-in-use check (NM_IndividualAddress_Check) gets an L2-ACK and the IA counts as occupied.
-    // isTunnelAddress() is a strict superset of the connected-only isSentToTunnel() case, one O(16) scan ->
-    // same hot-path cost, and it emits only a HW ACK bit (no fabricated frame -> no un-acked TX / Protocol-Error).
+    // 03_08_04 2.2.2 p.7 asks the server to defend its additional individual addresses so an address-in-use
+    // check sees them as occupied. 03_05_02 2.22.3 p.51 settles what that means on the wire: an L2
+    // acknowledge means occupied, its absence means "not occupied at this moment". (2.19 p.35 prints the
+    // opposite for the same step; 2.3 p.14 runs the identical sequence and reads "not occupied", so p.35 is
+    // an error in the standard -- do not build on that line.) Only the HW ACK bit is set, nothing is
+    // transmitted: an earlier attempt fabricated a T_Disconnect here and the un-acked TX became a
+    // Protocol-Error on the NCN.
+    // SCOPE: isTunnelAddress() matches the addresses of OPEN connections, so this defends those and NOT the
+    // configured-but-unconnected ones the clause is really about. Closing that half needs the pool cached
+    // off the TP hot path, plus a T_Disconnect for the connection-oriented check (03_05_02 2.19).
     if (_ipTunnelServer.isTunnelAddress(address))
         return TPAckType::AckReqAck;
 #else

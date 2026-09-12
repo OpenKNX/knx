@@ -18,6 +18,10 @@ class IpParameterObject : public InterfaceObject
     // the IP stack re-resolves. ETS re-writes the object on the next download.
     void masterReset(EraseCode eraseCode, uint8_t channel) override;
 
+    // Logs every write to the additional individual addresses as it arrives, with the accepted count
+    // beside the requested one, so a wrong or rejected entry can be pinned on the writer.
+    void writeProperty(PropertyID id, uint16_t start, uint8_t* data, uint8_t& count) override;
+
     // A device saved before PID_IP_ADDRESS / PID_SUBNET_MASK / PID_DEFAULT_GATEWAY carried a default holds
     // "0 elements" for them, and DataProperty::restore() writes that count straight over the constructor
     // default. Restoring the stored state and then seeding the empty ones keeps them readable on every

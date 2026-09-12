@@ -15,10 +15,25 @@
 #include "knx_ip_state_response.h"
 #include "knx_ip_tunneling_ack.h"
 #include "knx_ip_tunneling_request.h"
+#include "knx_ip_tunnel_connection.h" // KNX_TUNNEL_RESEND_DEPTH for TUNNEL_QUEUE_DEPTH below
 
 #if defined(OPENKNX_HW_BUSMON) || defined(KNX_TUNNEL_RESEND)
 #include <string.h>
 #endif
+
+// FIFO slots per tunnel, so the UI can print "1 / 3" without a constant of its own. 0 = this build
+// has no send FIFO, which is also why resend/queue stay 0 there. KNX_TUNNEL_RESEND_DEPTH comes from
+// knx_ip_tunnel_connection.h, included above -- not relied on transitively.
+#ifdef KNX_TUNNEL_RESEND
+static const uint8_t TUNNEL_QUEUE_DEPTH = KNX_TUNNEL_RESEND_DEPTH;
+#else
+static const uint8_t TUNNEL_QUEUE_DEPTH = 0;
+#endif
+
+// A tunnel may stay open for weeks or months, so every counter saturates instead of wrapping: a
+// counter that rolls over to 0 reads as "healthy", which is the one thing a diagnostic must never do.
+static inline void bumpTo(uint16_t& v) { if (v != 0xFFFF) v++; }
+static inline void bumpTo(uint32_t& v) { if (v != 0xFFFFFFFFu) v++; }
 
 IpTunnelServer::IpTunnelServer(DeviceObject& devObj, IpParameterObject& ipParam, Platform& platform, CemiServer& cemiServer) : _deviceObject(devObj),
                                                                                                                                _ipParameters(ipParam),
@@ -78,12 +93,45 @@ const uint8_t* IpTunnelServer::reservedTunnelsIp()
     return count == KNX_TUNNELING ? _ipParameters.propertyData(PID_CUSTOM_RESERVED_TUNNELS_IP) : nullptr;
 }
 
+// Volatile read plus barrier. copyCounters() writes only through a TunnelEvent&, so a plain re-read is
+// folded into the first one -- both target toolchains did that at -Os, leaving the torn-row check out.
+static inline uint8_t readChannelId(const uint8_t& ch)
+{
+    __asm__ volatile("" ::: "memory");
+    return *(const volatile uint8_t*)&ch;
+}
+
+// One place where a session's counters reach a TunnelEvent, used by both the live list and the history.
+void IpTunnelServer::copyCounters(TunnelEvent& e, const KnxIpTunnelConnection& c) const
+{
+    // Two different questions, two fields: startS answers "how long ago did it begin" (it keeps
+    // advancing for a finished session), ageS answers "how long did it run" (it freezes at teardown).
+    // Feeding the duration into the start stamp is what made every history row read as if it had
+    // just happened.
+    e.startS = c.ConnectUptimeS;
+    // Clamp: a session torn down between the ChannelId gate and this copy has ConnectUptimeS == 0
+    // again, and the raw difference would read as the whole device uptime.
+    e.ageS = (_uptimeS >= c.ConnectUptimeS) ? (_uptimeS - c.ConnectUptimeS) : 0;
+    e.toClient = c.StatToClient;
+    e.fromClient = c.StatFromClient;
+    e.resend = c.StatResend;
+    e.seqGap = c.StatSeqGap;
+    e.txDrop = c.StatTxDrop;
+    e.grpDrop = c.StatGrpDrop;
+    e.queuePeak = c.StatQueuePeak;
+    e.queueDepth = TUNNEL_QUEUE_DEPTH;
+    e.hbMillis = c.lastHeartbeat;
+}
+
 uint8_t IpTunnelServer::activeTunnels(TunnelEvent* out, uint8_t maxOut) const
 {
     uint8_t n = 0;
     for (int i = 0; i < KNX_TUNNELING + KNX_TUNNELING_DEVMGMT && n < maxOut; i++)
     {
-        if (tunnels[i].ChannelId == 0) continue;
+        // The web handler runs in another task on ESP32. Re-read the channel after the copy: if the
+        // session ended in between, the fields are a mix of two sessions and the row is dropped.
+        const uint8_t ch = readChannelId(tunnels[i].ChannelId);
+        if (ch == 0) continue;
         out[n].ip = tunnels[i].IpAddress;
         out[n].pa = tunnels[i].IndividualAddress;
         out[n].type = tunnels[i].IsConfig ? TUN_CONFIG : TUN_DATA;
@@ -93,10 +141,13 @@ uint8_t IpTunnelServer::activeTunnels(TunnelEvent* out, uint8_t maxOut) const
         // Device-Mgmt slots sit above the tunnel pool and are never reservable.
         out[n].slot = (i < KNX_TUNNELING) ? (uint8_t)i : 0xFF;
         out[n].resSlot = (i < KNX_TUNNELING) ? tunnels[i].ReservedSlot : 0xFF;
+        copyCounters(out[n], tunnels[i]);
+        if (readChannelId(tunnels[i].ChannelId) != ch) continue; // torn: teardown ran during the copy
         n++;
     }
 #ifdef OPENKNX_HW_BUSMON
-    if (n < maxOut && _busMonTunnel.ChannelId != 0)
+    const uint8_t bmCh = readChannelId(_busMonTunnel.ChannelId);
+    if (n < maxOut && bmCh != 0)
     {
         out[n].ip = _busMonTunnel.IpAddress;
         out[n].pa = 0;
@@ -106,6 +157,9 @@ uint8_t IpTunnelServer::activeTunnels(TunnelEvent* out, uint8_t maxOut) const
         out[n].endMillis = 0;
         out[n].slot = 0xFF; // the busmonitor has no reservable slot
         out[n].resSlot = 0xFF;
+        copyCounters(out[n], _busMonTunnel);
+        out[n].queueDepth = 0; // the busmonitor has no send FIFO -- its frames go out fire-and-forget
+        if (readChannelId(_busMonTunnel.ChannelId) != bmCh) return n; // torn: teardown ran during the copy
         n++;
     }
 #endif
@@ -113,9 +167,26 @@ uint8_t IpTunnelServer::activeTunnels(TunnelEvent* out, uint8_t maxOut) const
 }
 
 void IpTunnelServer::recordTunnelSession(uint32_t ip, uint16_t pa, uint8_t type, unsigned long startMillis, uint8_t reason,
-                                        uint8_t detail)
+                                        uint8_t detail, const KnxIpTunnelConnection* conn)
 {
-    TunnelEvent& e = _history[_historyHead];
+    // The struct copy is not atomic; what protects it is that tunnelHistoryAt() counts back from
+    // _historyHead, so this slot is unreachable for a reader until the head advances below.
+    TunnelEvent e;
+    e.startS = _uptimeS; // a refused connect has no session: the event is the moment itself
+    if (conn != nullptr)
+    {
+        copyCounters(e, *conn);
+        // Only known here, so keep it instead of leaving the history row at "none".
+        e.resSlot = conn->ReservedSlot;
+#ifdef KNX_TUNNEL_RESEND
+        // Reset() throws the FIFO away, so what was queued behind the head is a real loss. The head
+        // counts as delivered only if it reached the wire and the ending is not END_NOACK.
+        const bool headOut = conn->_armed && conn->_txCount > 0 && conn->_headSent && reason != END_NOACK;
+        const uint8_t queued = conn->_txCount - (headOut ? 1 : 0);
+        e.txDrop = (e.txDrop > (uint16_t)(0xFFFF - queued)) ? (uint16_t)0xFFFF : (uint16_t)(e.txDrop + queued);
+#endif
+    }
+    e.hbMillis = 0; // a finished session has no idle time
     e.ip = ip;
     e.pa = pa;
     e.type = type;
@@ -123,7 +194,10 @@ void IpTunnelServer::recordTunnelSession(uint32_t ip, uint16_t pa, uint8_t type,
     e.detail = detail;
     e.startMillis = startMillis;
     e.endMillis = millis();
+    _history[_historyHead] = e;
+    __asm__ volatile("" ::: "memory"); // the entry has to be complete before the head makes it visible
     _historyHead = (_historyHead + 1) % TUNNEL_HISTORY_SIZE;
+    // Full ring: (head + SIZE - 1 - index) % SIZE stays in range for every index below SIZE.
     if (_historyCount < TUNNEL_HISTORY_SIZE) _historyCount++;
 }
 
@@ -137,6 +211,7 @@ void IpTunnelServer::recordRejectedConnect(uint32_t ip, uint8_t type, uint8_t re
         if (last.ip == ip && last.reason == reason && last.detail == detail && last.type == type)
         {
             last.endMillis = millis(); // same refusal again: keep one entry, extend it
+            last.startS = _uptimeS;    // and let it read as the most recent occurrence
             return;
         }
     }
@@ -193,6 +268,15 @@ extern uint16_t g_bef3Drop; // knx IpDataLinkLayer (KNXnet/IP header total-lengt
 
 void IpTunnelServer::loop()
 {
+    // Seconds of uptime, accumulated from millis() DELTAS so it survives the 49.7-day wrap. Session
+    // ages are derived from this, not from millis() differences: a tunnel held open by a visualisation
+    // for months would otherwise show a duration that silently restarted.
+    const uint32_t nowMs = millis();
+    if (!_timeInit) { _lastMs = nowMs; _timeInit = true; }
+    _msAcc += (uint32_t)(nowMs - _lastMs);
+    _lastMs = nowMs;
+    while (_msAcc >= 1000) { _msAcc -= 1000; _uptimeS++; }
+
 #ifdef OPENKNX_CON_DIAG
     { // dump con counters once stable 4s after a probe burst (> the 3s probe timeout -> no mid-run dump)
         static uint16_t s_lastSum = 0; static uint32_t s_stableAt = 0; static bool s_dumped = false;
@@ -224,7 +308,7 @@ void IpTunnelServer::loop()
                 discReq.hpaiCtrl().ipAddress(tunnels[i].IpAddress);
                 discReq.hpaiCtrl().ipPortNumber(tunnels[i].PortCtrl);
                 sendCounted(tunnels[i].IpAddress, tunnels[i].PortCtrl, discReq.data(), discReq.totalLength());
-                recordTunnelSession(tunnels[i].IpAddress, tunnels[i].IndividualAddress, tunnels[i].IsConfig ? TUN_CONFIG : TUN_DATA, tunnels[i].connectStart, END_TIMEOUT);
+                recordTunnelSession(tunnels[i].IpAddress, tunnels[i].IndividualAddress, tunnels[i].IsConfig ? TUN_CONFIG : TUN_DATA, tunnels[i].connectStart, END_TIMEOUT, 0, &tunnels[i]);
                 tunnels[i].Reset();
             }
 #ifdef KNX_TUNNEL_RESEND
@@ -235,7 +319,17 @@ void IpTunnelServer::loop()
             {
                 if (tunnels[i]._retries < (tunnels[i].IsConfig ? 3 : 1))
                 {
-                    sendCounted(tunnels[i].IpAddress, tunnels[i].PortData, tunnels[i]._txBuf[tunnels[i]._txHead], tunnels[i]._txLen[tunnels[i]._txHead]);
+                    if (sendCounted(tunnels[i].IpAddress, tunnels[i].PortData, tunnels[i]._txBuf[tunnels[i]._txHead], tunnels[i]._txLen[tunnels[i]._txHead]))
+                    {
+                        if (tunnels[i]._headSent)
+                            bumpTo(tunnels[i].StatResend); // a real repetition: the frame was already out
+                        else
+                        {
+                            // The first attempt never left the device, so this is the delivery, not a repeat.
+                            bumpTo(tunnels[i].StatToClient);
+                            tunnels[i]._headSent = true;
+                        }
+                    }
 #ifdef OPENKNX_CON_DIAG
                     g_conRetry++; // resend fired
 #endif
@@ -244,7 +338,7 @@ void IpTunnelServer::loop()
                 }
                 else
                 {
-                    disconnectTunnel(&tunnels[i], END_TIMEOUT);
+                    disconnectTunnel(&tunnels[i], END_NOACK);
                 }
             }
 #endif
@@ -447,6 +541,7 @@ void IpTunnelServer::sendFrameToTunnel(KnxIpTunnelConnection* tunnel, CemiFrame&
     #ifdef KNX_LOG_TUNNELING
         println("tunnel tx: oversize frame dropped");
     #endif
+        bumpTo(tunnel->StatTxDrop);
         return;
     }
     if (tunnel->_txCount == KNX_TUNNEL_RESEND_DEPTH)
@@ -454,8 +549,12 @@ void IpTunnelServer::sendFrameToTunnel(KnxIpTunnelConnection* tunnel, CemiFrame&
         // FIFO full: drop a best-effort group telegram and keep the connection (the 1 s ACK-timeout in loop()
         // is the disconnect authority, 03_08_04 §2.6.1). A non-group (CO/mgmt) overflow still disconnects.
         if (frame.addressType() == AddressType::GroupAddress)
+        {
+            bumpTo(tunnel->StatGrpDrop); // best-effort by design: the connection is worth more than the frame
             return;
-        disconnectTunnel(tunnel, END_TIMEOUT);
+        }
+        bumpTo(tunnel->StatTxDrop); // the frame that overflowed is lost as well, not just the connection
+        disconnectTunnel(tunnel, END_OVERFLOW);
         return;
     }
     // Build the datagram DIRECTLY into the FIFO slot -> no per-frame new[] and no intermediate copy (was:
@@ -477,6 +576,7 @@ void IpTunnelServer::sendFrameToTunnel(KnxIpTunnelConnection* tunnel, CemiFrame&
     tunnel->_txLen[tunnel->_txTail] = totalLen;
     tunnel->_txTail = (tunnel->_txTail + 1) % KNX_TUNNEL_RESEND_DEPTH;
     tunnel->_txCount++;
+    if (tunnel->_txCount > tunnel->StatQueuePeak) tunnel->StatQueuePeak = tunnel->_txCount;
     pumpTunnel(tunnel);
 #else
     KnxIpTunnelingRequest req(frame);
@@ -484,7 +584,11 @@ void IpTunnelServer::sendFrameToTunnel(KnxIpTunnelConnection* tunnel, CemiFrame&
     req.connectionHeader().channelId(tunnel->ChannelId);
     req.serviceTypeIdentifier(svc);
     req.connectionHeader().sequenceCounter(tunnel->SequenceCounter_S++);
-    sendCounted(tunnel->IpAddress, tunnel->PortData, req.data(), req.totalLength());
+    // No FIFO in this build: a failed send is a permanent loss, there is nothing that would retry it.
+    if (sendCounted(tunnel->IpAddress, tunnel->PortData, req.data(), req.totalLength()))
+        bumpTo(tunnel->StatToClient);
+    else
+        bumpTo(tunnel->StatTxDrop);
 #endif
 }
 
@@ -502,9 +606,20 @@ void IpTunnelServer::pumpTunnel(KnxIpTunnelConnection* t)
     t->_armed = true;
 #ifdef OPENKNX_CON_DIAG
     if (t->_txBuf[h][10] == 0x2E) g_conWire++; // 0x2E = L_data_con at cEMI offset 10
-    if (!sendCounted(t->IpAddress, t->PortData, t->_txBuf[h], t->_txLen[h])) g_conSendFail++; // send returned false
-#else
-    sendCounted(t->IpAddress, t->PortData, t->_txBuf[h], t->_txLen[h]);
+#endif
+    // Counted when the datagram really leaves the device. A false return (IP TX buffer full / no socket)
+    // is neither a delivery nor a loss: the frame stays armed and the 1 s timer resends it. _headSent
+    // carries that across, so a frame that only gets out on a repeat is still counted as one delivery --
+    // otherwise a tunnel could show "->client 0" next to a resend count.
+    t->_headSent = false;
+    if (sendCounted(t->IpAddress, t->PortData, t->_txBuf[h], t->_txLen[h]))
+    {
+        bumpTo(t->StatToClient); // the head goes out once here; its repeats are counted as StatResend
+        t->_headSent = true;
+    }
+#ifdef OPENKNX_CON_DIAG
+    else
+        g_conSendFail++;
 #endif
 }
 
@@ -518,7 +633,7 @@ void IpTunnelServer::disconnectTunnel(KnxIpTunnelConnection* t, uint8_t reason)
     discReq.hpaiCtrl().ipAddress(t->IpAddress);
     discReq.hpaiCtrl().ipPortNumber(t->PortCtrl);
     sendCounted(t->IpAddress, t->PortCtrl, discReq.data(), discReq.totalLength());
-    recordTunnelSession(t->IpAddress, t->IndividualAddress, t->IsConfig ? TUN_CONFIG : TUN_DATA, t->connectStart, reason);
+    recordTunnelSession(t->IpAddress, t->IndividualAddress, t->IsConfig ? TUN_CONFIG : TUN_DATA, t->connectStart, reason, 0, t);
     t->Reset();
 }
 
@@ -790,11 +905,22 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
     }
     else // no tunnel PA configured, that means device is unconfigured and has 15.15.0
     {
+        // Invented addresses, not ETS-assigned ones -- so the device's own part is skipped here rather
+        // than handed out: 03_08_04 4.2.2 p.18 prereq 3 calls using the own IA "not recommended", and p.7
+        // forbids it for a router. This is NOT a filter on the ETS-written list; there the spec prescribes
+        // E_NO_MORE_UNIQUE_CONNECTIONS (03_08_03 2.5.4 p.9), which this stack does not yet do.
+        // The branch also runs for a PARTIALLY programmed device, so the own part can be 1..KNX_TUNNELING.
+        // The pool keeps KNX_TUNNELING entries -- the reserved-slot path indexes it by slot, so a shorter
+        // array would read past its end. Part 0 and FFh are never produced (03_05_01 3.3 p.20 reserves
+        // both); the highest part used is KNX_TUNNELING + 1.
         uint8_t addrbuffer[KNX_TUNNELING * 2];
         addresses = (uint8_t*)addrbuffer;
+        const uint8_t ownDevicePart = (uint8_t)(_deviceObject.individualAddress() & 0x00FF);
+        uint8_t devicePart = 1;
         for (int i = 0; i < KNX_TUNNELING; i++)
         {
-            addrbuffer[i * 2 + 1] = i + 1;
+            if (devicePart == ownDevicePart) devicePart++;
+            addrbuffer[i * 2 + 1] = devicePart++;
             addrbuffer[i * 2] = _deviceObject.individualAddress() / 0x0100;
         }
         uint8_t count = KNX_TUNNELING;
@@ -945,7 +1071,8 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
                     sendCounted(tunnels[firstResAndOccTunnel].IpAddress, tunnels[firstResAndOccTunnel].PortCtrl, discReq.data(), discReq.totalLength());
                     // Audit-trail parity with every other teardown path: log the evicted session before Reset().
                     recordTunnelSession(tunnels[firstResAndOccTunnel].IpAddress, tunnels[firstResAndOccTunnel].IndividualAddress,
-                                        tunnels[firstResAndOccTunnel].IsConfig ? TUN_CONFIG : TUN_DATA, tunnels[firstResAndOccTunnel].connectStart, END_CLOSED);
+                                        tunnels[firstResAndOccTunnel].IsConfig ? TUN_CONFIG : TUN_DATA, tunnels[firstResAndOccTunnel].connectStart, END_EVICTED,
+                                        0, &tunnels[firstResAndOccTunnel]);
                     tunnels[firstResAndOccTunnel].Reset();
 
                     tunIdx = firstResAndOccTunnel;
@@ -976,7 +1103,7 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
     }
 
     KnxIpTunnelConnection* tun = nullptr;
-    bool paNotUnique = false; // a free slot exists but its assignable tunnelling IA is already in use -> 0x25
+    bool paNotUnique = false; // -> 0x25; set by the reserved-slot path and, deliberately, by the depleted pool
     if (tunIdx != 0xFF)
     {
         tun = &tunnels[tunIdx];
@@ -1022,7 +1149,12 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
             {
                 uint16_t cand = 0;
                 popWord(cand, addresses + a * 2);
-                if (cand == 0) continue;                                             // empty / invalid entry
+                // No value filter beyond an empty slot: 03_08_03 2.5.4 p.9 gives the server one rule,
+                // "use the first free Additional Individual Address ... at the lowest index". x.y.FF and
+                // FFFFh are NOT excluded -- 03_08_04 NOTE 9 p.19 calls an all-FFFFh pool the normal state
+                // of a fresh server, and 4.3 step 6b p.24 has the client WRITE FFFFh into the pool as its
+                // repair step. Filtering them would kill the very entries the procedure creates.
+                if (cand == 0) continue;                                             // empty entry
                 if (resTunActive && tunCtrlBytes && (*(tunCtrlBytes + a) & 0x80)) continue; // don't steal a reserved slot's IA
                 bool inUse = false;
                 for (int x = 0; x < KNX_TUNNELING; x++)
@@ -1044,7 +1176,13 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
 #endif
                 tunIdx = 0xFF;
                 tun = nullptr;
-                paNotUnique = true; // list depleted -> report 0x25 (E_NO_MORE_UNIQUE_CONNECTIONS)
+                // 03_08_03 2.5.4 p.9 splits this into 0x24 (list depleted, all entries unique) and 0x25
+                // (a free entry duplicates one in use or the own IA), and reporting 0x25 for the first
+                // case makes a conformant client repeat 03_08_04 4.3 forever. Reported as 0x25 anyway:
+                // an all-zero pool is what masterReset() leaves behind, and 4.3 step 3 repairs exactly
+                // that duplicate. Splitting the codes without also excluding the own IA in the loop
+                // above turns that recovery into a permanent refusal.
+                paNotUnique = true;
             }
             else
                 tun->IndividualAddress = tunPa;
@@ -1055,7 +1193,8 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
     {
         // KNX 03_08_04 Tunnelling §2.2.2 p.6-7: a device offering >1 tunnelling connection must distinguish "no free slot"
         // (E_NO_MORE_CONNECTIONS 0x24) from "slot free but the assignable tunnelling IA is not unique"
-        // (E_NO_MORE_UNIQUE_CONNECTIONS 0x25).
+        // (E_NO_MORE_UNIQUE_CONNECTIONS 0x25). NOT distinguished for a depleted pool -- see the comment
+        // at the depleted-pool writer above for why 0x25 is reported there and what it would take to split.
         println(paNotUnique ? "tunnel connect rejected: no unique individual address available"
                             : "no free tunnel availible");
         // The other three reject paths are recorded; this one was not, so a connect turned away because
@@ -1088,7 +1227,9 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
 #endif
     } while (channelIdInUse);
 
-    tun->ChannelId = _lastChannelId;
+    // Held here because the wrap below rearms _lastChannelId for the NEXT connect: publishing it after
+    // that reset handed this connection channel id 0, which every ChannelId != 0 gate reads as "free".
+    const uint8_t chanId = _lastChannelId;
     tun->lastHeartbeat = millis();
     if (_lastChannelId == 255)
         _lastChannelId = 0;
@@ -1100,7 +1241,13 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
     tun->PortData = connRequest.hpaiData().ipPortNumber() ? connRequest.hpaiData().ipPortNumber() : src_port;
     tun->PortCtrl = connRequest.hpaiCtrl().ipPortNumber() ? connRequest.hpaiCtrl().ipPortNumber() : srcPort;
 
-    tun->connectStart = millis(); // start of this session (for duration in the history)
+    tun->connectStart = millis(); // start of this session (for the wall-clock stamp and the row key)
+    tun->ConnectUptimeS = _uptimeS; // wrap-safe base for the duration
+
+    // Published LAST: a non-zero ChannelId is what makes the slot visible to activeTunnels(), which a
+    // web request reads from another task. Written first, a reader saw a valid channel beside an address
+    // and a start stamp that were still zero. Not _lastChannelId -- that one has already been rearmed.
+    tun->ChannelId = chanId;
 
     print("New Tunnel-Connection[");
     print(tunIdx);
@@ -1261,7 +1408,7 @@ void IpTunnelServer::HandleDisconnectRequest(uint8_t* buffer, uint16_t length)
     uint32_t rIp = discReq.hpaiCtrl().ipAddress() ? discReq.hpaiCtrl().ipAddress() : tun->IpAddress;
     uint16_t rPort = discReq.hpaiCtrl().ipPortNumber() ? discReq.hpaiCtrl().ipPortNumber() : tun->PortCtrl;
     sendCounted(rIp, rPort, discRes.data(), discRes.totalLength());
-    recordTunnelSession(tun->IpAddress, tun->IndividualAddress, tun->IsConfig ? TUN_CONFIG : TUN_DATA, tun->connectStart, END_CLOSED);
+    recordTunnelSession(tun->IpAddress, tun->IndividualAddress, tun->IsConfig ? TUN_CONFIG : TUN_DATA, tun->connectStart, END_CLOSED, 0, tun);
     tun->Reset();
 }
 
@@ -1317,6 +1464,7 @@ void IpTunnelServer::HandleDeviceConfigurationRequest(uint8_t* buffer, uint16_t 
     else if ((uint8_t)(sequence - 1) != tun->SequenceCounter_R)
     {
         // unexpected sequence -> discard, no ACK, no heartbeat retrigger
+        bumpTo(tun->StatSeqGap);
         return;
     }
 
@@ -1330,6 +1478,7 @@ void IpTunnelServer::HandleDeviceConfigurationRequest(uint8_t* buffer, uint16_t 
 
     tun->SequenceCounter_R = sequence;
     tun->lastHeartbeat = millis();
+    bumpTo(tun->StatFromClient);
     _cemiServer.frameReceived(confReq.frame(), tun->ChannelId);
 }
 
@@ -1385,6 +1534,7 @@ void IpTunnelServer::HandleTunnelingRequest(uint8_t* buffer, uint16_t length)
         println((uint8_t)(tun->SequenceCounter_R + 1));
 #endif
         // Dont handle it
+        bumpTo(tun->StatSeqGap);
         return;
     }
 
@@ -1417,6 +1567,7 @@ void IpTunnelServer::HandleTunnelingRequest(uint8_t* buffer, uint16_t length)
     if (tunnReq.frame().sourceAddress() == 0)
         tunnReq.frame().sourceAddress(tun->IndividualAddress);
 
+    bumpTo(tun->StatFromClient); // accepted from the client; a frame for the device itself is answered locally
     _cemiServer.frameReceived(tunnReq.frame(), tun->ChannelId);
 }
 
@@ -1436,7 +1587,7 @@ void IpTunnelServer::closeTunnelsForBusmon()
         discReq.hpaiCtrl().ipAddress(tunnels[i].IpAddress);
         discReq.hpaiCtrl().ipPortNumber(tunnels[i].PortCtrl);
         sendCounted(tunnels[i].IpAddress, tunnels[i].PortCtrl, discReq.data(), discReq.totalLength());
-        recordTunnelSession(tunnels[i].IpAddress, tunnels[i].IndividualAddress, tunnels[i].IsConfig ? TUN_CONFIG : TUN_DATA, tunnels[i].connectStart, END_BUSMON);
+        recordTunnelSession(tunnels[i].IpAddress, tunnels[i].IndividualAddress, tunnels[i].IsConfig ? TUN_CONFIG : TUN_DATA, tunnels[i].connectStart, END_BUSMON, 0, &tunnels[i]);
         tunnels[i].Reset();
     }
 }
@@ -1477,8 +1628,9 @@ void IpTunnelServer::HandleBusMonitorConnect(KnxIpConnectRequest& connRequest, u
     _busMonTunnel.SequenceCounter_S = 0;
     _busMonSeq = 0; // restart the cEMI L_Busmon.ind status-octet sequence counter for the new busmon session
     _busMonTunnel.lastHeartbeat = millis();
-    _busMonTunnel.ChannelId = _lastChannelId; // set last -> busMonitorActive() true only once fully set up
     _busMonTunnel.connectStart = millis();
+    _busMonTunnel.ConnectUptimeS = _uptimeS;
+    _busMonTunnel.ChannelId = _lastChannelId; // set last -> busMonitorActive() true only once fully set up
     _busMonExitPending = false;
 
     _hwBusMon->hwBusMonEnter(); // U_BUSMON_REQ -> chip passive, routing paused
@@ -1502,7 +1654,7 @@ void IpTunnelServer::busMonitorTeardown(uint8_t reason)
     if (_busMonTunnel.ChannelId == 0)
         return;
 
-    recordTunnelSession(_busMonTunnel.IpAddress, 0, TUN_BUSMON, _busMonTunnel.connectStart, reason);
+    recordTunnelSession(_busMonTunnel.IpAddress, 0, TUN_BUSMON, _busMonTunnel.connectStart, reason, 0, &_busMonTunnel);
     _busMonTunnel.Reset(); // stop forwarding at once (busMonitorActive() -> false)
     if (_hwBusMon)
     {
@@ -1530,7 +1682,10 @@ void IpTunnelServer::busMonitorFrame(uint8_t* lpdu, uint16_t len, uint8_t status
     constexpr uint16_t MAX_LPDU = 264;
     constexpr uint16_t HDR = 11; // MC(1) + AddIL(1) + status AI(3) + extended-timestamp AI(6)
     if (len > MAX_LPDU)
+    {
+        bumpTo(_busMonTunnel.StatTxDrop); // the one mode where a silent drop must never look like a clean capture
         return;
+    }
 
     // cEMI L_Busmon.ind (03_06_03 §4.1.5.8.1, p.96): [0x2B][AddIL=9][AI 0x03,len1,status/seq]
     // [AI 0x06,len4,ext-rel-timestamp][raw LPDU incl FCS]. AddIL 9 = status AI(3) + ext-timestamp AI(6);
@@ -1561,7 +1716,12 @@ void IpTunnelServer::busMonitorFrame(uint8_t* lpdu, uint16_t len, uint8_t status
     req.connectionHeader().sequenceCounter(_busMonTunnel.SequenceCounter_S++);
     req.connectionHeader().length(LEN_CH);
     req.connectionHeader().channelId(_busMonTunnel.ChannelId);
-    sendCounted(_busMonTunnel.IpAddress, _busMonTunnel.PortData, req.data(), req.totalLength());
+    // Fire and forget: no FIFO, no resend. A failed send under bus load is exactly what a busmonitor
+    // must not report as captured.
+    if (sendCounted(_busMonTunnel.IpAddress, _busMonTunnel.PortData, req.data(), req.totalLength()))
+        bumpTo(_busMonTunnel.StatToClient);
+    else
+        bumpTo(_busMonTunnel.StatTxDrop);
 }
 #endif
 

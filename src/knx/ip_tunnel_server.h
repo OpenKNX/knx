@@ -53,6 +53,13 @@ class IpTunnelServer
 
     // Read-only tunnel introspection for diagnostics/UI (display widget, group objects).
     // "Data" tunnels only: the first KNX_TUNNELING slots; device-management connections are excluded.
+    /** @brief Uptime in seconds, wrap-free. Pair with TunnelEvent::startS to get "how long ago". */
+    uint32_t uptimeS() const { return _uptimeS; }
+    /**
+     * @brief Seconds since a recorded startS, clamped. Use this instead of uptimeS() - startS, which
+     * underflows whenever the stamp is read after the counter has moved on.
+     */
+    uint32_t secondsSince(uint32_t startS) const { const uint32_t u = _uptimeS; return u >= startS ? u - startS : 0; }
     /** @brief Connectable data-tunnel count (spec/config maximum). */
     uint8_t tunnelMax() const { return KNX_TUNNELING; }
     /** @brief Currently open data tunnels (ChannelId != 0). */
@@ -70,12 +77,17 @@ class IpTunnelServer
     enum TunnelEndReason : uint8_t
     {
         END_ACTIVE = 0,
-        END_CLOSED = 1,
-        END_TIMEOUT = 2,
-        END_BUSMON = 3,
-        END_REJ_TYPE = 4,  // connection type not supported (03_08_02 Table 7) -> detail = CRI type
-        END_REJ_LAYER = 5, // tunnelling layer not supported (03_08_04 Table 10) -> detail = layer
-        END_REJ_BUSY = 6   // no connection available right now (busmon owns the bus / all slots taken)
+        END_CLOSED = 1,   // the client asked to disconnect -- the only ending it caused itself
+        END_TIMEOUT = 2,  // no heartbeat within 120 s (03_08_02 Core 5.4)
+        END_BUSMON = 3,   // closed so a busmonitor can own the bus alone (03_08_04 2.2.4)
+        END_EVICTED = 4,  // the slot was handed to the client it is reserved for
+        END_NOACK = 5,    // no ACK after the last repeat (03_08_04 2.6.1)
+        END_OVERFLOW = 6, // send queue overflowed with a frame that must not be dropped
+        // Everything below is a REFUSED connect, not a session. The `reason >= END_REJ_TYPE` test in the
+        // products relies on that split, so a new SESSION reason goes above this line, never appended.
+        END_REJ_TYPE = 7,  // connection type not supported (03_08_02 Table 7) -> detail = CRI type
+        END_REJ_LAYER = 8, // tunnelling layer not supported (03_08_04 Table 10) -> detail = layer
+        END_REJ_BUSY = 9   // no connection available right now (busmon owns the bus / all slots taken)
     };
     // One tunnel session. Times are millis()-relative (uptime); the console converts start to an absolute
     // wall-clock time on the fly when the clock is valid, so it stays correct even if the clock arrives later.
@@ -90,6 +102,18 @@ class IpTunnelServer
         uint8_t resSlot = 0xFF;        // slot reserved for this client at connect time, 0xFF for none
         unsigned long startMillis = 0; // millis() at connect
         unsigned long endMillis = 0;   // millis() at disconnect (0 while active)
+        unsigned long hbMillis = 0;    // millis() of the last accepted datagram; 0 for history entries
+        uint32_t startS = 0;           // uptime seconds at connect -- "how long ago did this START"
+        uint32_t ageS = 0;             // seconds this session has run (final duration for a history entry)
+        // Copies of the connection's per-session counters (0 on a refused connect, which never had one).
+        uint32_t toClient = 0;
+        uint32_t fromClient = 0;
+        uint16_t resend = 0;
+        uint16_t seqGap = 0;
+        uint16_t txDrop = 0;
+        uint16_t grpDrop = 0;
+        uint8_t queuePeak = 0;
+        uint8_t queueDepth = 0; // FIFO slots this build provides, so "1 / 3" needs no constant in the UI
     };
     /**
      * @brief Reserved-tunnel configuration as ETS wrote it, for diagnostics only.
@@ -151,8 +175,16 @@ class IpTunnelServer
     TunnelEvent _history[TUNNEL_HISTORY_SIZE];
     uint8_t _historyHead = 0;  // next write slot
     uint8_t _historyCount = 0;
+
+    // Uptime in seconds, accumulated in loop() from millis() deltas so it is immune to the 49.7-day wrap.
+    uint32_t _uptimeS = 0;
+    uint32_t _lastMs = 0;
+    uint32_t _msAcc = 0;
+    bool _timeInit = false;
+    // conn carries the per-session counters into the history entry; nullptr for a refused connect.
+    void copyCounters(TunnelEvent& e, const KnxIpTunnelConnection& c) const;
     void recordTunnelSession(uint32_t ip, uint16_t pa, uint8_t type, unsigned long startMillis, uint8_t reason,
-                             uint8_t detail = 0);
+                             uint8_t detail = 0, const KnxIpTunnelConnection* conn = nullptr);
     // Refused CONNECT_REQUEST -> history; coalesces an identical repeat into the newest entry so a
     // retrying client cannot push the real sessions out of the 32-entry ring.
     void recordRejectedConnect(uint32_t ip, uint8_t type, uint8_t reason, uint8_t detail);

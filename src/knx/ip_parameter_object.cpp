@@ -284,6 +284,36 @@ static void clearProperty(Property* p)
         p->write(i, (uint8_t)1, zero);
 }
 
+void IpParameterObject::writeProperty(PropertyID id, uint16_t start, uint8_t* data, uint8_t& count)
+{
+#ifdef KNX_TUNNELING
+    // The base call overwrites count with what the property ACCEPTED (0 on a rejected write), so the
+    // requested figure has to be kept here -- a rejected write is the one this log exists for.
+    const uint8_t requested = count;
+#endif
+    InterfaceObject::writeProperty(id, start, data, count);
+#ifdef KNX_TUNNELING
+    // One line per write of the tunnelling identities: index, requested and accepted count, and the
+    // values as they arrived.
+    if (id == PID_ADDITIONAL_INDIVIDUAL_ADDRESSES && data != nullptr)
+    {
+        print("AddIA write: start=");
+        print(start);
+        print(" count=");
+        print(requested);
+        print(" accepted=");
+        print(count);
+        for (uint8_t i = 0; i < requested; i++)
+        {
+            print(" ");
+            const uint16_t pa = (uint16_t)((uint16_t)data[i * 2] << 8 | data[i * 2 + 1]);
+            print((pa >> 12) & 0x0F); print("."); print((pa >> 8) & 0x0F); print("."); print(pa & 0xFF);
+        }
+        println();
+    }
+#endif
+}
+
 void IpParameterObject::masterReset(EraseCode eraseCode, uint8_t channel)
 {
     (void)channel;

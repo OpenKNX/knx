@@ -20,11 +20,21 @@ void KnxIpTunnelConnection::Reset()
     IndividualAddress = 0;
     IsConfig = false;
     ReservedSlot = 0xFF;
+    // Not cleared, like connectStart: every connect overwrites it, and a zero would make a row read
+    // during teardown say "connected since boot" -- a stale stamp is merely the previous session's.
+    StatToClient = 0;
+    StatFromClient = 0;
+    StatResend = 0;
+    StatSeqGap = 0;
+    StatTxDrop = 0;
+    StatGrpDrop = 0;
+    StatQueuePeak = 0;
 #ifdef KNX_TUNNEL_RESEND
     _txHead = 0;
     _txTail = 0;
     _txCount = 0;
     _armed = false;
+    _headSent = false;
     _retries = 0;
 #endif
 }
