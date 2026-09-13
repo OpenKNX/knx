@@ -27,9 +27,10 @@ class KnxIpConnectRequest;
 class IHwBusMonitorDll
 {
   public:
-    virtual void hwBusMonEnter() = 0;     // U_BUSMON_REQ: chip goes passive, routing pauses
+    virtual bool hwBusMonEnter() = 0;     // U_BUSMON_REQ: chip passive, routing paused; false = refused
     virtual bool hwBusMonExit() = 0;      // leave monitor mode -> BCU_CONNECTED; returns true if it actually reset (false if a local console busmon still owns the chip)
-    virtual bool hwBusMonConnected() = 0; // chip back to normal operation?
+    virtual uint32_t hwBusMonResetIndCount() = 0; // U_Reset.ind counter: did the chip execute the reset?
+    virtual bool hwBusMonRxDesynced() = 0;        // receiver lost sync -> a missing indication proves nothing
     virtual bool hwBusMonActive() = 0;    // chip currently in monitor mode (any owner: ETS tunnel or local `bcu mon`)
     virtual bool hwBusOperational() = 0;  // KNX bus actually usable (host<->chip link + bus voltage)?
 };
@@ -84,11 +85,13 @@ class IpTunnelServer
         END_EVICTED = 4,  // the slot was handed to the client it is reserved for
         END_NOACK = 5,    // no ACK after the last repeat (03_08_04 2.6.1)
         END_OVERFLOW = 6, // send queue overflowed with a frame that must not be dropped
+        END_LOCAL = 7,       // closed on the device's own request (web / console / before a restart)
+        END_BUSMON_LOST = 8, // HW monitor mode ended underneath the connection -- nobody asked for it
         // Everything below is a REFUSED connect, not a session. The `reason >= END_REJ_TYPE` test in the
         // products relies on that split, so a new SESSION reason goes above this line, never appended.
-        END_REJ_TYPE = 7,  // connection type not supported (03_08_02 Table 7) -> detail = CRI type
-        END_REJ_LAYER = 8, // tunnelling layer not supported (03_08_04 Table 10) -> detail = layer
-        END_REJ_BUSY = 9   // no connection available right now (busmon owns the bus / all slots taken)
+        END_REJ_TYPE = 9,   // connection type not supported (03_08_02 Table 7) -> detail = CRI type
+        END_REJ_LAYER = 10, // tunnelling layer not supported (03_08_04 Table 10) -> detail = layer
+        END_REJ_BUSY = 11   // no connection available right now (busmon owns the bus / all slots taken)
     };
     // One tunnel session. Times are millis()-relative (uptime); the console converts start to an absolute
     // wall-clock time on the fly when the clock is valid, so it stays correct even if the clock arrives later.
@@ -101,6 +104,7 @@ class IpTunnelServer
         uint8_t detail = 0;            // rejected attempts: the offending CRI type / KNX layer octet
         uint8_t slot = 0xFF;           // index in tunnels[], 0xFF when it does not belong to one
         uint8_t resSlot = 0xFF;        // slot reserved for this client at connect time, 0xFF for none
+        uint8_t chId = 0;              // KNXnet/IP channel id; live list only, 0 in a history entry
         unsigned long startMillis = 0; // millis() at connect
         unsigned long endMillis = 0;   // millis() at disconnect (0 while active)
         unsigned long hbMillis = 0;    // millis() of the last accepted datagram; 0 for history entries
@@ -142,6 +146,20 @@ class IpTunnelServer
     /** @brief True if the channel is a KNXnet/IP Device Management connection (not a tunnel). */
     bool isConfigChannel(uint8_t channelId) const;
 
+    /**
+     * @brief Close one open connection by its KNXnet/IP channel id; false if no such channel is open.
+     * @param sent optional out: whether the client could be told (the slot is reaped either way).
+     * Sends DISCONNECT_REQUEST to the client's control endpoint, which 03_08_02 §9.2 lists as mandatory
+     * in the server->client direction. Must run in the KNX loop, not from a web task.
+     */
+    bool closeTunnel(uint8_t channelId, uint8_t reason = END_LOCAL, bool* sent = nullptr);
+    /**
+     * @brief Close every open connection and return how many were closed.
+     * @param withBusMon also end a KNX-Busmonitor tunnel, which leaves HW monitor mode with it.
+     * @param sent optional out: how many clients could actually be told (the slot is reaped either way).
+     */
+    uint8_t closeAllTunnels(uint8_t reason = END_LOCAL, bool withBusMon = true, uint8_t* sent = nullptr);
+
     /** @brief Send one cEMI frame to every open device management connection (evented M_PropInfo.ind). */
     void dataRequestToAllDevMgmt(CemiFrame& frame);
 
@@ -150,6 +168,8 @@ class IpTunnelServer
     void setHwBusMonitorDll(IHwBusMonitorDll* dll) { _hwBusMon = dll; }
     /** @brief True while a KNX-Busmonitor tunnel is open (chip in HW monitor mode). */
     bool busMonitorActive() { return _busMonTunnel.ChannelId != 0; }
+    /** @brief Channel id of the open busmonitor tunnel, 0 if none. Saves snapshotting the whole list. */
+    uint8_t busMonitorChannelId() const { return _busMonTunnel.ChannelId; }
     /** @brief Forward one raw monitor-mode LPDU (incl. FCS) to the busmon tunnel as cEMI L_Busmon.ind. */
     void busMonitorFrame(uint8_t* lpdu, uint16_t len, uint8_t status = 0);
     /** @brief Close every open data/config tunnel so a busmonitor is the only connection (03_08_04 §2.2.4).
@@ -160,6 +180,7 @@ class IpTunnelServer
   private:
 
     void sendFrameToTunnel(KnxIpTunnelConnection *tunnel, CemiFrame& frame);
+    bool sendDisconnectRequest(KnxIpTunnelConnection *t); // tell the client; false = datagram never left
 #ifdef KNX_TUNNEL_RESEND
     void pumpTunnel(KnxIpTunnelConnection *t);                 // send the FIFO head if nothing is in flight
     void disconnectTunnel(KnxIpTunnelConnection *t, uint8_t reason); // server-initiated teardown + reap
@@ -217,6 +238,7 @@ class IpTunnelServer
     uint8_t _busMonSeq = 0;                   // rolling status/sequence nibble for L_Busmon.ind
     bool _busMonExitPending = false;          // exit-recovery poll running (non-blocking)
     uint32_t _busMonExitStart = 0;
+    uint32_t _busMonExitResetInd = 0;         // U_Reset.ind count when the poll was armed
 #endif
 };
 

@@ -141,6 +141,7 @@ uint8_t IpTunnelServer::activeTunnels(TunnelEvent* out, uint8_t maxOut) const
         // Device-Mgmt slots sit above the tunnel pool and are never reservable.
         out[n].slot = (i < KNX_TUNNELING) ? (uint8_t)i : 0xFF;
         out[n].resSlot = (i < KNX_TUNNELING) ? tunnels[i].ReservedSlot : 0xFF;
+        out[n].chId = ch; // the re-read value, so a row never carries a channel from the next session
         copyCounters(out[n], tunnels[i]);
         if (readChannelId(tunnels[i].ChannelId) != ch) continue; // torn: teardown ran during the copy
         n++;
@@ -157,6 +158,7 @@ uint8_t IpTunnelServer::activeTunnels(TunnelEvent* out, uint8_t maxOut) const
         out[n].endMillis = 0;
         out[n].slot = 0xFF; // the busmonitor has no reservable slot
         out[n].resSlot = 0xFF;
+        out[n].chId = bmCh;
         copyCounters(out[n], _busMonTunnel);
         out[n].queueDepth = 0; // the busmonitor has no send FIFO -- its frames go out fire-and-forget
         if (readChannelId(_busMonTunnel.ChannelId) != bmCh) return n; // torn: teardown ran during the copy
@@ -203,7 +205,6 @@ void IpTunnelServer::recordTunnelSession(uint32_t ip, uint16_t pa, uint8_t type,
     // payload before it, which is the side that does need it.
     std::atomic_thread_fence(std::memory_order_release);
     _history[_historyHead] = e;
-    __asm__ volatile("" ::: "memory"); // the entry has to be complete before the head makes it visible
     _historyHead = (_historyHead + 1) % TUNNEL_HISTORY_SIZE;
     // Full ring: (head + SIZE - 1 - index) % SIZE stays in range for every index below SIZE.
     if (_historyCount < TUNNEL_HISTORY_SIZE) _historyCount++;
@@ -378,8 +379,9 @@ void IpTunnelServer::loop()
 
 #ifdef KNX_CEMI_TRANSPORT_LAYER
     // 03_08_03 2.6.1.2 p.18 / 2.6.1.6 p.19: the cEMI Transport Layer mode lasts exactly as long as a device
-    // management connection is open. Driven as a state, not as an edge, so EVERY way such a connection can
-    // end (DISCONNECT_REQUEST, heartbeat timeout, resend exhaustion, busmonitor takeover) clears the mode.
+    // management connection is open. Driven as a state, not as an edge, so every way such a connection can
+    // end clears the mode -- including one that closes it from outside this loop (closeTunnel() from the
+    // product's own loop), which is why this must stay a state: such an ending clears it here, one pass late.
     bool devMgmtOpen = false;
     for (int i = 0; i < KNX_TUNNELING + KNX_TUNNELING_DEVMGMT; i++)
         if (tunnels[i].ChannelId != 0 && tunnels[i].IsConfig) { devMgmtOpen = true; break; }
@@ -393,29 +395,52 @@ void IpTunnelServer::loop()
     if (_busMonTunnel.ChannelId != 0 && millis() - _busMonTunnel.lastHeartbeat > 120000)
     {
         println("HW-Busmon: no heartbeat in 2 minutes -> leaving monitor mode");
-        KnxIpDisconnectRequest discReq;
-        discReq.channelId(_busMonTunnel.ChannelId);
-        discReq.hpaiCtrl().length(LEN_IPHPAI);
-        discReq.hpaiCtrl().code(IPV4_UDP);
-        discReq.hpaiCtrl().ipAddress(_busMonTunnel.IpAddress);
-        discReq.hpaiCtrl().ipPortNumber(_busMonTunnel.PortCtrl);
-        sendCounted(_busMonTunnel.IpAddress, _busMonTunnel.PortCtrl, discReq.data(), discReq.totalLength());
+        sendDisconnectRequest(&_busMonTunnel);
         busMonitorTeardown(END_TIMEOUT);
     }
 
-    // Bounded, non-blocking exit recovery: poll the chip back to CONNECTED after leaving monitor mode.
+    // Monitor mode can end WITHOUT anyone asking: the chip's own U_RESET_IND, the thermal auto-heal's
+    // U_RESET_REQ, a driver re-init, a manual `bcu rst`. None of those route through this server, and
+    // the frame forward is gated on the chip actually monitoring -- so the connection would stay open
+    // with the client waiting for telegrams that can never arrive again. End it and say why.
+    // Entry cannot race this: HandleBusMonitorConnect only hands out the channel AFTER hwBusMonEnter()
+    // confirmed the chip entered, so a set ChannelId with the chip idle is only ever the aftermath.
+    if (_busMonTunnel.ChannelId != 0 && _hwBusMon != nullptr && !_hwBusMon->hwBusMonActive())
+    {
+        println("HW-Busmon: chip left monitor mode unexpectedly -> closing the busmonitor connection");
+        sendDisconnectRequest(&_busMonTunnel);
+        busMonitorTeardown(END_BUSMON_LOST);
+    }
+
+    // Bounded, non-blocking exit recovery: wait for the CHIP to confirm the reset with a U_Reset.ind.
+    // 250 ms is generous -- the driver's own blocking wait for that indication is 50 ms.
+    // Armed only inside `if (_hwBusMon)` at the single arming site, and the pointer is never set back to
+    // null -- so pending implies non-null and the dereferences below need no guard. A guard here would
+    // also be wrong: it would have to clear the poll, which reads as "the chip answered".
     if (_busMonExitPending)
     {
-        if (_hwBusMon && _hwBusMon->hwBusMonConnected())
+        if (_hwBusMon->hwBusMonResetIndCount() != _busMonExitResetInd)
         {
-            _busMonExitPending = false; // routing restored
+            _busMonExitPending = false; // the chip answered -> it really left monitor mode
         }
-        else if (millis() - _busMonExitStart > 3000)
+        else if (_hwBusMon->hwBusMonActive())
+        {
+            // Somebody owns a monitor again inside the window: the console toggle, or the web group
+            // monitor, which drives the driver directly. Nothing is stuck, and warning here is what made
+            // the old version slander a healthy chip.
+            _busMonExitPending = false;
+        }
+        else if (millis() - _busMonExitStart > 250)
         {
             _busMonExitPending = false;
-            if (_hwBusMon)
-                _hwBusMon->hwBusMonExit(); // one more reset; a truly latched NCN may need a power-cycle
-            println("HW-Busmon: chip did not return to CONNECTED within 3s (possible NCN latch)");
+            // Retry regardless: with a desynced receiver the reset IS the therapy -- it clears the
+            // desync, which otherwise blocks TX until the 20 s watchdog notices.
+            const bool retried = _hwBusMon->hwBusMonExit();
+            // A missing indication only PROVES a latch while the receiver stayed in sync. Desynced, the
+            // parser discards a genuine U_Reset.ind, and leaving monitor mode is exactly when a leftover
+            // raw bus octet desyncs it -- so claim a latch only when the evidence was intact.
+            if (retried && !_hwBusMon->hwBusMonRxDesynced())
+                println("HW-Busmon: no U_Reset.ind after leaving monitor mode (possible NCN latch)");
         }
     }
 #endif
@@ -621,6 +646,89 @@ void IpTunnelServer::sendFrameToTunnel(KnxIpTunnelConnection* tunnel, CemiFrame&
 #endif
 }
 
+// DISCONNECT_REQUEST to the client's CONTROL endpoint. 03_08_02 Core lists this service in the
+// server->client direction as mandatory (§9.2 certification table), so ending a channel from the device
+// side is not an extension. Returns what the send returned: false means the datagram never left, so the
+// client keeps the channel until its own heartbeat timeout. A true only means it went out -- UDP, so
+// delivery is never confirmed; nothing waits for the DISCONNECT_RESPONSE.
+bool IpTunnelServer::sendDisconnectRequest(KnxIpTunnelConnection* t)
+{
+    KnxIpDisconnectRequest discReq;
+    discReq.channelId(t->ChannelId);
+    discReq.hpaiCtrl().length(LEN_IPHPAI);
+    discReq.hpaiCtrl().code(IPV4_UDP);
+    discReq.hpaiCtrl().ipAddress(t->IpAddress);
+    discReq.hpaiCtrl().ipPortNumber(t->PortCtrl);
+    return sendCounted(t->IpAddress, t->PortCtrl, discReq.data(), discReq.totalLength());
+}
+
+// Close one open channel on the device's own initiative (web button, console, before a restart).
+// The slot is reaped whether or not the client could be told -- an unreachable client must not be able
+// to hold a slot -- so `sent` is reported separately instead of being folded into the return value.
+bool IpTunnelServer::closeTunnel(uint8_t channelId, uint8_t reason, bool* sent)
+{
+    if (sent != nullptr)
+        *sent = false;
+    if (channelId == 0)
+        return false;
+
+    for (int i = 0; i < KNX_TUNNELING + KNX_TUNNELING_DEVMGMT; i++)
+    {
+        if (tunnels[i].ChannelId != channelId) continue;
+        const bool ok = sendDisconnectRequest(&tunnels[i]);
+        if (sent != nullptr)
+            *sent = ok;
+        recordTunnelSession(tunnels[i].IpAddress, tunnels[i].IndividualAddress,
+                            tunnels[i].IsConfig ? TUN_CONFIG : TUN_DATA, tunnels[i].connectStart, reason, 0, &tunnels[i]);
+        tunnels[i].Reset();
+        return true;
+    }
+#ifdef OPENKNX_HW_BUSMON
+    if (_busMonTunnel.ChannelId == channelId)
+    {
+        // Told first: busMonitorTeardown() sends nothing and its Reset() zeroes the very fields the
+        // datagram is built from, so afterwards the client could not be told at all.
+        const bool ok = sendDisconnectRequest(&_busMonTunnel);
+        if (sent != nullptr)
+            *sent = ok;
+        busMonitorTeardown(reason);
+        return true;
+    }
+#endif
+    return false;
+}
+
+// Close everything. Used by the web/console "disconnect all" and before a restart, so clients see a
+// DISCONNECT_REQUEST instead of running into the 120 s heartbeat timeout against a device that is gone.
+// Returns the slots reaped; `sent` counts how many clients could actually be told, which is the smaller
+// number as soon as one client is unreachable.
+uint8_t IpTunnelServer::closeAllTunnels(uint8_t reason, bool withBusMon, uint8_t* sent)
+{
+    uint8_t closed = 0, told = 0;
+    for (int i = 0; i < KNX_TUNNELING + KNX_TUNNELING_DEVMGMT; i++)
+    {
+        if (tunnels[i].ChannelId == 0) continue;
+        if (sendDisconnectRequest(&tunnels[i])) told++;
+        recordTunnelSession(tunnels[i].IpAddress, tunnels[i].IndividualAddress,
+                            tunnels[i].IsConfig ? TUN_CONFIG : TUN_DATA, tunnels[i].connectStart, reason, 0, &tunnels[i]);
+        tunnels[i].Reset();
+        closed++;
+    }
+#ifdef OPENKNX_HW_BUSMON
+    if (withBusMon && _busMonTunnel.ChannelId != 0)
+    {
+        if (sendDisconnectRequest(&_busMonTunnel)) told++;
+        busMonitorTeardown(reason);
+        closed++;
+    }
+#else
+    (void)withBusMon;
+#endif
+    if (sent != nullptr)
+        *sent = told;
+    return closed;
+}
+
 #ifdef KNX_TUNNEL_RESEND
 // Send the head of a tunnel's FIFO if nothing is in flight. Exactly one unacked TUNNELLING_REQUEST per
 // tunnel; the sequence counter is stamped into the connection header here (KNX 03_08_04 Tunnelling §2.6.1).
@@ -655,13 +763,7 @@ void IpTunnelServer::pumpTunnel(KnxIpTunnelConnection* t)
 // Server-initiated teardown (retry-exhausted / queue-overflow): tell the client and reap the slot.
 void IpTunnelServer::disconnectTunnel(KnxIpTunnelConnection* t, uint8_t reason)
 {
-    KnxIpDisconnectRequest discReq;
-    discReq.channelId(t->ChannelId);
-    discReq.hpaiCtrl().length(LEN_IPHPAI);
-    discReq.hpaiCtrl().code(IPV4_UDP);
-    discReq.hpaiCtrl().ipAddress(t->IpAddress);
-    discReq.hpaiCtrl().ipPortNumber(t->PortCtrl);
-    sendCounted(t->IpAddress, t->PortCtrl, discReq.data(), discReq.totalLength());
+    sendDisconnectRequest(t);
     recordTunnelSession(t->IpAddress, t->IndividualAddress, t->IsConfig ? TUN_CONFIG : TUN_DATA, t->connectStart, reason, 0, t);
     t->Reset();
 }
@@ -1603,22 +1705,11 @@ void IpTunnelServer::HandleTunnelingRequest(uint8_t* buffer, uint16_t length)
 #ifdef OPENKNX_HW_BUSMON
 void IpTunnelServer::closeTunnelsForBusmon()
 {
-    // Disconnect every open data/config tunnel and record it as ended-by-busmon. Idempotent: with no open
-    // tunnels (e.g. an ETS busmon already cleared them) the loop is a no-op. Shared by the ETS busmon connect
-    // and the local console `bcu mon` toggle so both make the busmonitor equally exclusive.
-    for (int i = 0; i < KNX_TUNNELING + KNX_TUNNELING_DEVMGMT; i++)
-    {
-        if (tunnels[i].ChannelId == 0) continue;
-        KnxIpDisconnectRequest discReq;
-        discReq.channelId(tunnels[i].ChannelId);
-        discReq.hpaiCtrl().length(LEN_IPHPAI);
-        discReq.hpaiCtrl().code(IPV4_UDP);
-        discReq.hpaiCtrl().ipAddress(tunnels[i].IpAddress);
-        discReq.hpaiCtrl().ipPortNumber(tunnels[i].PortCtrl);
-        sendCounted(tunnels[i].IpAddress, tunnels[i].PortCtrl, discReq.data(), discReq.totalLength());
-        recordTunnelSession(tunnels[i].IpAddress, tunnels[i].IndividualAddress, tunnels[i].IsConfig ? TUN_CONFIG : TUN_DATA, tunnels[i].connectStart, END_BUSMON, 0, &tunnels[i]);
-        tunnels[i].Reset();
-    }
+    // Disconnect every open data/config tunnel and record it as ended-by-busmon. withBusMon=false keeps
+    // any ETS busmonitor channel: on the ETS path none exists yet (this runs before the channel is
+    // assigned), and on the local console `bcu mon` path an open ETS busmon session must SURVIVE -- both
+    // own the same passive chip. Idempotent: with no open tunnels it is a no-op.
+    closeAllTunnels(END_BUSMON, false);
 }
 
 void IpTunnelServer::HandleBusMonitorConnect(KnxIpConnectRequest& connRequest, uint32_t src_addr, uint16_t src_port)
@@ -1631,6 +1722,18 @@ void IpTunnelServer::HandleBusMonitorConnect(KnxIpConnectRequest& connRequest, u
     {
         KnxIpConnectResponse connRes(0x00, _hwBusMon == nullptr ? E_TUNNELING_LAYER : E_NO_MORE_CONNECTIONS);
         sendCounted(srcIP, srcPort, connRes.data(), connRes.totalLength()); // route-back (srcIP/srcPort resolved at fn top)
+        return;
+    }
+
+    // Enter monitor mode BEFORE anything is committed. hwBusMonEnter() refuses while the BCU is not up
+    // (no TP chip, dead bus), and accepting the connect anyway used to cost every other client its tunnel
+    // for a monitor that never started -- followed by a CONNECT_RESPONSE(OK) and an immediate disconnect.
+    // Refused here means nothing was touched: no channel handed out, no tunnel closed.
+    if (!_hwBusMon->hwBusMonEnter())
+    {
+        println("HW-Busmon: chip cannot enter monitor mode -> refusing the connect");
+        KnxIpConnectResponse connRes(0x00, E_NO_MORE_CONNECTIONS);
+        sendCounted(srcIP, srcPort, connRes.data(), connRes.totalLength());
         return;
     }
 
@@ -1662,8 +1765,6 @@ void IpTunnelServer::HandleBusMonitorConnect(KnxIpConnectRequest& connRequest, u
     _busMonTunnel.ChannelId = _lastChannelId; // set last -> busMonitorActive() true only once fully set up
     _busMonExitPending = false;
 
-    _hwBusMon->hwBusMonEnter(); // U_BUSMON_REQ -> chip passive, routing paused
-
     print("New HW-Busmon connection, Channel: 0x");
     print(_busMonTunnel.ChannelId, 16);
     println(" (routing paused until disconnect)");
@@ -1687,15 +1788,21 @@ void IpTunnelServer::busMonitorTeardown(uint8_t reason)
     _busMonTunnel.Reset(); // stop forwarding at once (busMonitorActive() -> false)
     if (_hwBusMon)
     {
-        // hwBusMonExit() returns true only if it ACTUALLY left monitor mode (reset the chip). If a local
-        // console busmon (`bcu mon`) still owns it, it keeps the chip monitoring and returns false -> no
-        // recovery is due, so we must not arm the "did the chip come back?" watchdog (it would fire a false
-        // "NCN latch" warning while the console busmon legitimately keeps the chip passive). A genuine
-        // ETS-only teardown returns true, so a real latch is still caught by the poll below.
+        // hwBusMonExit() returns true only if it ACTUALLY requested the reset. If a local console busmon
+        // (`bcu mon`) still owns the chip it keeps it monitoring and returns false -> nothing to watch.
+        // The sample below is what the poll compares against: leaving monitor mode is reset-only, so the
+        // chip MUST answer U_Reset.ind if it obeyed. The old poll asked isConnected() instead, which
+        // reset() had already set to true two lines before writing the request -- it could never fail.
+        // Sampled BEFORE asking: hwBusMonExit() writes U_RESET_REQ itself, and the answer can be parsed
+        // before the next statement runs (on ESP32 the RX parse sits in a task above the KNX loop, and the
+        // round trip is well under a millisecond). Sampling afterwards folds the answer into the reference
+        // and the poll would then warn about a chip that obeyed perfectly.
+        const uint32_t resetIndBefore = _hwBusMon->hwBusMonResetIndCount();
         if (_hwBusMon->hwBusMonExit())
         {
             _busMonExitPending = true; // bounded, non-blocking recovery poll in loop()
             _busMonExitStart = millis();
+            _busMonExitResetInd = resetIndBefore;
         }
     }
 }
