@@ -47,13 +47,26 @@ class TpUartDataLinkLayer : public DataLinkLayer
     bool enabled() const;
     DptMedium mediumType() const override;
     void reset();
-    void monitor();
+    bool monitor(); // false = the chip refused (not initialized, or a routing device has no monitor)
     // Console-initiated busmon (`bcu mon`): same as monitor() but also echoes each raw frame to the
     // console. ETS-initiated busmon (hwBusMonEnter) stays silent on the console.
-    void monitorWithConsoleLog();
+    bool monitorWithConsoleLog();
     // `bcu mon` toggle: start/stop the LOCAL console busmon. Universal (any TPUart device). On the interface
     // it additionally coexists with an ETS busmon tunnel (dual owner: HW stays up while either owns it).
     void toggleConsoleMonitor();
+    /**
+     * @brief True while a local console busmon (`bcu mon`) is the declared owner.
+     * An INTENT flag, not an observation of the chip. loop() releases it as soon as the chip leaves
+     * monitor mode, so the two normally agree; between those two events they do not. Pair it with
+     * isMonitoring() whenever the actual mode is what matters.
+     */
+    bool consoleMonitorActive() const { return _localBusmon; }
+    /**
+     * @brief Idempotent OFF for the local console busmon; a no-op when none is running.
+     * The counterpart to toggleConsoleMonitor() for callers that must not risk STARTING one -- a
+     * toggle reached from a UI would do exactly that when the monitor is already off.
+     */
+    void stopConsoleMonitor();
     void stop(bool state);
     void requestBusy(bool state);
     // void forceAck(bool state);
@@ -70,12 +83,13 @@ class TpUartDataLinkLayer : public DataLinkLayer
     // IHwBusMonitorDll bridge: let the IP tunnel server drive the TP chip's HW monitor mode.
     // Enter: attach the ETS owner; only start the chip if not already monitoring locally, and do NOT clear
     // the console echo -- a local `bcu mon` keeps its output while ETS shares the same raw stream.
-    void hwBusMonEnter() override { if (!isMonitoring()) monitor(); }
+    bool hwBusMonEnter() override { return isMonitoring() ? true : monitor(); }
     // Exit: ETS owner gone -> leave HW busmon ONLY if the local console owner isn't still holding it.
     // Returns true if it actually reset (so the tunnel server arms its recovery watchdog), false if the
     // local console busmon keeps the chip monitoring (no recovery due -> no false "NCN latch" warning).
     bool hwBusMonExit() override { if (_localBusmon) return false; reset(); return true; }
-    bool hwBusMonConnected() override { return isConnected(); }
+    uint32_t hwBusMonResetIndCount() override { return _tpuart.resetIndCount(); }
+    bool hwBusMonRxDesynced() override { return _tpuart.receiverDesynced(); }
     bool hwBusMonActive() override { return isMonitoring(); } // any owner (ETS tunnel or local `bcu mon`)
     bool hwBusOperational() override { return _tpuart.busOperational(); } // link + NCN bus-voltage, for the connectionstate heartbeat
 #endif

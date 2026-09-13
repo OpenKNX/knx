@@ -108,66 +108,93 @@ void TpUartDataLinkLayer::requestBusy(bool state)
     _tpuart.busyMode(state);
 }
 
-// Single funnel for every bus-monitor entry (console command and hwBusMonEnter from the tunnel server).
-// A device advertising the ROUTING service family must not offer a bus monitor (03_08_04 2.2.4), and in
-// this stack the ROUTING DIB is emitted only under mask 091A -- so the mask is the routing capability.
-// Refusing here, not only at the callers, keeps a future caller from reopening the path.
-void TpUartDataLinkLayer::monitor()
+// Single funnel for every bus-monitor entry (the console command and hwBusMonEnter from the tunnel server),
+// and it reports whether the chip actually entered. Two ways to be refused: a device advertising the ROUTING
+// service family must not offer a bus monitor (03_08_04 2.2.4) -- in this stack the ROUTING DIB is emitted
+// only under mask 091A, so the mask IS the routing capability -- and startMonitoring() says no while the BCU
+// is uninitialized (no TP chip, dead bus). Refusing in the funnel rather than at each caller keeps a future
+// caller from reopening the path, and callers MUST check: committing an owner or closing somebody else's
+// tunnel for a monitor that never started is exactly the bug this return value exists for.
+bool TpUartDataLinkLayer::monitor()
 {
 #if MASK_VERSION == 0x091A
-    return; // routing device: no bus monitor
+    return false; // routing device: no bus monitor
 #else
     if (!_initialized)
-        return;
+        return false;
 
-    _tpuart.startMonitoring();
+    if (!_tpuart.startMonitoring())
+        return false;
 #if defined(OPENKNX_HW_BUSMON) && defined(KNX_TUNNELING)
     // Baseline the loss counter at monitor entry so pre-existing overflows don't set a spurious "lost" bit.
     _lastBusMonRxOverflow = _tpuart.getStatistics().getRxUartOverflow()
                           + _tpuart.getStatistics().getRxSearchBufferOverflow()
                           + _tpuart.getStatistics().getRxFrameBufferOverflow();
 #endif
+    return true;
 #endif // MASK_VERSION != 0x091A
 }
 
-void TpUartDataLinkLayer::monitorWithConsoleLog()
+bool TpUartDataLinkLayer::monitorWithConsoleLog()
 {
     _monitorConsoleLog = true; // echo raw frames to the console (console-initiated busmon only)
-    monitor();
+    if (monitor())
+        return true;
+    _monitorConsoleLog = false;
+    return false;
+}
+
+// Stop the local console busmon. The HW monitor mode stays up when a busmonitor TUNNEL still co-owns it;
+// only the last owner takes the chip out of monitor mode.
+void TpUartDataLinkLayer::stopConsoleMonitor()
+{
+    if (!_localBusmon)
+        return;
+
+    bool tunnelOn = false;
+#if defined(OPENKNX_HW_BUSMON) && defined(KNX_TUNNELING)
+    tunnelOn = _ipTunnelServer.busMonitorActive(); // interface only: a busmon tunnel co-owns the HW monitor
+#endif
+    _localBusmon = false;
+    _monitorConsoleLog = false;
+    // Reset even when isMonitoring() already reads false. That looks redundant after the chip left
+    // monitor mode on its own -- and it is, at the cost of one extra U_RESET_REQ. It is kept because the
+    // one state we cannot tell apart is a MISPARSED U_RESET_IND (a CRC low byte of 0x03; the receiver
+    // documents it): there the chip is still physically passive while the driver believes CONNECTED, and
+    // this reset is the only thing that gets bus TX back. A cheap resend against a dead bus.
+    if (!tunnelOn) reset();
+    printMessage("BCU monitor: off", false);
 }
 
 // `bcu mon` toggle. Universal on every TPUart device: 1st call starts the local console busmon (raw echo),
-// 2nd stops it. On the interface it additionally coexists with an ETS busmon tunnel (dual owner): the HW
-// monitor stays up while EITHER the console (_localBusmon) or an ETS tunnel owns it, and the console echo
-// is independent of the ETS stream.
+// 2nd stops it. On the interface it additionally coexists with a busmon TUNNEL (dual owner): the HW monitor
+// stays up while EITHER the console (_localBusmon) or a tunnel owns it, and the console echo is independent
+// of the tunnel stream.
 void TpUartDataLinkLayer::toggleConsoleMonitor()
 {
-    bool etsOn = false;
-#if defined(OPENKNX_HW_BUSMON) && defined(KNX_TUNNELING)
-    etsOn = _ipTunnelServer.busMonitorActive(); // interface only: an ETS busmon tunnel co-owns the HW monitor
-#endif
     if (_localBusmon)
     {
-        // local owner OFF: stop the console echo; leave HW busmon only if an ETS tunnel isn't still holding it.
-        _localBusmon = false;
-        _monitorConsoleLog = false;
-        if (!etsOn) reset();
-        printMessage("BCU monitor: off", false);
+        stopConsoleMonitor();
+        return;
     }
-    else
+
+    // local owner ON: start the HW busmon FIRST and commit nothing until it worked. The old order set the
+    // flag and dropped every open tunnel before asking the chip -- on a device whose BCU is not up that
+    // destroyed live connections for a monitor that never started, and then reported "on".
+    if (!isMonitoring() && !monitor())
     {
-        // local owner ON: echo raw frames; start the HW busmon only if it isn't already running (ETS or fresh).
-        _localBusmon = true;
-        _monitorConsoleLog = true;
-#if defined(OPENKNX_HW_BUSMON) && defined(KNX_TUNNELING)
-        // Make the console busmon exclusive too (like the ETS busmon connect): drop any open data/config
-        // tunnels so the monitor is the only connection. In HW monitor mode the chip is passive anyway, so an
-        // "active" tunnel could no longer pass traffic. No-op if none are open (e.g. an ETS busmon co-owns it).
-        _ipTunnelServer.closeTunnelsForBusmon();
-#endif
-        if (!isMonitoring()) monitor();
-        printMessage("BCU monitor: on (raw)", false);
+        printMessage("BCU monitor: cannot start, BCU not connected", false);
+        return;
     }
+    _localBusmon = true;
+    _monitorConsoleLog = true;
+#if defined(OPENKNX_HW_BUSMON) && defined(KNX_TUNNELING)
+    // Make the console busmon exclusive too (like a busmon tunnel connect): drop any open data/config
+    // tunnels so the monitor is the only connection. In HW monitor mode the chip is passive anyway, so an
+    // "active" tunnel could no longer pass traffic. No-op if none are open (e.g. a busmon tunnel co-owns it).
+    _ipTunnelServer.closeTunnelsForBusmon();
+#endif
+    printMessage("BCU monitor: on (raw)", false);
 }
 
 void TpUartDataLinkLayer::initialize()
@@ -215,6 +242,23 @@ void TpUartDataLinkLayer::loop()
     }
 
     _tpuart.process();
+
+#if MASK_VERSION != 0x091A // a routing device has no bus monitor at all (monitor() early-returns)
+    // A console busmon owner must not outlive the monitor mode. None of the chip's own exits route
+    // through reset() here -- its U_RESET_IND, the thermal auto-heal's U_RESET_REQ, a driver re-init --
+    // so without this the flag stays set and the next `bcu mon` STOPS instead of starting.
+    // AFTER process(), on purpose: that is where the exit becomes visible. Placed before it, this fires
+    // a pass late, and by then a co-owning busmon tunnel has already been torn down with the flag still
+    // set -- hwBusMonExit() then refuses, and NOBODY resets the chip.
+    // Entry is synchronous (startMonitoring() sets the state before returning), so it cannot undo a
+    // fresh start. stopConsoleMonitor() carries the "reset only if no tunnel co-owns it" rule; the
+    // tunnel guard in IpTunnelServer::loop() runs later in this same pass and then does reset.
+    if (_localBusmon && !isMonitoring())
+    {
+        printMessage("BCU monitor: chip left monitor mode by itself", false);
+        stopConsoleMonitor();
+    }
+#endif
 }
 
 DptMedium TpUartDataLinkLayer::mediumType() const
