@@ -49,7 +49,15 @@ For usage of KNX-IP you have to define either
 #endif
 #endif
 
-#ifdef KNX_IP_LAN
+// ONE condition for the include and for the call below, so the two can never drift apart again. The
+// lwIP headers themselves are on the include path of EVERY arduino-pico build (the core appends them
+// unconditionally), so what broke was purely the missing declaration: the call was compiled
+// unconditionally while the #include was LAN-only, and every other RP2040 product (TP-only, GENERIC)
+// failed to build. None of them is built here, which is why it went unnoticed.
+#if defined(KNX_IP_LAN) || defined(KNX_IP_WIFI)
+#define KNX_RP2040_HAVE_IGMP
+#endif
+#ifdef KNX_RP2040_HAVE_IGMP
 #include <lwip/igmp.h> // closeMultiCast(): WiFiUDP::stop() does not leave the group
 #endif
 
@@ -278,10 +286,12 @@ bool RP2040ArduinoPlatform::setupMultiCast(uint32_t addr, uint16_t port)
 
 void RP2040ArduinoPlatform::closeMultiCast()
 {
+#ifdef KNX_RP2040_HAVE_IGMP
     // WiFiUDP::stop() does not leave the group, and igmp_joingroup only reports for a NON_MEMBER group:
     // without this pairing the re-join is silent on the wire and group->use grows unbounded.
     if ((uint32_t)mcastaddr != 0)
         igmp_leavegroup(IP4_ADDR_ANY4, mcastaddr);
+#endif
     _udp.stop();
 }
 
