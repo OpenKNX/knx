@@ -19,22 +19,22 @@ unterscheidet, ist das vermerkt (siehe „Produkt-Unterschiede").
   Kernsatz „Interface, kein Router" — und macht den HW-Busmonitor spec-konform. *Core §7.5.4.3 S.26;
   Tunnelling §2.2.4 S.8.*
 - **Busmonitor exklusiv** (nur unter `OPENKNX_HW_BUSMON`): eine Busmon-Verbindung; ein zweiter Busmon/Tunnel
-  wird abgelehnt (`E_NO_MORE_CONNECTIONS`), Device-Mgmt bleibt erlaubt (`ip_tunnel_server.cpp:1358-1367,
+  wird abgelehnt (`E_NO_MORE_CONNECTIONS`), Device-Mgmt bleibt erlaubt (`ip_tunnel_server.cpp` `HandleBusMonitorConnect()`,
   :717-724`). *Tunnelling §2.2.4 S.8.*
-- **120-s-Server-Timeout** — Inline-Literal `120000` an zwei Stellen (`ip_tunnel_server.cpp:173/:219`;
+- **120-s-Server-Timeout** — Inline-Literal `120000` an zwei Stellen (`ip_tunnel_server.cpp` `loop()`, zwei Stellen;
   grep-fragil, ggf. in eine Konstante ziehen). Korrekter Server-Wert, keine Abweichung von den 60 s/10 s des
   **Clients**. *Core §5.4 S.14.*
 - **`E_NO_MORE_UNIQUE_CONNECTIONS` (0x25)** statt 0x24, wenn ein Slot frei ist, aber die zuweisbare Tunnel-IA
-  nicht eindeutig (`ip_tunnel_server.cpp:988`). *Tunnelling §2.2.2 S.6-7.*
+  nicht eindeutig (`ip_tunnel_server.cpp` `HandleConnectRequest()`). *Tunnelling §2.2.2 S.6-7.*
 - **Channel-ID eindeutig über ALLE Slots** (Daten- + Device-Mgmt- + Busmon-Kanal) (`:1002-1009`). *Core §5.3.3 S.13.*
 - **Unbekannte Channel-ID → still verwerfen**, kein fehlgeformtes Paket an 0.0.0.0:0 (`:1259-1268, :1198-1206`).
   *Core §5.5 S.14.*
 - **120-s-Timer auch durch gültige Tunnel-Daten nachgetriggert** (nach dem Sequenz-Gate; Dup/Out-of-order
   triggern bewusst nicht) (`:1307, :1240, :1111`). *Core §5.4 S.14.*
 - **Busmon-Status-Byte Sequenz `& 0x07`** (Lost-Bit via `status & 0xF8` erhalten) — im Busmon-Bau
-  `ip_tunnel_server.cpp:1452` (nicht in `cemi_frame.cpp`). *cEMI/EMI §3.3.3.2 S.19-20.*
+  `ip_tunnel_server.cpp` `busMonitorFrame()` (nicht in `cemi_frame.cpp`). *cEMI/EMI §3.3.3.2 S.19-20.*
 - **Mindestlängen-Prüfung** (Datagramm-Ebene + je Service) verhindert uint16-Underflow / OOB
-  (`ip_data_link_layer.cpp:86-103`, Service-Guards `ip_tunnel_server.cpp:545-575`). *Tunnelling §5.4.6 S.31.*
+  (`ip_data_link_layer.cpp:86-103`, Service-Guards `ip_tunnel_server.cpp` `dataIndicationToTunnel()`). *Tunnelling §5.4.6 S.31.*
 - **L_Data-Richtungsfilter:** eigene-IA-Frames werden immer von TP gefiltert + zum Tunnel bestätigt
   (`data_link_layer.cpp:85-97`); die routed-PA/tunnel-PA-Filter liegen bewusst hinter
   `KNX_TUNNELING_STRICT_TOPOLOGY` / `KNX_TUNNELING_NO_TUNNEL_PA_ON_TP` (nicht unbedingt aktiv).
@@ -50,9 +50,9 @@ unterscheidet, ist das vermerkt (siehe „Produkt-Unterschiede").
 - **DESCRIPTION_RESPONSE-Service-Versionen** über die `KNX_SERVICE_FAMILY_*`-Makros statt hart 1
   (`knx_ip_description_response.cpp:62-68`) — konsistent mit SEARCH. *(war offen)*
 - **P2P-`L_Data.ind` ohne passende Tunnel-IA** landet nicht mehr auf einem Device-Mgmt-Kanal: nur der Tunnel
-  mit `IA == Ziel` wird gewählt, sonst Drop (`ip_tunnel_server.cpp:344-367`). *(war offen)*
+  mit `IA == Ziel` wird gewählt, sonst Drop (`ip_tunnel_server.cpp` `dataRequestToChannelId()`). *(war offen)*
 - **cEMI-Truncation-Guard / Slot-Reaper (scannt alle Slots) / Dangling-Buffer jetzt unbedingt** — das frühere
-  Flag `KNX_FIXES_EC` ist **entfernt** (0 Treffer); Reaper `ip_tunnel_server.cpp:169-173` (120-s-Timeout),
+  Flag `KNX_FIXES_EC` ist **entfernt** (0 Treffer); Reaper `ip_tunnel_server.cpp` `loop()` (120-s-Timeout),
   Guard `cemi_frame.cpp:399-410`. *(war „fragil hinter Flag")*
 - **`M_PropWrite`-Fehlerantwort** — `BauSystemB::property()` (`bau_systemB.cpp:938-942`); `Void_DP` bei
   fehlender, `Read_Only` bei schreibgeschützter Property (`cemi_server.cpp:444-450`). `PID_COMM_MODE` ist
@@ -77,7 +77,7 @@ unterscheidet, ist das vermerkt (siehe „Produkt-Unterschiede").
   konformer „unterstützt-kein-cEMI-TL"-Server: DEVICE_CONFIGURATION_ACK geht zuerst raus). *Management
   §2.6.1.2 S.18; AN118.*
 - **#3 M_PropWrite** — aktiv (kein Flag), siehe 🔧.
-- **DISCONNECT_RESPONSE (0x20A)** abgefangen (kein „Unhandled"-Log) (`ip_tunnel_server.cpp:593-596`);
+- **DISCONNECT_RESPONSE (0x20A)** abgefangen (kein „Unhandled"-Log) (`ip_tunnel_server.cpp` `HandleIpFrame()`, `case DisconnectResponse`);
   **Busmon-Kick** schließt laufende Tunnel bei Busmon-Start (`:1367, :1332-1350`, gated `OPENKNX_HW_BUSMON`).
 - **#2 Zusatz-IA-Defense** — **COMPILED-OUT** (`KNX_TUNNEL_IA_DEFENCE` in keinem Produkt gesetzt). Der
   aktuelle, geschützte Code ist **nur ein ACK-Bit** (kein fabriziertes T_Disconnect mehr → kein
@@ -86,7 +86,7 @@ unterscheidet, ist das vermerkt (siehe „Produkt-Unterschiede").
 ## 🆕 Router-spezifische Konformitäts-Arbeit (Mask 0x091A, im selben Stack)
 - **Non-Router PID 66 liest 0** — `PID_ROUTING_MULTICAST_ADDRESS` ist im `#else`-Zweig eine read-0-
   CallbackProperty (`ip_parameter_object.cpp:122-137`); der Router behält die echte DataProperty.
-- **Config-Tunnel-Resend 10 s / Original+3** via `IsConfig`-Gates (`ip_tunnel_server.cpp:194-196`).
+- **Config-Tunnel-Resend 10 s / Original+3** via `IsConfig`-Gates (`ip_tunnel_server.cpp` `loop()`, `IsConfig`-Zweige).
 - **KNXnet/IP-Telegrammzähler PID 72-75** (QUEUE_OVERFLOW / MSG_TRANSMIT to IP/KNX) als read-only
   CallbackProperties unter `#ifdef KNX_IS_ROUTER` (`ip_parameter_object.cpp:139-169`).
 
@@ -98,7 +98,7 @@ unterscheidet, ist das vermerkt (siehe „Produkt-Unterschiede").
   State/Disconnect haben ihn). Geringe Praxisrelevanz (SEARCH-HPAI ist normalerweise gesetzt). *Core §4.2 S.10.*
 - **Tunnelling v2 unvollständig:** das Info-DIB wird beworben und die Slot-Flags werden jetzt live aus der
   Tunnel-Nutzung berechnet (`knx_ip_search_response_extended.cpp:140-197`), **aber** `TUNNELLING_FEATURE_*`
-  = 0, der Extended-CRI-Requested-IA-Pfad ist `TODO EC` (`ip_tunnel_server.cpp:606`), die Codes
+  = 0, der Extended-CRI-Requested-IA-Pfad ist `TODO EC` (`ip_tunnel_server.cpp` `HandleConnectRequest()`, Marker `TODO EC`), die Codes
   `E_NO_TUNNELLING_ADDRESS / E_CONNECTION_IN_USE / E_AUTHORISATION_ERROR` sind definiert aber ungenutzt, und
   der Platzhalter `apduLength=254 //FIXME` steht noch (`…extended.cpp:146`). Vor Zert klären. *Tunnelling §3, §5.4.3.*
 - **`PID_MAX_INTERFACE_APDU_LENGTH` (68)** nicht instanziiert (nur Enum `property.h:165`). Bedarf gegen
