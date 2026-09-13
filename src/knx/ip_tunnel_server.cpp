@@ -169,8 +169,8 @@ uint8_t IpTunnelServer::activeTunnels(TunnelEvent* out, uint8_t maxOut) const
 void IpTunnelServer::recordTunnelSession(uint32_t ip, uint16_t pa, uint8_t type, unsigned long startMillis, uint8_t reason,
                                         uint8_t detail, const KnxIpTunnelConnection* conn)
 {
-    // The struct copy is not atomic; what protects it is that tunnelHistoryAt() counts back from
-    // _historyHead, so this slot is unreachable for a reader until the head advances below.
+    // The struct copy is not atomic. What protects a reader is the seqlock below -- counting back from
+    // _historyHead alone was NOT enough once a web task on another core could read mid-write.
     TunnelEvent e;
     e.startS = _uptimeS; // a refused connect has no session: the event is the moment itself
     if (conn != nullptr)
@@ -194,11 +194,20 @@ void IpTunnelServer::recordTunnelSession(uint32_t ip, uint16_t pa, uint8_t type,
     e.detail = detail;
     e.startMillis = startMillis;
     e.endMillis = millis();
+    // Odd for the duration of the write; a reader that sees an odd counter, or a different one after
+    // its copy, drops the row instead of showing one spliced from two sessions.
+    const uint32_t seq = _histSeq.load(std::memory_order_relaxed);
+    _histSeq.store(seq + 1, std::memory_order_relaxed);
+    // The fence goes AFTER the odd store, not into it: release on the store orders what comes BEFORE it,
+    // while what must not move is the payload BELOW. The closing store is a release and orders the
+    // payload before it, which is the side that does need it.
+    std::atomic_thread_fence(std::memory_order_release);
     _history[_historyHead] = e;
     __asm__ volatile("" ::: "memory"); // the entry has to be complete before the head makes it visible
     _historyHead = (_historyHead + 1) % TUNNEL_HISTORY_SIZE;
     // Full ring: (head + SIZE - 1 - index) % SIZE stays in range for every index below SIZE.
     if (_historyCount < TUNNEL_HISTORY_SIZE) _historyCount++;
+    _histSeq.store(seq + 2, std::memory_order_release);
 }
 
 // A refused connect is an event without a session (start == end, 0 s duration). An identical repeat from
@@ -210,8 +219,15 @@ void IpTunnelServer::recordRejectedConnect(uint32_t ip, uint8_t type, uint8_t re
         TunnelEvent& last = _history[(uint8_t)((_historyHead + TUNNEL_HISTORY_SIZE - 1) % TUNNEL_HISTORY_SIZE)];
         if (last.ip == ip && last.reason == reason && last.detail == detail && last.type == type)
         {
-            last.endMillis = millis(); // same refusal again: keep one entry, extend it
-            last.startS = _uptimeS;    // and let it read as the most recent occurrence
+            // In-place edit of a live entry -- same seqlock as a fresh one, or a reader mid-copy
+            // gets the old timestamp with the new one.
+            const unsigned long nowMs = millis(); // outside the window: no reason to make a reader retry for it
+            const uint32_t seq = _histSeq.load(std::memory_order_relaxed);
+            _histSeq.store(seq + 1, std::memory_order_relaxed);
+            std::atomic_thread_fence(std::memory_order_release);
+            last.endMillis = nowMs; // same refusal again: keep one entry, extend it
+            last.startS = _uptimeS; // and let it read as the most recent occurrence
+            _histSeq.store(seq + 2, std::memory_order_release);
             return;
         }
     }
@@ -223,12 +239,25 @@ uint8_t IpTunnelServer::tunnelHistoryCount() const
     return _historyCount;
 }
 
-const IpTunnelServer::TunnelEvent* IpTunnelServer::tunnelHistoryAt(uint8_t index) const
+bool IpTunnelServer::tunnelHistoryCopy(uint8_t index, TunnelEvent& out) const
 {
-    if (index >= _historyCount) return nullptr;
-    // Newest first: the slot just before _historyHead is the most recent.
-    uint8_t slot = (uint8_t)((_historyHead + TUNNEL_HISTORY_SIZE - 1 - index) % TUNNEL_HISTORY_SIZE);
-    return &_history[slot];
+    // Bounded: three tries are plenty against a writer that only copies a struct, and giving up drops
+    // one row instead of spinning in a web handler.
+    for (uint8_t attempt = 0; attempt < 3; attempt++)
+    {
+        const uint32_t before = _histSeq.load(std::memory_order_acquire);
+        if (before & 1) continue; // a write is in progress
+        if (index >= _historyCount) return false;
+        // Newest first: the slot just before _historyHead is the most recent.
+        const uint8_t slot = (uint8_t)((_historyHead + TUNNEL_HISTORY_SIZE - 1 - index) % TUNNEL_HISTORY_SIZE);
+        out = _history[slot];
+        // Fence BEFORE the validating load: an acquire on the load itself orders what comes AFTER it,
+        // while what must not sink past it is the copy ABOVE. Hence fence + relaxed load.
+        std::atomic_thread_fence(std::memory_order_acquire);
+        if (_histSeq.load(std::memory_order_relaxed) == before)
+            return true; // nothing moved underneath the copy
+    }
+    return false;
 }
 
 void IpTunnelServer::dataRequestToAllDevMgmt(CemiFrame& frame)

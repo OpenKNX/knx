@@ -7,6 +7,7 @@
 #endif
 
 #include <stdint.h>
+#include <atomic>
 #include "knx_types.h"
 #include "knx_ip_tunnel_connection.h"
 #include "knx_ip_counters.h"
@@ -129,8 +130,14 @@ class IpTunnelServer
     uint8_t activeTunnels(TunnelEvent* out, uint8_t maxOut) const;
     /** @brief Number of recorded finished sessions (up to the ring size). */
     uint8_t tunnelHistoryCount() const;
-    /** @brief i-th finished session, index 0 = newest; nullptr if out of range. */
-    const TunnelEvent* tunnelHistoryAt(uint8_t index) const;
+    /**
+     * @brief Copy out the i-th finished session, index 0 = newest; false if out of range or torn.
+     * A COPY, not a pointer: the web handler runs on another task on ESP32 while the KNX loop can be
+     * overwriting the very slot it is reading, which used to splice two sessions into one plausible
+     * but wrong row. A caller that gets false must SKIP the row, not abort the list; `out` is then
+     * UNSPECIFIED -- an out-of-range index leaves it untouched, a torn copy leaves a half-written one.
+     */
+    bool tunnelHistoryCopy(uint8_t index, TunnelEvent& out) const;
 
     /** @brief True if the channel is a KNXnet/IP Device Management connection (not a tunnel). */
     bool isConfigChannel(uint8_t channelId) const;
@@ -172,6 +179,9 @@ class IpTunnelServer
     // Rolling connect/disconnect history (newest overwrites oldest).
     // 32 = 16 tunnels each connecting + disconnecting once, so a full round is retained.
     static const uint8_t TUNNEL_HISTORY_SIZE = 32;
+    // Seqlock over _history/_historyHead/_historyCount: odd while an entry is being written. One
+    // writer only (the KNX loop), so a plain load+store beats a read-modify-write.
+    std::atomic<uint32_t> _histSeq{0};
     TunnelEvent _history[TUNNEL_HISTORY_SIZE];
     uint8_t _historyHead = 0;  // next write slot
     uint8_t _historyCount = 0;
