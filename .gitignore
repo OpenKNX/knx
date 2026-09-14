@@ -280,3 +280,7 @@ doc/build
 .vscode/.cortex-debug.registers.state.json
 .vscode/.cortex-debug.peripherals.state.json
 .vscode/settings.json
+
+# Local-only KNX Standard reference copies (copyright KNX Association - never commit/push)
+/doc/knx-standard/
+/.claude/skills/knx-standard/
