@@ -3,6 +3,7 @@
 #include "interface_object.h"
 
 #define LEN_HARDWARE_TYPE 6
+#define LEN_ORDER_INFO 10
 
 class DeviceObject: public InterfaceObject
 {

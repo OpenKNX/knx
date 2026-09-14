@@ -257,7 +257,7 @@ void DeviceObject::orderNumber(const uint8_t* value)
 {
     Property* prop = property(PID_ORDER_INFO);
     // PDT_GENERIC_10: Property::write copies exactly 10 octets and callers pass shorter string literals.
-    uint8_t padded[10] = {0}; // PDT_GENERIC_10
+    uint8_t padded[LEN_ORDER_INFO] = {0};
     size_t len = 0;
     while (len < sizeof(padded) && value[len] != 0)
         len++;
