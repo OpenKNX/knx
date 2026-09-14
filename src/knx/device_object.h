@@ -4,6 +4,20 @@
 
 #define LEN_HARDWARE_TYPE 6
 #define LEN_ORDER_INFO 10
+#define LEN_PRODUCT_ID 10
+
+// Element limits of the descriptive text Properties. They bound both the reported max_nr_of_elem
+// (A_PropertyDescription_Read) and the number of characters a read can reach.
+#define MAX_ELEM_OBJECT_NAME 80
+#define MAX_ELEM_MANUFACTURER_DATA 40
+#define MAX_ELEM_FIRMWARE_NAME 48
+#define MAX_ELEM_FIRMWARE_BUILD 16
+
+// The descriptive setters below exist: deviceName, hardwareId, firmwareName, firmwareBuild,
+// buildTimestamp, firmwareRevision and productId. Clients gate on this so they also build against
+// stacks that predate them. It lives here, next to the setters, and not in config.h - that file is
+// wrapped in NO_KNX_CONFIG and would drop the flag while the feature is present.
+#define KNX_HAS_DEVICE_INFORMATION 1
 
 class DeviceObject: public InterfaceObject
 {
@@ -39,6 +53,21 @@ public:
     void orderNumber(const uint8_t* value);
     const uint8_t* hardwareType();
     void hardwareType(const uint8_t* value);
+    const uint8_t* productId();
+    void productId(const uint8_t* value);
+    uint8_t firmwareRevision();
+    void firmwareRevision(uint8_t value);
+    uint8_t maxRetryCount();
+
+    // The three text sources stay pointers into flash; the Properties convert to ISO 8859-1 on read
+    // (03_05_01 4.2.2/4.2.21.1: one octet per element) and never copy the string. The caller must pass a
+    // string with static storage duration - nothing copies it, so a temporary would leave a dangling read.
+    void deviceName(const char* utf8Value);
+    void hardwareId(const char* value);
+    void firmwareName(const char* value);
+    void firmwareBuild(const char* value);
+    void buildTimestamp(uint32_t value);
+    uint32_t buildTimestamp();
     uint16_t version();
     void version(uint16_t value);
     uint16_t maskVersion();
@@ -51,6 +80,24 @@ public:
 
 private:
     uint8_t _prgMode = 0;
+    // 03_05_01 4.3.3: 3 busy repetitions and 3 Nack repetitions. Matches the TPUart driver default;
+    // a write is accepted and reported back but is not yet pushed to the data link layer, and is not
+    // persisted - giving it a flash slot would change saveSize() and require an apiVersion bump.
+    uint8_t _maxRetryCount = 0x33;
+    uint8_t _firmwareRevision = 0;
+    uint8_t _productId[LEN_PRODUCT_ID] = {0};
+    bool _hasProductId = false; // false -> PID_PRODUCT_ID answers 0 elements instead of zeroes
+    const char* _deviceName = nullptr;
+    // PID_OBJECT_NAME may be overwritten by a management client (03_05_01 4.2.2). The buffer is taken
+    // from the heap once, on the first write, and never grows. There is no non-volatile store for it,
+    // so a reset falls back to the manufacturer name in _deviceName.
+    uint8_t* _objectName = nullptr;
+    uint8_t _objectNameLength = 0;
+    bool _objectNameWritten = false;
+    const char* _hardwareId = nullptr;
+    const char* _firmwareName = nullptr;
+    const char* _firmwareBuild = nullptr; // short git hash of the product build
+    uint32_t _buildTimestamp = 0;         // seconds since the epoch, 0 = not set
 #if MASK_VERSION == 0x091A || MASK_VERSION == 0x2920
     uint16_t _ownAddress = 0xFF00; // 15.15.0; couplers have 15.15.0 as default PA
 #else

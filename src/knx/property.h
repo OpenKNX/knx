@@ -70,6 +70,7 @@ enum PropertyID
 {
     /** Interface Object Type independent Properties */
     PID_OBJECT_TYPE = 1,
+    PID_OBJECT_NAME = 2,
     PID_LOAD_STATE_CONTROL = 5,
     PID_RUN_STATE_CONTROL = 6,
     PID_TABLE_REFERENCE = 7,
@@ -82,6 +83,7 @@ enum PropertyID
     PID_ORDER_INFO = 15,
     PID_PEI_TYPE = 16,
     PID_PORT_CONFIGURATION = 17,
+    PID_MANUFACTURER_DATA = 19,
     PID_TABLE = 23,
     PID_VERSION = 25,
     PID_MCB_TABLE = 27,
@@ -94,7 +96,9 @@ enum PropertyID
     
     /** Properties in the Device Object */
     PID_ROUTING_COUNT = 51,
+    PID_MAX_RETRY_COUNT = 52,
     PID_PROG_MODE = 54,
+    PID_PRODUCT_ID = 55,
     PID_MAX_APDU_LENGTH = 56,
     PID_SUBNET_ADDR = 57,
     PID_DEVICE_ADDR = 58,
@@ -102,6 +106,12 @@ enum PropertyID
     PID_HARDWARE_TYPE = 78,
     PID_RF_DOMAIN_ADDRESS_CEMI_SERVER = 82,
     PID_DEVICE_DESCRIPTOR = 83,
+
+    /** Manufacturer specific Properties in the Device Object (03_05_01 4.3.1: above 201) */
+    PID_MFR_FIRMWARE_NAME = 203,
+    PID_MFR_DEVICE_NAME = 204,
+    PID_MFR_BUILD_TIMESTAMP = 205,
+    PID_MFR_FIRMWARE_BUILD = 206,
 
     /** Properties in the RF Medium Object */
     PID_RF_MULTI_TYPE = 51,
