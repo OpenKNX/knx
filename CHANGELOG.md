@@ -3,6 +3,12 @@
 
 ## unreleased
 
+### Build and pipeline
+* Fix: the example projects no longer name TPUart themselves. Each listed `https://github.com/OpenKNX/tpuart.git` with no ref, which resolves to the default branch and overrode the pin in `library.json`; that branch predates the `Frame` API the stack has used since `eeae877`, so `esp32dev_tp` and `rp2040` failed on `isAckOnly`, `isErrored`, `isTruncated` and `isRaw` while the IP-only environment passed. The pin decides now
+* Feature: `examples/knx-demo-knxnetip` builds the two flag combinations the KNXnet/IP products select their BAU from -- `0x07B0 + KNX_TUNNELING` for the interface and `0x091A + KNX_TUNNELING` for the router -- on ESP32, RP2040 and RP2350. Neither was compiled anywhere, although both pull the tunnel server, the IP data link layer and `tpuart_data_link_layer.cpp`, which is where a drift against the pinned TPUart surfaces. Its sketch carries no application, so a failure can only mean the stack does not compile
+* The library version is `2.5.0-beta.1`
+
+
 Memory-safety and conformance work on the management path, plus the removal of the download counter.
 Every bound below was re-derived from the response builder and the frame buffer, not from the handler
 that reads the data. Built on OAM-IP-Interface (RP2040, RP2350, ESP32), OAM-IP-Router (RP2040, ESP32)
