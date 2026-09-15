@@ -128,6 +128,13 @@ void IpDataLinkLayer::loop()
         
         case SearchRequest:
         {
+            // The discovery endpoint HPAI sits at buffer[6..13] (03_08_02 7.6.1). Without this bound a
+            // 6-octet SEARCH_REQUEST -- which passes the header and declared-length checks above -- made
+            // hpai() a view over uninitialised stack, and the SEARCH_RESPONSE went to whatever address and
+            // port that stale memory happened to hold.
+            if (len < KNXIP_HEADER_LEN + LEN_IPHPAI)
+                break;
+
             KnxIpSearchRequest searchRequest(buffer, len);
             KnxIpSearchResponse searchResponse(_ipParameters, _deviceObject);
 
