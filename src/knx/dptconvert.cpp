@@ -7,9 +7,7 @@
 #define ASSERT_PAYLOAD(x)      \
     if (payload_length != (x)) \
     return false
-// EC: ENSURE_PAYLOAD was a no-op -> the encode path had NO buffer-size guard (a KO written with a DPT larger
-// than its configured data length overran the output buffer). Now it actually checks. Two variants because the
-// encoders (valueToBusValue*) return int/bool while the low-level *ToPayload helpers return void.
+// Two variants: the encoders return int/bool, the *ToPayload helpers return void.
 #define ENSURE_PAYLOAD(x)      \
     if (payload_length < (x))  \
     return false
@@ -23,7 +21,7 @@ int KNX_Decode_Value(uint8_t* payload, size_t payload_length, const Dpt& datatyp
     if (payload_length > 0)
     {
         // DPT 1.* - Binary
-        if (datatype.mainGroup == 1 && datatype.subGroup >= 1 && datatype.subGroup <= 23 && datatype.subGroup != 20 && !datatype.index)
+        if (datatype.mainGroup == 1 && ((datatype.subGroup >= 1 && datatype.subGroup <= 23 && datatype.subGroup != 20) || datatype.subGroup == 100) && !datatype.index)
         {
             return busValueToBinary(payload, payload_length, datatype, value);
         } // DPT 2.* - Binary Control
@@ -75,7 +73,7 @@ int KNX_Decode_Value(uint8_t* payload, size_t payload_length, const Dpt& datatyp
         if (datatype.mainGroup == 13 && datatype.subGroup == 100 && !datatype.index)
             return busValueToLongTimePeriod(payload, payload_length, datatype, value);
         // DPT 14.* - 32 Bit Float
-        if (datatype.mainGroup == 14 && datatype.subGroup <= 79 && !datatype.index)
+        if (datatype.mainGroup == 14 && datatype.subGroup <= 80 && !datatype.index)
             return busValueToFloat32(payload, payload_length, datatype, value);
         // DPT 15.* - Access Data
         if (datatype.mainGroup == 15 && !datatype.subGroup && datatype.index <= 5)
@@ -95,9 +93,9 @@ int KNX_Decode_Value(uint8_t* payload, size_t payload_length, const Dpt& datatyp
         // DPT 26.* - Scene Info
         if (datatype.mainGroup == 26 && datatype.subGroup == 1 && datatype.index <= 1)
             return busValueToSceneInfo(payload, payload_length, datatype, value);
-        // DPT 27.001 - 32 Bit field
+        // 27.001 is B32 (03_07_02 3.26.1 p.62): 16 output-state bits plus 16 validity bits, unsigned.
         if (datatype.mainGroup == 27 && datatype.subGroup == 1 && !datatype.index)
-            return busValueToSigned32(payload, payload_length, datatype, value);
+            return busValueToUnsigned32(payload, payload_length, datatype, value);
         // DPT 28.* - Unicode String
         if (datatype.mainGroup == 28 && datatype.subGroup == 1 && !datatype.index)
             return busValueToUnicode(payload, payload_length, datatype, value);
@@ -146,7 +144,7 @@ int KNX_Decode_Value(uint8_t* payload, size_t payload_length, const Dpt& datatyp
 
 int KNX_Encode_Value(const KNXValue& value, uint8_t* payload, size_t payload_length, const Dpt& datatype)
 {
-    if (datatype.mainGroup == 1 && datatype.subGroup >= 1 && datatype.subGroup <= 23 && datatype.subGroup != 20 && !datatype.index)
+    if (datatype.mainGroup == 1 && ((datatype.subGroup >= 1 && datatype.subGroup <= 23 && datatype.subGroup != 20) || datatype.subGroup == 100) && !datatype.index)
         return valueToBusValueBinary(value, payload, payload_length, datatype);
     // DPT 2.* - Binary Control
     if (datatype.mainGroup == 2 && datatype.subGroup >= 1 && datatype.subGroup <= 12 && datatype.index <= 1)
@@ -197,7 +195,7 @@ int KNX_Encode_Value(const KNXValue& value, uint8_t* payload, size_t payload_len
     if (datatype.mainGroup == 13 && datatype.subGroup == 100 && !datatype.index)
         return valueToBusValueLongTimePeriod(value, payload, payload_length, datatype);
     // DPT 14.* - 32 Bit Float
-    if (datatype.mainGroup == 14 && datatype.subGroup <= 79 && !datatype.index)
+    if (datatype.mainGroup == 14 && datatype.subGroup <= 80 && !datatype.index)
         return valueToBusValueFloat32(value, payload, payload_length, datatype);
     // DPT 15.* - Access Data
     if (datatype.mainGroup == 15 && !datatype.subGroup && datatype.index <= 5)
@@ -332,7 +330,7 @@ int busValueToUnsigned8(const uint8_t* payload, size_t payload_length, const Dpt
             return true;
 
         case 3:
-            value = (uint8_t)round(unsigned8FromPayload(payload, 0) * 360.0 / 255.0);
+            value = (uint16_t)round(unsigned8FromPayload(payload, 0) * 360.0 / 255.0);
             return true;
 
         case 6:
@@ -393,6 +391,10 @@ int busValueToSigned16(const uint8_t* payload, size_t payload_length, const Dpt&
     ASSERT_PAYLOAD(2);
     if (datatype.subGroup == 10)
     {
+        // 7FFFh denotes invalid data for DPT_Percent_V16 (03_07_02 3.9.1 p.37 footnote b).
+        if (signed16FromPayload(payload, 0) == (int16_t)0x7FFF)
+            return false;
+
         value = signed16FromPayload(payload, 0) / 100.0;
         return true;
     }
@@ -462,6 +464,7 @@ int busValueToDate(const uint8_t* payload, size_t payload_length, const Dpt& dat
     struct tm tmp = {0};
     year += year >= 90 ? 1900 : 2000;
     tmp.tm_mday = day;
+    // KNX convention: tm_year is the absolute year and tm_mon is 1..12. Convert before mktime/strftime.
     tmp.tm_year = year;
     tmp.tm_mon = month;
     value = tmp;
@@ -644,6 +647,7 @@ int busValueToDateTime(const uint8_t* payload, size_t payload_length, const Dpt&
                 tmp.tm_min = minutes;
                 tmp.tm_hour = hours;
                 tmp.tm_mday = day;
+                // KNX convention: tm_mon 1..12, tm_year absolute. Convert before mktime/strftime.
                 tmp.tm_mon = month;
                 tmp.tm_year = year;
                 value = tmp;
@@ -1002,13 +1006,14 @@ int valueToBusValueUnsigned16(const KNXValue& value, uint8_t* payload, size_t pa
 
 int valueToBusValueTimePeriod(const KNXValue& value, uint8_t* payload, size_t payload_length, const Dpt& datatype)
 {
-    struct tm tmp = value;
-    time_t timeSinceEpoch = mktime(&tmp);
+    // Plain U16 duration (03_07_02 3.8.2); a tm/mktime round trip would apply the device timezone.
+    ENSURE_PAYLOAD(2);
+    int64_t duration = (int64_t)value;
 
-    if (timeSinceEpoch < INT64_C(0) || timeSinceEpoch > INT64_C(65535))
+    if (duration < INT64_C(0) || duration > INT64_C(65535))
         return false;
 
-    unsigned16ToPayload(payload, payload_length, 0, timeSinceEpoch, 0xFFFF);
+    unsigned16ToPayload(payload, payload_length, 0, (uint64_t)duration, 0xFFFF);
     return true;
 }
 
@@ -1019,9 +1024,11 @@ int valueToBusValueSigned16(const KNXValue& value, uint8_t* payload, size_t payl
 
     if (datatype.subGroup == 10)
     {
-        if ((double)value < -327.68 || (double)value > 327.67)
+        // Upper limit is 327.66: 327.67 scales to 7FFFh, reserved for invalid data (03_07_02 3.9.1 p.37).
+        // round() rather than truncation toward zero, as the DPT 5 and DPT 9 paths do.
+        if ((double)value < -327.68 || (double)value > 327.66)
             return false;
-        signed16ToPayload(payload, payload_length, 0, (int16_t)((double)value * 100.0), 0xFFFF);
+        signed16ToPayload(payload, payload_length, 0, (int16_t)round((double)value * 100.0), 0xFFFF);
     }
     else
         signed16ToPayload(payload, payload_length, 0, (int64_t)value, 0xffff);  // int64_t: (uint64_t) of a negative double is UB
@@ -1031,13 +1038,14 @@ int valueToBusValueSigned16(const KNXValue& value, uint8_t* payload, size_t payl
 
 int valueToBusValueTimeDelta(const KNXValue& value, uint8_t* payload, size_t payload_length, const Dpt& datatype)
 {
-    struct tm tmp = value;
-    time_t timeSinceEpoch = mktime(&tmp);
+    // Plain V16 delta (03_07_02 3.9.2); same timezone trap as the period above.
+    ENSURE_PAYLOAD(2);
+    int64_t delta = (int64_t)value;
 
-    if (timeSinceEpoch < INT64_C(-32768) || timeSinceEpoch > INT64_C(32767))
+    if (delta < INT64_C(-32768) || delta > INT64_C(32767))
         return false;
 
-    signed16ToPayload(payload, payload_length, 0, timeSinceEpoch, 0xFFFF);
+    signed16ToPayload(payload, payload_length, 0, delta, 0xFFFF);
     return true;
 }
 
@@ -1069,7 +1077,8 @@ int valueToBusValueFloat16(const KNXValue& value, uint8_t* payload, size_t paylo
         case 23:
         case 24:
         case 25:
-            if (numValue < -670760.0)
+            // Minimum of 9.002/9.003/9.010/9.011/9.020-9.025 (03_07_02 p.39).
+            if (numValue < -671088.64)
                 return false;
             break;
         case 4:
@@ -1121,7 +1130,11 @@ int valueToBusValueTime(const KNXValue& value, uint8_t* payload, size_t payload_
 int valueToBusValueDate(const KNXValue& value, uint8_t* payload, size_t payload_length, const Dpt& datatype)
 {
     struct tm tmp = value;
+    // KNX convention: tm_year absolute, tm_mon 1..12. Bound month and day so a C-produced tm cannot
+    // pass as a well-formed date.
     if (tmp.tm_year < 1990 || tmp.tm_year > 2089)
+        return false;
+    if (tmp.tm_mon < 1 || tmp.tm_mon > 12 || tmp.tm_mday < 1 || tmp.tm_mday > 31)
         return false;
 
     unsigned8ToPayload(payload, payload_length, 0, tmp.tm_mday, 0x1F);
@@ -1160,7 +1173,9 @@ int valueToBusValueLongTimePeriod(const KNXValue& value, uint8_t* payload, size_
 int valueToBusValueFloat32(const KNXValue& value, uint8_t* payload, size_t payload_length, const Dpt& datatype)
 {
     double numValue = value;
-    if (numValue < (-8388608.0 * pow(2, 255)) || numValue > (8388607.0 * pow(2, 255)))
+    // DPT 14 is IEEE 754 single precision (03_07_02 3.15 p.44), so the limit is +-FLT_MAX.
+    // Written as !(>= && <=) so NaN is rejected instead of going out as 7FC00000.
+    if (!(numValue >= -3.4028234663852886e+38 && numValue <= 3.4028234663852886e+38))
         return false;
 
     float32ToPayload(payload, payload_length, 0, numValue, 0xFFFFFFFF);
@@ -1290,13 +1305,18 @@ int valueToBusValueDateTime(const KNXValue& value, uint8_t* payload, size_t payl
     {
         case 0:
         {
-            struct tm local = value;
-            time_t time = mktime(&local);
+            ENSURE_PAYLOAD(8);
+            struct tm chk = value;
 
-            if (!time) //TODO add check if date or time is invalid
+            // KNX convention: tm_year absolute, tm_mon 1..12. Reject a C-produced tm (year 126, month 0)
+            // instead of encoding it.
+            if (chk.tm_year < 1900 || chk.tm_year > 2155)
+                return false;
+            if (chk.tm_mon < 1 || chk.tm_mon > 12 || chk.tm_mday < 1 || chk.tm_mday > 31)
+                return false;
+            if (chk.tm_hour > 24 || chk.tm_min > 59 || chk.tm_sec > 59)
                 return false;
 
-            ENSURE_PAYLOAD(8);
             struct tm tmp = value;
             bitToPayload(payload, payload_length, 51, false);
             bitToPayload(payload, payload_length, 52, false);
@@ -1428,7 +1448,7 @@ int valueToBusValueSerialNumber(const KNXValue& value, uint8_t* payload, size_t 
             if ((int64_t)value < INT64_C(0) || (int64_t)value > INT64_C(4294967295))
                 return false;
             ENSURE_PAYLOAD(6);
-            unsigned32ToPayload(payload, payload_length, 2, (int64_t)value, 0xFFFF);
+            unsigned32ToPayload(payload, payload_length, 2, (int64_t)value, 0xFFFFFFFF);
             break;
         }
         default:
@@ -1562,6 +1582,8 @@ int valueToBusValueRGBW(const KNXValue& value, uint8_t* payload, size_t payload_
             {
                 uint32_t rgbw = (uint32_t)value;
                 unsigned32ToPayload(payload, payload_length, 0, rgbw, 0xffffffff); // RGBW
+                // Octet 5 carries the mR/mG/mB/mW validity mask; 0 means channel not valid (03_07_02 6.18 p.194).
+                unsigned8ToPayload(payload, payload_length, 5, 0x0F, 0x0F);
             }
             break;
         case 1: // Mask bits
@@ -1766,8 +1788,8 @@ void float16ToPayload(uint8_t* payload, size_t payload_length, int index, double
         exponent = ceil(log2(value) - 11.0);
     
     short mantissa = roundf(value / (1 << exponent));
-    // above calculation causes mantissa overflow for values of the form 2^n, where n>11
-    if (mantissa >= 0x800)
+    // M is two's complement [-2048, 2047] (03_07_02 3.10 p.39), so magnitude 2048 is legal when negative.
+    if (mantissa > (wasNegative ? 0x800 : 0x7FF))
     {
         exponent++;
         mantissa = roundf(value / (1 << exponent));

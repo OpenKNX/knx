@@ -3,6 +3,7 @@
 #include "bits.h"
 
 Dpt::Dpt()
+    : mainGroup(0), subGroup(0), index(0)
 {}
 
 Dpt::Dpt(short mainGroup, short subGroup, short index /* = 0 */)
@@ -36,6 +37,7 @@ unsigned char Dpt::dataLength() const
         case 237:
         case 244:
         case 246:
+        case 239:
             return 2;
         case 10:
         case 11:
@@ -54,7 +56,6 @@ unsigned char Dpt::dataLength() const
         case 27:
         case 231:
         case 241:
-        case 251:
             return 4;
         case 252:
             return 5;
@@ -65,6 +66,8 @@ unsigned char Dpt::dataLength() const
         case 242:
         case 245:
         case 249:
+        case 221:
+        case 251:
             return 6;
         case 19:
         case 29:
