@@ -10,12 +10,13 @@ NetworkLayer::NetworkLayer(DeviceObject &deviceObj, TransportLayer& layer) :
     _deviceObj(deviceObj),
     _transportLayer(layer)
 {
-    _hopCount = _deviceObj.defaultHopCount();
 }
 
 uint8_t NetworkLayer::hopCount() const
 {
-    return _hopCount;
+    // Read where it is used, not latched in the constructor: that runs before readMemory() restores
+    // PID_ROUTING_COUNT and before ETS can write it.
+    return _deviceObj.defaultHopCount();
 }
 
 bool NetworkLayer::isApciSystemBroadcast(APDU& apdu)
