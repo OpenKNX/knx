@@ -311,7 +311,9 @@ void NetworkLayerCoupler::sendMsgHopCount(AckType ack, AddressType addrType, uin
     }
 
 
-    // If we have a frame from open medium on secondary side (e.g. RF) to primary side, then shall use the hop count of the primary router object
+    // Track whether the RF override applied: the else has to hang off the inner if, or a secondary to
+    // primary frame is forwarded with its hop count untouched whenever the override does not apply.
+    bool hopCountFromRouterObject = false;
     if ((_rtObjPrimary != nullptr) && (_rtObjSecondary != nullptr) && (sourceInterfaceIndex == kSecondaryIfIndex))
     {
         DptMedium mediumType = getSecondaryInterface().mediumType();
@@ -321,10 +323,12 @@ void NetworkLayerCoupler::sendMsgHopCount(AckType ack, AddressType addrType, uin
             if (_rtObjPrimary->property(PID_HOP_COUNT)->read(hopCount) == 1)
             {
                 npdu.hopCount(hopCount);
+                hopCountFromRouterObject = true;
             }
         }
     }
-    else // Normal hopCount between main and sub line and vice versa
+
+    if (!hopCountFromRouterObject) // Normal hopCount between main and sub line and vice versa
     {
         if (npdu.hopCount() == 0)
         {
@@ -359,7 +363,9 @@ void NetworkLayerCoupler::sendMsgHopCount(AckType ack, AddressType addrType, uin
 
     //evaluiate PHYS_REPEAT, BROADCAST_REPEAT and GROUP_REPEAT
     bool doNotRepeat = false;
-    if((addrType == AddressType::GroupAddress && !(lcgrpconfig & LCGRPCONFIG::GROUP_REPEAT)) ||
+    // A broadcast arrives as GroupAddress with destination 0, so this multicast clause has to exclude it:
+    // 03_05_01 4.5.5 p.93 assigns broadcast to BROADCAST_REPEAT, 4.5.6 p.94 multicast to GROUP_REPEAT.
+    if((addrType == AddressType::GroupAddress && destination != 0 && !(lcgrpconfig & LCGRPCONFIG::GROUP_REPEAT)) ||
        (addrType == AddressType::IndividualAddress && !(lcconfig & LCCONFIG::PHYS_REPEAT)) ||
        (addrType == AddressType::GroupAddress && destination == 0 && !(lcconfig & LCCONFIG::BROADCAST_REPEAT)))
         doNotRepeat = true;
@@ -447,7 +453,11 @@ void NetworkLayerCoupler::routeDataIndividual(AckType ack, uint16_t destination,
 
     if((lcconfig & LCCONFIG::PHYS_FRAME) == LCCONFIG::PHYS_FRAME_LOCK)
     {
-        // IGNORE_TOTALLY
+        // IGNORE_ACKED, not IGNORE_TOTALLY: the frame is not routed, but the Data Link Layer still
+        // acknowledges it. 03_03_03 2.4.2.4.5.1 p.15 -- "This Layer-2 behaviour shall be independent of the
+        // Routing conclusion" -- and 03_02_02 2.4.2 p.38 case 1.2 makes the coupler "addressed" for an
+        // individual address topologically on the other side. The way to make a block visible to the sender
+        // is PHYS_IACK = NACK, which bau091A::isAckRequired() implements.
         //println("NetworkLayerCoupler::routeDataIndividual locked");
 #ifdef OPENKNX_ROUTE_TRACE
         _trace.record(RouteTrace::PHYS_LOCKED, srcIfIndex == kSecondaryIfIndex, false,
