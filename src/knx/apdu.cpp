@@ -44,7 +44,10 @@ void APDU::printPDU()
     print(type(), HEX);
     print("  ");
     print(_data[0] & 0x3, HEX);
-    for (uint8_t i = 1; i < length() + 1; ++i)
+    // The counter must not be uint8_t: length() + 1 promotes to int, so a length octet of 255 wraps it back
+    // to 0 instead of ending the loop.
+    const uint16_t apduLength = length();
+    for (uint16_t i = 1; i <= apduLength; ++i)
     {
         if (i) print(" ");
         print(_data[i], HEX);
