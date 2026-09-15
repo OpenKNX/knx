@@ -58,7 +58,7 @@ void RouterObject::initialize(CouplerModel model, uint8_t objIndex, DptMedium me
     Property* fixedProperties[] =
     {
         new DataProperty( PID_OBJECT_TYPE, false, PDT_UNSIGNED_INT, 1, ReadLv3 | WriteLv0, (uint16_t) OT_ROUTER ),
-        new DataProperty( PID_MEDIUM_STATUS, false, PDT_GENERIC_01, 1, ReadLv3 | WriteLv0, (uint16_t) 0 ), // 0 means communication is possible, could be set by datalink layer or bau to 1 (comm impossible)
+        new DataProperty( PID_MEDIUM_STATUS, false, PDT_GENERIC_01, 1, ReadLv3 | WriteLv0, (uint8_t) 0 ), // 0 means communication is possible, could be set by datalink layer or bau to 1 (comm impossible)
         new DataProperty( PID_MAX_APDU_LENGTH_ROUTER, false, PDT_UNSIGNED_INT, 1, ReadLv3 | WriteLv0, maxApduSize ),
     };
     uint8_t fixedPropertiesCount = sizeof(fixedProperties) / sizeof(Property*);
@@ -99,7 +99,7 @@ void RouterObject::initialize(CouplerModel model, uint8_t objIndex, DptMedium me
     Property* tableProperties20[] =
     {
         new DataProperty( PID_COUPLER_SERVICES_CONTROL, true, PDT_GENERIC_01, 1, ReadLv3 | WriteLv0, (uint8_t) 0), // written by ETS TODO: implement
-        new DataProperty( PID_FILTER_TABLE_USE, true, PDT_BINARY_INFORMATION, 1, ReadLv3 | WriteLv0, (uint16_t) 0 ) // default: invalid filter table, do not use, written by ETS
+        new DataProperty( PID_FILTER_TABLE_USE, true, PDT_BINARY_INFORMATION, 1, ReadLv3 | WriteLv0, (uint8_t) 0 ) // default: invalid filter table, do not use, written by ETS
     };
 
     uint8_t tablePropertiesCount = sizeof(tableProperties) / sizeof(Property*);

@@ -12,7 +12,7 @@ CemiServerObject::CemiServerObject()
     {
         new DataProperty( PID_OBJECT_TYPE, false, PDT_UNSIGNED_INT, 1, ReadLv3 | WriteLv0, (uint16_t)OT_CEMI_SERVER ),
         new DataProperty( PID_MEDIUM_TYPE, false, PDT_BITSET16, 1, ReadLv3 | WriteLv0, (uint16_t)0),
-        new DataProperty( PID_COMM_MODE, false, PDT_ENUM8, 1, ReadLv3 | WriteLv0, (uint16_t)0),
+        new DataProperty( PID_COMM_MODE, false, PDT_ENUM8, 1, ReadLv3 | WriteLv0, (uint8_t)0),
         new DataProperty( PID_COMM_MODES_SUPPORTED, false, PDT_BITSET16, 1, ReadLv3 | WriteLv0, (uint16_t)0x100),
         new DataProperty( PID_MEDIUM_AVAILABILITY, false, PDT_BITSET16, 1, ReadLv3 | WriteLv0, (uint16_t)0),
 #ifdef OPENKNX_HW_BUSMON
