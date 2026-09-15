@@ -197,6 +197,19 @@ void TpUartDataLinkLayer::toggleConsoleMonitor()
     printMessage("BCU monitor: on (raw)", false);
 }
 
+void TpUartDataLinkLayer::processDroppedFrame(TPUart::Frame &tpFrame)
+{
+    // A frame the transmitter threw away (chip reset, watchdog, monitor entry). It never reached the bus,
+    // so the layer above must be told -- otherwise it waits for a confirmation that can never come.
+    uint8_t *cemiData = (uint8_t *)tpFrame.cemiData();
+    if (cemiData == nullptr)
+        return;
+
+    CemiFrame cemiFrame(cemiData, tpFrame.cemiSize());
+    dataConReceived(cemiFrame, false);
+    free(cemiData);
+}
+
 void TpUartDataLinkLayer::initialize()
 {
     if (_initialized)
@@ -208,6 +221,8 @@ void TpUartDataLinkLayer::initialize()
         _tpuart.registerReceivedFrame(std::bind(&TpUartDataLinkLayer::processRxFrame, this, std::placeholders::_1));
         _tpuart.registerMessage(std::bind(&TpUartDataLinkLayer::printMessage, this, std::placeholders::_1, std::placeholders::_2));
         _tpuart.registerCheckAcknowledge(std::bind(&TpUartDataLinkLayer::checkAcknowledge, this, std::placeholders::_1, std::placeholders::_2));
+        // Without this a frame the transmitter discards on a BCU reset gets no negative L_Data.con.
+        _tpuart.registerDroppedFrame(std::bind(&TpUartDataLinkLayer::processDroppedFrame, this, std::placeholders::_1));
 #ifdef NCN5120
         _tpuart.begin(TPUart::BcuType::BCU_NCN5120, _platform.interface());
 #else
@@ -394,11 +409,6 @@ void TpUartDataLinkLayer::processRxFrame(TPUart::Frame &tpFrame)
 #endif
     }
 
-#if MASK_VERSION != 0x091A
-    if (tpFrame.isFiltered())
-        return;
-#endif
-
     uint8_t *cemiData = (uint8_t *)tpFrame.cemiData();
     if (cemiData == nullptr) return; // out of memory: drop the frame rather than dereference null
     CemiFrame cemiFrame(cemiData, tpFrame.cemiSize());
@@ -409,6 +419,14 @@ void TpUartDataLinkLayer::processRxFrame(TPUart::Frame &tpFrame)
 #endif
         dataConReceived(cemiFrame, tpFrame.isAck());
         free(cemiData); // Frame::cemiData() returns a malloc()'d buffer -> must be free()'d, not delete'd
+        return;
+    }
+
+    // The filter gate sits below the confirmation branch, so the L_Data.con of a retried transmission is
+    // not swallowed. 03_02_02 2.4.2 p.39 requires duplication prevention on every device.
+    if (tpFrame.isFiltered())
+    {
+        free(cemiData);
         return;
     }
 

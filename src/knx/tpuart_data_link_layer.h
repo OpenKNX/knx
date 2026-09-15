@@ -131,6 +131,7 @@ class TpUartDataLinkLayer : public DataLinkLayer
     bool sendFrame(CemiFrame& frame);
     inline void connected(bool state = true);
     void processRxFrame(TPUart::Frame& tpFrame);
+    void processDroppedFrame(TPUart::Frame& tpFrame);
     void printMessage(const char *message, bool error);
 
     ITpUartCallBacks& _cb;
