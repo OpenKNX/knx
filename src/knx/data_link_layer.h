@@ -38,12 +38,12 @@ class DataLinkLayer
     // from tunnel
     void cemiServer(CemiServer& cemiServer);
     void dataRequestFromTunnel(CemiFrame& frame);
-#ifdef KNX_TUNNELING_
-    virtual void dataRequestToTunnel(CemiFrame& frame);
-    virtual void dataConfirmationToTunnel(CemiFrame& frame);
-    virtual void dataIndicationToTunnel(CemiFrame& frame);
-    virtual bool isTunnelAddress(uint16_t addr);
-#endif
+    // (Four virtuals -- dataRequestToTunnel/dataConfirmationToTunnel/dataIndicationToTunnel/isTunnelAddress
+    //  -- used to sit here under `#ifdef KNX_TUNNELING_`, a trailing-underscore typo that matched nothing.
+    //  Declaration and definition were both under it, so they never compiled; nothing called or overrode
+    //  them. Removed rather than "corrected": enabling them would add four vtable slots to every
+    //  DataLinkLayer for default bodies that only print. CemiServer has its own same-named methods -- those
+    //  are live and unrelated.)
 #endif
 
     // from network layer

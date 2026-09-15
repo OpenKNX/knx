@@ -40,28 +40,6 @@ void DataLinkLayer::cemiServer(CemiServer& cemiServer)
     _cemiServer = &cemiServer;
 }
 
-#ifdef KNX_TUNNELING_
-void DataLinkLayer::dataRequestToTunnel(CemiFrame& frame)
-{
-    println("default dataRequestToTunnel");
-}
-
-void DataLinkLayer::dataConfirmationToTunnel(CemiFrame& frame)
-{
-    println("default dataConfirmationToTunnel");
-}
-
-void DataLinkLayer::dataIndicationToTunnel(CemiFrame& frame)
-{
-    println("default dataIndicationToTunnel");
-}
-
-bool DataLinkLayer::isTunnelAddress(uint16_t addr)
-{
-    println("default IsTunnelAddress");
-    return false;
-}
-#endif
 
 void DataLinkLayer::dataRequestFromTunnel(CemiFrame& frame)
 {
