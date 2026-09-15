@@ -410,13 +410,13 @@ bool IpDataLinkLayer::isSendLimitReached()
 {
     uint32_t curTime = millis() / 100;
 
-    // check if the countbuffer must be adjusted
-    if(_frameCountTimeBase >= curTime)
+    // Forward tick versus millis overflow; the ring is ten 100 ms buckets bounding 03_02_06 2.1 (50/s).
+    if(curTime > _frameCountTimeBase)
     {
-        uint32_t timeBaseDiff = _frameCountTimeBase - curTime;
+        uint32_t timeBaseDiff = curTime - _frameCountTimeBase;
         if(timeBaseDiff > 10)
             timeBaseDiff = 10;
-        for(int i = 0; i < timeBaseDiff ; i++)
+        for(uint32_t i = 0; i < timeBaseDiff ; i++)
         {
             _frameCountBase++;
             _frameCountBase = _frameCountBase % 10;
@@ -424,7 +424,7 @@ bool IpDataLinkLayer::isSendLimitReached()
         }
         _frameCountTimeBase = curTime;
     }
-    else // _frameCountTimeBase < curTime => millis overflow, reset
+    else if(curTime < _frameCountTimeBase) // millis overflow, reset
     {
         for(int i = 0; i < 10 ; i++)
             _frameCount[i] = 0;
