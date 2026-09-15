@@ -24,3 +24,5 @@ jobs:
       run: platformio ci --lib="." --project-conf=examples/knx-demo/platformio-ci.ini examples/knx-demo/knx-demo.ino
     - name: Build knx-demo-coupler
       run: platformio ci --lib="." --project-conf=examples/knx-demo-coupler/platformio-ci.ini examples/knx-demo-coupler/knx-demo-coupler.ino
+    - name: Build knx-demo-knxnetip
+      run: platformio ci --lib="." --project-conf=examples/knx-demo-knxnetip/platformio-ci.ini examples/knx-demo-knxnetip/knx-demo-knxnetip.ino
