@@ -3,19 +3,21 @@
 #ifdef USE_IP
 
 #define LEN_SERVICE_FAMILIES 2
-#if MASK_VERSION == 0x091A
+// Same rule as the SEARCH_RESPONSE, and derived ONCE so length and content cannot drift: Core always,
+// Device Management + Tunnelling only with KNX_TUNNELING (both handlers live in IpTunnelServer), Routing
+// only on a router. The length used to key Routing on MASK_VERSION while the content below keyed it on
+// KNX_IS_ROUTER -- equivalent today, but two predicates for one DIB.
 #ifdef KNX_TUNNELING
-#define LEN_SERVICE_DIB (2 + 4 * LEN_SERVICE_FAMILIES)
+#define KNX_SERVICE_FAMILY_COUNT_TUNNEL 2
 #else
-#define LEN_SERVICE_DIB (2 + 3 * LEN_SERVICE_FAMILIES)
+#define KNX_SERVICE_FAMILY_COUNT_TUNNEL 0
 #endif
+#ifdef KNX_IS_ROUTER
+#define KNX_SERVICE_FAMILY_COUNT_ROUTING 1
 #else
-#ifdef KNX_TUNNELING
-#define LEN_SERVICE_DIB (2 + 3 * LEN_SERVICE_FAMILIES)
-#else
-#define LEN_SERVICE_DIB (2 + 2 * LEN_SERVICE_FAMILIES)
+#define KNX_SERVICE_FAMILY_COUNT_ROUTING 0
 #endif
-#endif
+#define LEN_SERVICE_DIB (2 + (1 + KNX_SERVICE_FAMILY_COUNT_TUNNEL + KNX_SERVICE_FAMILY_COUNT_ROUTING) * LEN_SERVICE_FAMILIES)
 
 KnxIpDescriptionResponse::KnxIpDescriptionResponse(IpParameterObject& parameters, DeviceObject& deviceObject)
     // EXTENDED_DEVICE_INFO (0x08) is NOT allowed in a DESCRIPTION_RESPONSE (03_08_02 Core Table 5) -- it is only
@@ -60,8 +62,8 @@ KnxIpDescriptionResponse::KnxIpDescriptionResponse(IpParameterObject& parameters
     _supportedServices.length(LEN_SERVICE_DIB);
     _supportedServices.code(SUPP_SVC_FAMILIES);
     _supportedServices.serviceVersion(Core, KNX_SERVICE_FAMILY_CORE);
-    _supportedServices.serviceVersion(DeviceManagement, KNX_SERVICE_FAMILY_DEVICE_MANAGEMENT);
 #ifdef KNX_TUNNELING
+    _supportedServices.serviceVersion(DeviceManagement, KNX_SERVICE_FAMILY_DEVICE_MANAGEMENT);
     _supportedServices.serviceVersion(Tunnelling, KNX_SERVICE_FAMILY_TUNNELING);
 #endif
 #ifdef KNX_IS_ROUTER

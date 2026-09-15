@@ -2,19 +2,20 @@
 #ifdef USE_IP
 
 #define LEN_SERVICE_FAMILIES 2
+// Families actually served: Core always; Device Management AND Tunnelling only with KNX_TUNNELING, because
+// both handlers live in IpTunnelServer -- advertising Device Management without it let ETS discover a
+// service it could never connect to; Routing only on 091A.
+#ifdef KNX_TUNNELING
+#define KNX_SERVICE_FAMILY_COUNT_TUNNEL 2
+#else
+#define KNX_SERVICE_FAMILY_COUNT_TUNNEL 0
+#endif
 #if MASK_VERSION == 0x091A
-#ifdef KNX_TUNNELING
-#define LEN_SERVICE_DIB (2 + 4 * LEN_SERVICE_FAMILIES)
+#define KNX_SERVICE_FAMILY_COUNT_ROUTING 1
 #else
-#define LEN_SERVICE_DIB (2 + 3 * LEN_SERVICE_FAMILIES)
+#define KNX_SERVICE_FAMILY_COUNT_ROUTING 0
 #endif
-#else
-#ifdef KNX_TUNNELING
-#define LEN_SERVICE_DIB (2 + 3 * LEN_SERVICE_FAMILIES)
-#else
-#define LEN_SERVICE_DIB (2 + 2 * LEN_SERVICE_FAMILIES)
-#endif
-#endif
+#define LEN_SERVICE_DIB (2 + (1 + KNX_SERVICE_FAMILY_COUNT_TUNNEL + KNX_SERVICE_FAMILY_COUNT_ROUTING) * LEN_SERVICE_FAMILIES)
 
 KnxIpSearchResponse::KnxIpSearchResponse(IpParameterObject& parameters, DeviceObject& deviceObject)
     : KnxIpFrame(LEN_KNXIP_HEADER + LEN_IPHPAI + LEN_DEVICE_INFORMATION_DIB + LEN_SERVICE_DIB),
@@ -58,8 +59,8 @@ KnxIpSearchResponse::KnxIpSearchResponse(IpParameterObject& parameters, DeviceOb
     _supportedServices.length(LEN_SERVICE_DIB);
     _supportedServices.code(SUPP_SVC_FAMILIES);
     _supportedServices.serviceVersion(Core, KNX_SERVICE_FAMILY_CORE);
-    _supportedServices.serviceVersion(DeviceManagement, KNX_SERVICE_FAMILY_DEVICE_MANAGEMENT);
 #ifdef KNX_TUNNELING
+    _supportedServices.serviceVersion(DeviceManagement, KNX_SERVICE_FAMILY_DEVICE_MANAGEMENT);
     _supportedServices.serviceVersion(Tunnelling, KNX_SERVICE_FAMILY_TUNNELING);
 #endif
 #if MASK_VERSION == 0x091A
