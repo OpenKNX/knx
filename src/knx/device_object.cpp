@@ -144,7 +144,8 @@ void DeviceObject::individualAddress(uint16_t value)
 void DeviceObject::individualAddressDuplication(bool value)
 {
     Property* prop = property(PID_DEVICE_CONTROL);
-    uint8_t data;
+    // Property::read(uint8_t&) leaves the argument untouched when the property holds no elements.
+    uint8_t data = 0;
     prop->read(data);
     
     if (value)
@@ -157,7 +158,8 @@ void DeviceObject::individualAddressDuplication(bool value)
 bool DeviceObject::verifyMode()
 {
     Property* prop = property(PID_DEVICE_CONTROL);
-    uint8_t data;
+    // As individualAddressDuplication(): an unread property would leave this uninitialised.
+    uint8_t data = 0;
     prop->read(data);
     return (data & VERIFY_MODE) > 0;
 }
@@ -227,7 +229,13 @@ const uint8_t* DeviceObject::orderNumber()
 void DeviceObject::orderNumber(const uint8_t* value)
 {
     Property* prop = property(PID_ORDER_INFO);
-    prop->write(value);
+    // PDT_GENERIC_10: Property::write copies exactly 10 octets and callers pass shorter string literals.
+    uint8_t padded[10] = {0}; // PDT_GENERIC_10
+    size_t len = 0;
+    while (len < sizeof(padded) && value[len] != 0)
+        len++;
+    memcpy(padded, value, len);
+    prop->write(padded);
 }
 
 const uint8_t* DeviceObject::hardwareType()
