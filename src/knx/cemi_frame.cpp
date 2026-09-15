@@ -74,13 +74,30 @@ Control Field 1
          ------+---------------------------------------------------------------
 */ 
 
+// Octet 1 is the additional-info length only for an L_Data/L_Busmon frame. In an M_Prop* frame it is
+// the sender-chosen high byte of the interface-object type, so deriving the NPDU/TPDU/APDU and ctrl1
+// offsets from it displaces every pointer past the buffer.
+static inline uint8_t cemiAddInfoLen(const uint8_t* data)
+{
+    switch (data[0])
+    {
+        case L_data_req:
+        case L_data_con:
+        case L_data_ind:
+        case L_busmon_ind:
+            return data[1];
+        default:
+            return 0; // no additional-info field in this message code
+    }
+}
+
 CemiFrame::CemiFrame(uint8_t* data, uint16_t length)
-    : _npdu(data + data[1] + NPDU_LPDU_DIFF, *this), 
-      _tpdu(data + data[1] + TPDU_LPDU_DIFF, *this), 
-      _apdu(data + data[1] + APDU_LPDU_DIFF, *this)
+    : _npdu(data + cemiAddInfoLen(data) + NPDU_LPDU_DIFF, *this),
+      _tpdu(data + cemiAddInfoLen(data) + TPDU_LPDU_DIFF, *this),
+      _apdu(data + cemiAddInfoLen(data) + APDU_LPDU_DIFF, *this)
 {
     _data = data;
-    _ctrl1 = data + data[1] + CEMI_HEADER_SIZE;
+    _ctrl1 = data + cemiAddInfoLen(data) + CEMI_HEADER_SIZE;
     _length = length;
 }
 
