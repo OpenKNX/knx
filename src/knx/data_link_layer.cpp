@@ -323,7 +323,7 @@ bool DataLinkLayer::isRoutedPA(uint16_t pa)
     else
         own_sm = 0xFF00;
 
-    return (pa & own_sm) != ownpa;
+    return (pa & own_sm) != (ownpa & own_sm);  // mask both operands; an unmasked own address makes every target look routed
 }
 #endif
 
