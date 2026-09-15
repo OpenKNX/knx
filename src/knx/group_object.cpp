@@ -187,7 +187,8 @@ size_t GroupObject::sizeInMemory() const
 {
     uint8_t code = lowByte(ntohs(_table->_tableData[_asap]));
     size_t result = asapValueSize(code);
-    if (code == 0)
+    // asapValueSize returns 0 for every value field below one octet, not only for code 0.
+    if (result == 0)
         return 1;
     if (code == 14)
         return 14 + 1;
