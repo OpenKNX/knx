@@ -53,6 +53,25 @@ class IpTunnelServer
     void dataIndicationToTunnel(CemiFrame& frame);
     bool isTunnelAddress(uint16_t addr);
     bool isSentToTunnel(uint16_t address, bool isGrpAddr);
+    /**
+     * @brief True for an individual address ETS configured as a tunnelling address, connected or not.
+     * @details 03_08_04 2.2.2 p.7 asks the server to defend its additional individual addresses so an
+     *          address-in-use check finds them occupied. Reads a cached copy of
+     *          PID_ADDITIONAL_INDIVIDUAL_ADDRESSES: this runs on the TP acknowledge path, where a property
+     *          lookup per received frame has no business being.
+     */
+    bool isConfiguredTunnelPa(uint16_t addr) const;
+    /**
+     * @brief True when a frame carrying this channel id really came from that channel's client.
+     * @details A channel id is ONE octet and was the only thing matched, so any host on the LAN could
+     *          sweep 255 values and act on a foreign session -- an injected M_Reset or DISCONNECT ends
+     *          a running ETS download in about two seconds. 03_08_02 5.2 p.12 calls the channel "the
+     *          data endpoint connection BETWEEN a client and a server", and the client announces that
+     *          endpoint in its CONNECT_REQUEST, so the server has the address already. Only the IP is
+     *          compared, never the port: a client may use different source ports for its control and
+     *          data endpoints.
+     */
+    static bool fromTunnelPeer(const KnxIpTunnelConnection* tun, uint32_t src_addr);
     bool HandleIpFrame(uint8_t* buffer, uint16_t length, uint32_t& src_addr, uint16_t& src_port);
 
     // Read-only tunnel introspection for diagnostics/UI (display widget, group objects).
@@ -216,6 +235,14 @@ class IpTunnelServer
     uint32_t _lastMs = 0;
     uint32_t _msAcc = 0;
     bool _timeInit = false;
+
+    // Cached copy of PID_ADDITIONAL_INDIVIDUAL_ADDRESSES for isConfiguredTunnelPa(). 32 bytes so the TP
+    // acknowledge path never walks the property store. Refreshed from loop() once a second, which is far
+    // faster than an ETS download can change the list and then run an address-in-use check.
+    uint16_t _tunnelPaPool[KNX_TUNNELING] = {0};
+    uint8_t _tunnelPaPoolCount = 0;
+    uint32_t _tunnelPaPoolMs = 0;
+    void refreshTunnelPaPool();
     // conn carries the per-session counters into the history entry; nullptr for a refused connect.
     void copyCounters(TunnelEvent& e, const KnxIpTunnelConnection& c) const;
     void recordTunnelSession(uint32_t ip, uint16_t pa, uint8_t type, unsigned long startMillis, uint8_t reason,

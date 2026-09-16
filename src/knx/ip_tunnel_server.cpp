@@ -303,6 +303,13 @@ void IpTunnelServer::loop()
     // for months would otherwise show a duration that silently restarted.
     const uint32_t nowMs = millis();
     if (!_timeInit) { _lastMs = nowMs; _timeInit = true; }
+
+    // Keep the acknowledge-path copy of the tunnelling addresses current (see isConfiguredTunnelPa).
+    if (!_tunnelPaPoolMs || (uint32_t)(nowMs - _tunnelPaPoolMs) >= 1000)
+    {
+        _tunnelPaPoolMs = nowMs;
+        refreshTunnelPaPool();
+    }
     _msAcc += (uint32_t)(nowMs - _lastMs);
     _lastMs = nowMs;
     while (_msAcc >= 1000) { _msAcc -= 1000; _uptimeS++; }
@@ -851,6 +858,50 @@ bool IpTunnelServer::isTunnelAddress(uint16_t addr)
     return false;
 }
 
+void IpTunnelServer::refreshTunnelPaPool()
+{
+    uint16_t count = 0;
+    _ipParameters.readPropertyLength(PID_ADDITIONAL_INDIVIDUAL_ADDRESSES, count);
+    if (count != KNX_TUNNELING)
+    {
+        // Not an ETS-written list (an unprogrammed device invents its pool on connect). Nothing to defend.
+        _tunnelPaPoolCount = 0;
+        return;
+    }
+    const uint8_t* addresses = _ipParameters.propertyData(PID_ADDITIONAL_INDIVIDUAL_ADDRESSES);
+    if (addresses == nullptr)
+    {
+        _tunnelPaPoolCount = 0;
+        return;
+    }
+    uint8_t n = 0;
+    for (int i = 0; i < KNX_TUNNELING; i++)
+    {
+        uint16_t pa = 0;
+        popWord(pa, addresses + (i * 2));
+        if (pa != 0) // a zero element is a hole, not an address
+            _tunnelPaPool[n++] = pa;
+    }
+    _tunnelPaPoolCount = n;
+}
+
+bool IpTunnelServer::isConfiguredTunnelPa(uint16_t addr) const
+{
+    if (addr == 0)
+        return false;
+    for (uint8_t i = 0; i < _tunnelPaPoolCount; i++)
+        if (_tunnelPaPool[i] == addr)
+            return true;
+    return false;
+}
+
+bool IpTunnelServer::fromTunnelPeer(const KnxIpTunnelConnection* tun, uint32_t src_addr)
+{
+    if (tun == nullptr) return false;
+    if (tun->IpAddress == 0) return true; // endpoint not recorded -> nothing to compare against
+    return tun->IpAddress == src_addr;
+}
+
 bool IpTunnelServer::isSentToTunnel(uint16_t address, bool isGrpAddr)
 {
     if (isGrpAddr)
@@ -1294,6 +1345,18 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
             tun->IsConfig = false;  // default
             uint16_t tunPa = 0;
             popWord(tunPa, addresses + (tunIdx * 2));
+
+            // A zero slot is a hole, not a configured address: PID_ADDITIONAL_INDIVIDUAL_ADDRESSES grows with zero
+            // fill when anything writes a high element index (03_05_01 4.15.12.2 p.211).
+            if (tunPa == 0)
+            {
+#ifdef KNX_LOG_TUNNELING
+                println("reserved tunnel slot is empty (0.0.0) -> refusing");
+#endif
+                tunIdx = 0xFF;
+                tun = nullptr;
+                paNotUnique = true;
+            }
 
             // check if this PA is in use (should not happen, only when there is one pa wrongly assigned to more then one tunnel)
             for (int x = 0; x < KNX_TUNNELING; x++)

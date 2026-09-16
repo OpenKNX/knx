@@ -251,6 +251,12 @@ TPAckType Bau07B0IP::isAckRequired(uint16_t address, bool isGrpAddr)
         return TPAckType::AckReqAck;
 #endif
 
+    // Defend the configured tunnelling addresses, not only those of open connections (03_08_04 2.2.2 p.7):
+    // ETS reads a missing L2 acknowledge as address-free (03_05_02 2.22.3 p.51). Only the acknowledge bit
+    // is set, nothing is transmitted; the lookup is a cached 16-entry scan, so no property access here.
+    if (!isGrpAddr && _ipTunnelServer.isConfiguredTunnelPa(address))
+        return TPAckType::AckReqAck;
+
     return TPAckType::AckReqNone;
 }
 

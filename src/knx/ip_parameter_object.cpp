@@ -270,16 +270,25 @@ bool IpParameterObject::takeDeviceStateChanged()
     return true;
 }
 
-// Zero every element of a property via the tested write path (ETS uses the same write to set them).
+// Reset a property to "no elements" via the tested write path (ETS uses the same write to set them).
 static void clearProperty(Property* p)
 {
     if (p == nullptr)
         return;
+
+    uint8_t zero[4] = {0, 0, 0, 0};
+
+    // Reset the element count instead of writing max zero elements: writing them grows _currentElements to
+    // _maxElements (03_05_01 4.15.12.2 p.211), which the tunnel server reads as an ETS-configured list.
+    if (p->write((uint16_t)0, (uint8_t)1, zero) != 0)
+        return;
+
+    // Fallback for a property whose write path has no index-0 reset (a callback property): zero every
+    // element, which is what this did before.
     const uint16_t max = p->MaxElements();
     const uint8_t elemSize = p->ElementSize();
     if (max == 0 || elemSize == 0 || elemSize > 4)
         return;
-    uint8_t zero[4] = {0, 0, 0, 0};
     for (uint16_t i = 1; i <= max; i++)
         p->write(i, (uint8_t)1, zero);
 }
