@@ -177,6 +177,10 @@ void BauSystemBDevice::doMasterReset(EraseCode eraseCode, uint8_t channel)
 
 void BauSystemBDevice::groupValueWriteLocalConfirm(AckType ack, uint16_t asap, Priority priority, HopCountType hopType, const SecurityControl &secCtrl, uint8_t * data, uint8_t dataLength, bool status)
 {
+    // get() is unbounded (_groupObjects[asap-1]); a confirmation in flight across an unload/reload would
+    // otherwise write past the newly allocated array.
+    if (asap == 0 || asap > _groupObjTable.entryCount()) return;
+
     GroupObject& go = _groupObjTable.get(asap);
     if (status)
         go.commFlag(Ok);
@@ -186,6 +190,10 @@ void BauSystemBDevice::groupValueWriteLocalConfirm(AckType ack, uint16_t asap, P
 
 void BauSystemBDevice::groupValueReadLocalConfirm(AckType ack, uint16_t asap, Priority priority, HopCountType hopType, const SecurityControl &secCtrl, bool status)
 {
+    // get() is unbounded (_groupObjects[asap-1]); a confirmation in flight across an unload/reload would
+    // otherwise write past the newly allocated array.
+    if (asap == 0 || asap > _groupObjTable.entryCount()) return;
+
     GroupObject& go = _groupObjTable.get(asap);
     if (status)
         go.commFlag(Ok);

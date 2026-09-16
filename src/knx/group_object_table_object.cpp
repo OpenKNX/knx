@@ -22,7 +22,9 @@ GroupObjectTableObject::~GroupObjectTableObject()
 
 uint16_t GroupObjectTableObject::entryCount()
 {
-    if (loadState() != LS_LOADED)
+    // A restored image can be LOADED with a null table, so this is checked here rather than only on the
+    // boot path.
+    if (loadState() != LS_LOADED || _tableData == nullptr)
         return 0;
 
     return ntohs(_tableData[0]);
@@ -37,7 +39,9 @@ const uint8_t* GroupObjectTableObject::restore(const uint8_t* buffer)
 {
     buffer = TableObject::restore(buffer);
 
-    _tableData = (uint16_t*)data();
+    // Gate on the load state as AssociationTableObject::restore() does: a download interrupted after the
+    // additional-load-control step would otherwise come back LS_LOADING with a half-written table.
+    _tableData = (loadState() == LS_LOADED) ? (uint16_t*)data() : nullptr;
     initGroupObjects();
 
     return buffer;
@@ -98,7 +102,16 @@ bool GroupObjectTableObject::initGroupObjects()
     freeGroupObjects();
 
     uint16_t goCount = ntohs(_tableData[0]);
-    
+
+    // The table holds one header word plus one word per object, so a count past tableSize() cannot be
+    // backed by data. Refuse the table rather than size anything from it; entryCount() then reports 0.
+    if ((uint32_t)(goCount + 1) * sizeof(uint16_t) > tableSize())
+    {
+        println("group object table refused: header count exceeds the allocated table");
+        _tableData = nullptr;
+        return false;
+    }
+
     _groupObjects = new GroupObject[goCount];
     _groupObjectCount = goCount;
 

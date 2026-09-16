@@ -19,11 +19,17 @@ AddressTableObject::AddressTableObject(Memory& memory)
 
 uint16_t AddressTableObject::entryCount()
 {
-    // after programming without GA the module hangs
-    if (loadState() != LS_LOADED || _groupAddresses[0] == 0xFFFF)
+    // _groupAddresses is dereferenced in this very condition, so it has to be null-checked first.
+    if (loadState() != LS_LOADED || _groupAddresses == nullptr || _groupAddresses[0] == 0xFFFF)
         return 0;
 
-    return ntohs(_groupAddresses[0]);
+    // The header count is the table's own word and is indexed up to on every received group telegram. The
+    // table holds one header word plus one word per entry, so anything beyond tableSize() is unbacked.
+    const uint16_t count = ntohs(_groupAddresses[0]);
+    if ((uint32_t)(count + 1) * sizeof(uint16_t) > tableSize())
+        return 0;
+
+    return count;
 }
 
 uint16_t AddressTableObject::getGroupAddress(uint16_t tsap)

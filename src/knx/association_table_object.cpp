@@ -27,7 +27,14 @@ uint16_t AssociationTableObject::entryCount()
     // loadState() check, which we cannot -- see the note above.
     if (_tableData == nullptr || _tableData[0] == 0xFFFF)
         return 0;
-    return ntohs(_tableData[0]);
+
+    // Same unbounded header word as AddressTableObject::entryCount(): getTSAP() and getASAP() index words
+    // 2*idx+1 and 2*idx+2, so entry count-1 touches word 2*count.
+    const uint16_t count = ntohs(_tableData[0]);
+    if ((uint32_t)(2 * count + 1) * sizeof(uint16_t) > tableSize())
+        return 0;
+
+    return count;
 }
 
 uint16_t AssociationTableObject::getTSAP(uint16_t idx)
