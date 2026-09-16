@@ -74,6 +74,16 @@ public:
     void cemiTransportMode(bool active);
     /** @brief True while the layer carries a connection, in either direction. */
     bool hasOpenConnection() const { return _currentState != Closed; }
+    /**
+     * @brief True only while the layer carries a connection a REMOTE peer opened towards this device.
+     * @details 08_TSSH 8.3.2 p.158 (fn 60202) drives the Device-Management refusal with a T_Connect the test
+     *          controller sends in, and 03_08_03 2.6.1.2 p.18 requires no refusal of its own -- it only
+     *          describes the mode switch. A connection this device originated (the file-transfer client
+     *          reading another device's tables) is therefore not a reason to refuse management access.
+     */
+    bool hasOpenRemoteConnection() const { return _currentState != Closed && _connectionFromRemote; }
+    /** @brief The peer of the connection the layer currently carries; 0 while none is open. */
+    uint16_t connectionPeer() const { return _currentState == Closed ? 0 : _connectionAddress; }
 #endif
 
 #pragma region other
@@ -120,6 +130,9 @@ private:
     uint16_t _connectionAddress = 0;
 #ifdef KNX_CEMI_TRANSPORT_LAYER
     bool _cemiTransportMode = false; // a device management connection is open (03_08_03 2.6.1.2 p.18)
+    // Who opened the connection the layer currently carries: set in A1 (a remote peer connected to us),
+    // cleared in A12 (we connected to someone). Read only by hasOpenRemoteConnection().
+    bool _connectionFromRemote = false;
 #endif
     uint8_t _seqNoSend = 0;
     uint8_t _seqNoRecv = 0;

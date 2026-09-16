@@ -46,6 +46,8 @@ class CemiServer
     void cemiTransportMode(bool active);
     /** @brief True while the device transport layer already carries a connection. */
     bool transportLayerBusy() const;
+    /** @brief Individual address of the peer holding the open transport connection; 0 while none is open. */
+    uint16_t transportPeer() const;
 #endif
 
     // from data link layer

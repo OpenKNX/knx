@@ -59,7 +59,16 @@ void CemiServer::cemiTransportMode(bool active)
 
 bool CemiServer::transportLayerBusy() const
 {
-    return _transportLayer != nullptr && _transportLayer->hasOpenConnection();
+    // Only a connection a remote peer opened blocks Device Management. 08_TSSH 8.3.2 p.158 (fn 60202)
+    // drives the refusal with a T_Connect the test controller sends in via Routing, and 03_08_03 2.6.1.2
+    // p.18 asks for no refusal at all. Counting a connection this device originated refuses ETS its
+    // management connection while the tunnel keeps working.
+    return _transportLayer != nullptr && _transportLayer->hasOpenRemoteConnection();
+}
+
+uint16_t CemiServer::transportPeer() const
+{
+    return _transportLayer != nullptr ? _transportLayer->connectionPeer() : 0;
 }
 #endif
 uint16_t CemiServer::clientAddress() const

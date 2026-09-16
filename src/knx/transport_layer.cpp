@@ -656,6 +656,9 @@ void TransportLayer::A0()
 void TransportLayer::A1(uint16_t source)
 {
     _connectionAddress = source;
+#ifdef KNX_CEMI_TRANSPORT_LAYER
+    _connectionFromRemote = true; // a peer connected to us -- see hasOpenRemoteConnection()
+#endif
     _applicationLayer.connectIndication(source);
     _seqNoSend = 0;
     _seqNoRecv = 0;
@@ -755,6 +758,9 @@ void TransportLayer::A11(uint16_t tsap, Priority priority, APDU& apdu)
 void TransportLayer::A12(uint16_t destination, Priority priority)
 {
     _connectionAddress = destination;
+#ifdef KNX_CEMI_TRANSPORT_LAYER
+    _connectionFromRemote = false; // we originated this one -- see hasOpenRemoteConnection()
+#endif
     CemiFrame frame(0);
     TPDU& tpdu = frame.tpdu();
     tpdu.type(Connect);
