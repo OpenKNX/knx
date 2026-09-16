@@ -287,6 +287,7 @@ void BauSystemB::propertyExtDescriptionReadIndication(Priority priority, HopCoun
 void BauSystemB::propertyValueWriteIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, uint8_t objectIndex,
     uint8_t propertyId, uint8_t numberOfElements, uint16_t startIndex, uint8_t* data, uint8_t length)
 {
+    bool written = false;
     InterfaceObject* obj = getInterfaceObject(objectIndex);
     if(obj)
     {
@@ -297,10 +298,20 @@ void BauSystemB::propertyValueWriteIndication(Priority priority, HopCountType ho
         // 8 octets for LE_ADDITIONAL_LOAD_CONTROLS; ElementSize does not bound that -> drop a short/corrupt one.
         bool loadCtrlShort = (propertyId == PID_LOAD_STATE_CONTROL && length >= 1
                               && data[0] == LE_ADDITIONAL_LOAD_CONTROLS && length < 8);
-        if (!loadCtrlShort && (prop == nullptr || (uint32_t)numberOfElements * prop->ElementSize() <= length))
+        // Enforce the write-enable flag reported in A_PropertyDescription_Response. Not inside
+        // InterfaceObject::writeProperty: two BAUs initialise read-only PID_COMM_MODES_SUPPORTED through it.
+        if (!loadCtrlShort && (prop == nullptr || (prop->WriteEnable() && (uint32_t)numberOfElements * prop->ElementSize() <= length)))
+        {
+            // `numberOfElements` is an in/out parameter: writeProperty() sets it to what the property
+            // actually accepted (0 on refusal), so this reports a refusal the property itself made -- not
+            // merely that the call was attempted.
             obj->writeProperty((PropertyID)propertyId, startIndex, data, numberOfElements);
+            written = (numberOfElements != 0);
+        }
     }
-    propertyValueReadIndication(priority, hopType, asap, secCtrl, objectIndex, propertyId, numberOfElements, startIndex);
+    // 03_03_07 3.4.4.2 p.66: on a problem, missing access rights included, nr_of_elem shall be zero with
+    // no data. Count 0 makes the read below emit that.
+    propertyValueReadIndication(priority, hopType, asap, secCtrl, objectIndex, propertyId, written ? numberOfElements : 0, startIndex);
 }
 
 void BauSystemB::propertyValueExtWriteIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, ObjectType objectType, uint8_t objectInstance,
@@ -322,6 +333,8 @@ void BauSystemB::propertyValueExtWriteIndication(Priority priority, HopCountType
                               && data[0] == LE_ADDITIONAL_LOAD_CONTROLS && length < 8);
         if (loadCtrlShort || (prop != nullptr && (uint32_t)numberOfElements * prop->ElementSize() > length))
             returnCode = ReturnCodes::DataOverflow;
+        else if (prop != nullptr && !prop->WriteEnable())  // see propertyValueWriteIndication
+            returnCode = ReturnCodes::AccessReadOnly;
         else
             obj->writeProperty((PropertyID)propertyId, startIndex, data, numberOfElements);
     }
@@ -356,13 +369,14 @@ void BauSystemB::propertyValueReadIndication(Priority priority, HopCountType hop
         uint8_t elementSize = obj->propertySize((PropertyID)propertyId);
         if (startIndex > 0)
         {
-            // EC: clamp count so elementSize*count fits the uint8 buffer -> no size truncation mismatch and no
-            // oversized stack VLA (a PropertyValueRead with a large count would otherwise overflow data[]).
+            // Clamp so elementSize*count fits the uint8 buffer: no truncation mismatch, no oversized stack VLA.
             uint16_t total = (uint16_t)elementSize * numberOfElements;
             if (total > 249)
             {
-                elementCount = elementSize ? (uint8_t)(249 / elementSize) : 0;
-                total = (uint16_t)elementSize * elementCount;
+                // 03_03_07 3.4.4.1 p.63: if the data does not fit in a PDU, nr_of_elem shall be zero and the response
+                // shall carry no data. The clamp still bounds the stack array below.
+                elementCount = 0;
+                total = 0;
             }
             size = (uint8_t)total;
         }
@@ -394,9 +408,7 @@ void BauSystemB::propertyValueExtReadIndication(Priority priority, HopCountType 
         uint8_t elementSize = obj->propertySize((PropertyID)propertyId);
         if (startIndex > 0)
         {
-            // EC: clamp count so elementSize*count fits the uint8 buffer -> no size truncation mismatch and no
-            // oversized stack VLA (a PropertyValueExtRead with numberOfElements up to 255 over the tunnel would
-            // otherwise overflow data[]).
+            // Clamp so elementSize*count fits the uint8 buffer: no truncation mismatch, no oversized stack VLA.
             uint16_t total = (uint16_t)elementSize * numberOfElements;
             if (total > 245)
             {
@@ -942,6 +954,10 @@ void BauSystemB::propertyValueWrite(ObjectType objectType, uint8_t objectInstanc
         // see propertyValueWriteIndication: bound the LE_ADDITIONAL_LOAD_CONTROLS 8-octet read against the payload
         bool loadCtrlShort = (propertyId == PID_LOAD_STATE_CONTROL && length >= 1
                               && data[0] == LE_ADDITIONAL_LOAD_CONTROLS && length < 8);
+        // The write-enable flag is deliberately not enforced here: this is the stack's own setter, and
+        // OFM-Network writes the read-only PID_CURRENT_IP_ASSIGNMENT_METHOD through it. Both remote paths
+        // check the flag at their own layer, where the origin is known. The length bound stays -- that is
+        // memory-safety and applies to every caller.
         if (loadCtrlShort || (prop != nullptr && (uint32_t)numberOfElements * prop->ElementSize() > length))
             numberOfElements = 0;
         else
