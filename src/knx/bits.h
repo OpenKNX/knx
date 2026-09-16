@@ -116,6 +116,14 @@ uint32_t getInt(const uint8_t* data);
 void sixBytesFromUInt64(uint64_t num, uint8_t* toByteArray);
 uint64_t sixBytesToUInt64(uint8_t* data);
 
+/** @brief FNV-1a over the two octets of w, used to fingerprint the persisted NVM layout. */
+inline uint32_t fnv1aWord(uint32_t hash, uint16_t w)
+{
+    hash = (hash ^ (uint8_t)(w >> 8)) * 16777619u;
+    hash = (hash ^ (uint8_t)(w & 0xFF)) * 16777619u;
+    return hash;
+}
+
 uint16_t crc16Ccitt(uint8_t* input, uint16_t length);
 uint16_t crc16Dnp(uint8_t* input, uint16_t length);
 

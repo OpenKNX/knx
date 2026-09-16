@@ -195,6 +195,27 @@ uint16_t InterfaceObject::saveSize()
 }
 
 
+// The stream holds the WriteEnable properties packed with no per-property header, so the layout is
+// defined by their identity, order and extent. Properties that write nothing are skipped: a callback
+// or function property keeps its save() default and occupies no octet.
+uint32_t InterfaceObject::layoutTag()
+{
+    uint32_t tag = 2166136261u; // FNV-1a offset basis
+
+    for (int i = 0; i < _propertyCount; i++)
+    {
+        Property* prop = _properties[i];
+        if (!prop->WriteEnable() || prop->saveSize() == 0)
+            continue;
+
+        tag = fnv1aWord(tag, (uint16_t)prop->Id());
+        tag = fnv1aWord(tag, prop->MaxElements());
+        tag = fnv1aWord(tag, prop->ElementSize());
+    }
+    return tag;
+}
+
+
 const Property* InterfaceObject::property(PropertyID id) const
 {
     for (int i = 0; i < _propertyCount; i++)

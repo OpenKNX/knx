@@ -59,6 +59,7 @@ class Memory
 
     void versionCheckCallback(VersionCheckCallback func);
     VersionCheckCallback versionCheckCallback();
+    uint16_t layoutFingerprint();  // identifies the persisted stream layout of this build
 
   private:
     void removeFromFreeList(MemoryBlock* block);
@@ -69,6 +70,7 @@ class Memory
     MemoryBlock* removeFromList(MemoryBlock* head, MemoryBlock* item);
     MemoryBlock* findBlockInList(MemoryBlock* head, uint8_t* address);
     void addNewUsedBlock(uint8_t* address, size_t size);
+    static uint32_t mixRecord(uint32_t hash, uint16_t kind, SaveRestore* obj);
 
     void readEraseBlockToBuffer(uint32_t blockNum);
     uint8_t* eraseBlockStart(uint32_t blockNum);
@@ -85,5 +87,6 @@ class Memory
     uint8_t _tableObjCount = 0;
     MemoryBlock* _freeList = nullptr;
     MemoryBlock* _usedList = nullptr;
-    uint16_t _metadataSize = 6 + LEN_HARDWARE_TYPE; // accounting for 3x pushWord and pushByteArray of length LEN_HARDWARE_TYPE
+    // 4x pushWord + pushByteArray(LEN_HARDWARE_TYPE)
+    uint16_t _metadataSize = 8 + LEN_HARDWARE_TYPE;
 };

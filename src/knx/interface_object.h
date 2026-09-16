@@ -198,6 +198,7 @@ class InterfaceObject : public SaveRestore
     uint8_t* save(uint8_t* buffer) override;
     const uint8_t* restore(const uint8_t* buffer) override;
     uint16_t saveSize() override;
+    uint32_t layoutTag() override;
 
   protected:
     /**

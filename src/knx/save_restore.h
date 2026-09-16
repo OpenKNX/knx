@@ -40,4 +40,17 @@ class SaveRestore
     {
         return 0;
     }
+
+    /**
+     * @brief What this record persists, for the layout word in the NVM header.
+     *
+     * Memory folds it in, so a firmware whose stream layout differs is refused instead of parsed
+     * positionally. InterfaceObject overrides it with the identity of the properties it writes. The
+     * default adds nothing beyond the length Memory already folds: a record that serialises through a
+     * product-supplied callback describes its own format and stays outside the word.
+     */
+    virtual uint32_t layoutTag()
+    {
+        return saveSize();
+    }
 };

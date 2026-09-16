@@ -44,6 +44,9 @@ void Memory::readMemory()
     uint16_t apiVersion = 0;
     const uint8_t* buffer = popWord(apiVersion, flashStart);
 
+    uint16_t layoutWord = 0;
+    buffer = popWord(layoutWord, buffer);
+
     uint16_t manufacturerId = 0;
     buffer = popWord(manufacturerId, buffer);
 
@@ -58,7 +61,17 @@ void Memory::readMemory()
     // first check correct format of deviceObject-API
     if (_deviceObject.apiVersion == apiVersion) 
     {
-        if (_versionCheckCallback != 0) {
+        // The records are read back positionally, so a differing layout would be parsed field by field.
+        // The product callback cannot see this: it compares the ETS application, not the build.
+        if (layoutWord != layoutFingerprint())
+        {
+            println("stored layout belongs to a different firmware build");
+            print("expected layout: ");
+            print(layoutFingerprint(), HEX);
+            print(", stored layout: ");
+            println(layoutWord, HEX);
+        }
+        else if (_versionCheckCallback != 0) {
             versionCheck = _versionCheckCallback(manufacturerId, hardwareType, version);
             // callback should provide infomation about version check failure reasons
         }
@@ -158,6 +171,39 @@ void Memory::readMemory()
     println("restored TableObjects");
 }
 
+/**
+ * @brief The word stored in the NVM header, identifying the persisted stream layout of this build.
+ *
+ * Every registered record contributes its kind, its length and the identity of the properties it writes,
+ * in registration order, so the word changes exactly when the layout changes. It is computed on demand
+ * rather than accumulated at registration: RouterObject fills its property table in initialize(), not in
+ * its constructor, so a snapshot taken while registering would miss a coupler whose BAU registers first.
+ */
+uint16_t Memory::layoutFingerprint()
+{
+    uint32_t hash = 2166136261u; // FNV-1a offset basis
+
+    // kind tag first, so a save-restore and a table object of equal shape cannot fold to the same word
+    for (int i = 0; i < _saveCount; i++)
+        hash = mixRecord(hash, 0x0001, _saveRestores[i]);
+
+    for (int i = 0; i < _tableObjCount; i++)
+        hash = mixRecord(hash, 0x0002, _tableObjects[i]);
+
+    return (uint16_t)((hash >> 16) ^ (hash & 0xFFFF));
+}
+
+uint32_t Memory::mixRecord(uint32_t hash, uint16_t kind, SaveRestore* obj)
+{
+    const uint32_t tag = obj->layoutTag();
+
+    hash = fnv1aWord(hash, kind);
+    hash = fnv1aWord(hash, obj->saveSize());
+    hash = fnv1aWord(hash, (uint16_t)(tag >> 16));
+    hash = fnv1aWord(hash, (uint16_t)tag);
+    return hash;
+}
+
 void Memory::writeMemory()
 {
     // first get the necessary size of the writeBuffer
@@ -180,6 +226,7 @@ void Memory::writeMemory()
     uint8_t* bufferPos = buffer;
 
     bufferPos = pushWord(_deviceObject.apiVersion, bufferPos);
+    bufferPos = pushWord(layoutFingerprint(), bufferPos);
     bufferPos = pushWord(_deviceObject.manufacturerId(), bufferPos);
     bufferPos = pushByteArray(_deviceObject.hardwareType(), LEN_HARDWARE_TYPE, bufferPos);
     bufferPos = pushWord(_deviceObject.version(), bufferPos);
