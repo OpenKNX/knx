@@ -30,6 +30,7 @@ ApplicationLayer& BauSystemBCoupler::applicationLayer()
 void BauSystemBCoupler::loop()
 {
     _transLayer.loop();
+    _memory.loop();
 #ifdef USE_DATASECURE
     _appLayer.loop();
 #endif

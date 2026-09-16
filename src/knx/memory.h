@@ -26,7 +26,7 @@ class MemoryBlock
 
 enum VersionCheckResult
 {
-    FlashAllInvalid = 0,   //!< All flash content is not valid for this firmware, we delete it
+    FlashAllInvalid = 0,   //!< All flash content is not valid for this firmware; readMemory() returns early and leaves it untouched
     FlashTablesInvalid = 1,//!< All table objects are invalid for this firmware, device object and saveRestores are OK
     FlashValid = 2         //!< Flash content is valid and will be used
 };
@@ -54,6 +54,8 @@ class Memory
     uint8_t* toAbsolute(uint32_t relativeAddress);
     uint8_t* toAbsoluteChecked(uint32_t relativeAddress, size_t size);
     uint32_t toRelative(uint8_t* absoluteAddress);
+    size_t memorySize();
+    void scheduleSave();  // arm the deferred metadata write
 
     void versionCheckCallback(VersionCheckCallback func);
     VersionCheckCallback versionCheckCallback();
@@ -63,7 +65,7 @@ class Memory
     void addToUsedList(MemoryBlock* block);
     void removeFromUsedList(MemoryBlock* block);
     void addToFreeList(MemoryBlock* block);
-    uint16_t alignToPageSize(size_t size);
+    size_t alignToPageSize(size_t size);
     MemoryBlock* removeFromList(MemoryBlock* head, MemoryBlock* item);
     MemoryBlock* findBlockInList(MemoryBlock* head, uint8_t* address);
     void addNewUsedBlock(uint8_t* address, size_t size);

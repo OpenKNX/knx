@@ -23,9 +23,21 @@ void Memory::readMemory()
         return;
     }
 
-    printHex("RESTORED ", flashStart, _metadataSize);
+    // Refuse a stream larger than the NVM: flashSize - metadataBlockSize is a size_t and would wrap.
+    // An empty free list makes allocMemory() return nullptr, answered with E_MAX_TABLE_LENGTH_EXEEDED.
+    size_t metadataBlockSize = alignToPageSize(_metadataSize);
 
-    uint16_t metadataBlockSize = alignToPageSize(_metadataSize);
+    if (metadataBlockSize >= flashSize)
+    {
+        print("metadata block of ");
+        print((uint32_t)metadataBlockSize);
+        print(" bytes does not fit the NVM of ");
+        print((uint32_t)flashSize);
+        println(" bytes -- nothing is restored and no memory is managed");
+        return;
+    }
+
+    printHex("RESTORED ", flashStart, _metadataSize);
 
     _freeList = new MemoryBlock(flashStart + metadataBlockSize, flashSize - metadataBlockSize);
 
@@ -120,11 +132,14 @@ void Memory::readMemory()
         buffer = popWord(memorySize, buffer);
         print("Size: ");
         println(memorySize);
-        if (memorySize == 0)
+        // A static table's extent is a build constant, so the persisted word may describe the previous
+        // firmware's block; dynamic tables keep using the saved word.
+        uint32_t blockSize = _tableObjects[i]->_staticTableAdr ? _tableObjects[i]->_size : memorySize;
+        if (blockSize == 0 || _tableObjects[i]->_data == nullptr)
             continue;
 
         // this works because TableObject saves a relative addr and restores it itself
-        addNewUsedBlock(_tableObjects[i]->_data, memorySize);
+        addNewUsedBlock(_tableObjects[i]->_data, blockSize);
 
 #if MASK_VERSION == 0x091A
     	// load the tables but delete the data
@@ -135,8 +150,8 @@ void Memory::readMemory()
             uint32_t start = toRelative(_tableObjects[i]->_data);
             uint8_t fillByte = 0xff;
             uint32_t end = start + _tableObjects[i]->_size;
-            for(int i = start;i < end;i++)
-                writeMemory(i, 1, &fillByte);
+            for (uint32_t addr = start; addr < end; addr++)
+                writeMemory(addr, 1, &fillByte);
         }
 #endif
     }
@@ -153,6 +168,13 @@ void Memory::writeMemory()
     for (int i = 0; i < _tableObjCount; i++)
         writeBufferSize = MAX(writeBufferSize, _tableObjects[i]->saveSize() + 2 /*for memory pos*/);
     
+    // The stream is written from offset 0 with no bound below; refusing keeps the previous image.
+    if (_metadataSize > memorySize())
+    {
+        println("metadata stream larger than the NVM -- not written");
+        return;
+    }
+
     uint8_t buffer[writeBufferSize];
     uint32_t flashPos = 0;
     uint8_t* bufferPos = buffer;
@@ -205,7 +227,7 @@ void Memory::saveMemory()
 
 void Memory::addSaveRestore(SaveRestore* obj)
 {
-    if (_saveCount >= MAXSAVE - 1)
+    if (_saveCount >= MAXSAVE)
         return;
 
     _saveRestores[_saveCount] = obj;
@@ -222,6 +244,18 @@ void Memory::addSaveRestore(TableObject* obj)
     _tableObjCount += 1;
     _metadataSize += obj->saveSize();
     _metadataSize += 2; // for size
+}
+
+size_t Memory::memorySize()
+{
+    return _platform.getNonVolatileMemorySize();
+}
+
+void Memory::scheduleSave()
+{
+    _saveTimeout = millis();
+    if (_saveTimeout == 0)
+        _saveTimeout = 1; // 0 means disabled
 }
 
 uint8_t* Memory::allocMemory(size_t size)
@@ -246,9 +280,14 @@ uint8_t* Memory::allocMemory(size_t size)
     }
     if (!blockToUse)
     {
+        // allocTable() checks for null, so the load state machine can answer E_MAX_TABLE_LENGTH_EXEEDED.
         println("No available non volatile memory!");
-        _platform.fatalError();
+        return nullptr;
     }
+
+    // An allocation changes the used/free lists exactly as a free does, and both are rebuilt from the
+    // persisted metadata on the next boot.
+    scheduleSave();
 
     if (blockToUse->size == size)
     {
@@ -291,15 +330,12 @@ void Memory::freeMemory(uint8_t* ptr)
     }
     removeFromUsedList(block);
     addToFreeList(block);
-    _saveTimeout = millis();
-    if (_saveTimeout == 0)
-        _saveTimeout = 1; // prevent 0=disabled; no impact by minimal increased timeout
+    scheduleSave();
 }
 
 void Memory::writeMemory(uint32_t relativeAddress, size_t size, uint8_t* data)
 {
-    // EC: bounds-check against the NVM size (wrap-safe) -> a management write (Memory/User/Ext-MemoryWrite),
-    // now reachable over the IP tunnel, must never write outside NVM (flash corruption / eeprom-buffer OOB).
+    // Wrap-safe bound: a management write, reachable over the tunnel, must never leave the NVM.
     const size_t nvmSize = _platform.getNonVolatileMemorySize();
     if (size > nvmSize || relativeAddress > nvmSize - size)
         return;
@@ -314,7 +350,7 @@ void Memory::writeMemory(uint32_t relativeAddress, size_t size, uint8_t* data)
 
 void Memory::readMemory(uint32_t relativeAddress, size_t size, uint8_t* data)
 {
-    // EC: same wrap-safe bounds check on the read side (no OOB read of NVM).
+    // Same wrap-safe bound on the read side.
     const size_t nvmSize = _platform.getNonVolatileMemorySize();
     if (size > nvmSize || relativeAddress > nvmSize - size)
         return;
@@ -345,17 +381,19 @@ uint32_t Memory::toRelative(uint8_t* absoluteAddress)
 
 MemoryBlock* Memory::removeFromList(MemoryBlock* head, MemoryBlock* item)
 {
+    // Null guard first: with head and item both null the equality below is true and head->next would
+    // dereference null.
+    if (!head || !item)
+    {
+        println("invalid parameters of Memory::removeFromList");
+        _platform.fatalError();
+    }
+
     if (head == item)
     {
         MemoryBlock* newHead = head->next;
         head->next = nullptr;
         return newHead;
-    }
-
-    if (!head || !item)
-    {
-        println("invalid parameters of Memory::removeFromList");
-        _platform.fatalError();
     }
 
     bool found = false;
@@ -454,13 +492,16 @@ void Memory::addToFreeList(MemoryBlock* block)
     // now check block and block->next
     if ((block->address + block->size) == block->next->address)
     {
-        block->size += block->next->size;
-        block->next = block->next->next;
-        delete block->next;
+        // Take the node before advancing, otherwise the absorbed node leaks and the one behind it is freed
+        // while the list still points at it.
+        MemoryBlock* absorbed = block->next;
+        block->size += absorbed->size;
+        block->next = absorbed->next;
+        delete absorbed;
     }
 }
 
-uint16_t Memory::alignToPageSize(size_t size)
+size_t Memory::alignToPageSize(size_t size)
 {
     size_t pageSize = 4; //_platform.flashPageSize(); // align to 32bit for now, as aligning to flash-page-size causes side effects in programming
     // pagesize should be a multiply of two
@@ -517,6 +558,27 @@ void Memory::addNewUsedBlock(uint8_t* address, size_t size)
         // we take a front part of the block
         smallerFreeBlock->address += size;
         smallerFreeBlock->size -= size;
+    }
+    else if (address < smallerFreeBlock->address)
+    {
+        // A block below the free list would underflow (address - block->address); carve the overlap off the
+        // front of the free block instead.
+        uint8_t* oldEndAddr = smallerFreeBlock->address + smallerFreeBlock->size;
+        uint8_t* newStartAddr = address + size;
+
+        if (newStartAddr > smallerFreeBlock->address)
+        {
+            if (newStartAddr < oldEndAddr)
+            {
+                smallerFreeBlock->address = newStartAddr;
+                smallerFreeBlock->size = oldEndAddr - newStartAddr;
+            }
+            else
+            {
+                removeFromFreeList(smallerFreeBlock);
+                delete smallerFreeBlock;
+            }
+        }
     }
     else
     {

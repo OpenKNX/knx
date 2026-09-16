@@ -70,6 +70,11 @@ extern Wiznet5500lwIP KNX_NETIF;
 
 RP2040ArduinoPlatform::RP2040ArduinoPlatform()
 {
+    // Platform::_memoryType defaults to Eeprom and the facade default-constructs the platform, so a
+    // product that never calls registerFlashCallbacks() would run the RP2040 in Eeprom mode.
+#ifndef USE_RP2040_EEPROM_EMULATION
+    _memoryType = Flash;
+#endif
 }
 
 RP2040ArduinoPlatform::RP2040ArduinoPlatform(TPUart::Interface::Abstract* interface) : ArduinoPlatform(interface)

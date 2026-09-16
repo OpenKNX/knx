@@ -122,6 +122,15 @@ const uint8_t* DataProperty::restore(const uint8_t* buffer)
     uint16_t elements = 0;
     buffer = popWord(elements, buffer);
 
+    // The count comes out of flash and saveSize() only reserves _maxElements; a stream one property out of
+    // step would otherwise allocate up to 65535 elements and read past the NVM window.
+    if (elements > _maxElements)
+    {
+        // Stream out of step: skip the record and keep the constructor default. Zeroing the count would
+        // allocate a non-null zero-size block that the raw accessors hand to a fixed-length read.
+        return buffer;
+    }
+
     if (elements != _currentElements)
     {
         if (_data != nullptr)

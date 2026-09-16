@@ -318,6 +318,15 @@ uint32_t Platform::readNonVolatileMemory(uint32_t relativeAddress, uint8_t* buff
         }
         return relativeAddress;
     }
+#ifdef KNX_FLASH_CALLBACK
+    // Callback memory: without this the read falls through to getEepromBuffer(), which is a nullptr on
+    // RP2040 without EEPROM emulation.
+    else if(_memoryType == Callback)
+    {
+        memcpy(buffer, _callbackFlashRead() + relativeAddress, size);
+        return relativeAddress + size;
+    }
+#endif
     else
     {
         memcpy(buffer, getEepromBuffer(KNX_FLASH_SIZE)+relativeAddress, size);
@@ -349,6 +358,13 @@ uint32_t Platform::writeNonVolatileMemory(uint32_t relativeAddress, uint8_t valu
         }
         return relativeAddress;
     }
+#ifdef KNX_FLASH_CALLBACK
+    else if(_memoryType == Callback)  // no caller today
+    {
+        memset(_callbackFlashRead() + relativeAddress, value, repeat);
+        return relativeAddress + repeat;
+    }
+#endif
     else
     {
         memset(getEepromBuffer(KNX_FLASH_SIZE)+relativeAddress, value, repeat);
