@@ -5,9 +5,18 @@
 #include "dptconvert.h"
 #include <cstring>
 
+// 0100h is a product convention, not a spec constant -- only the filter table at 0200h-21FFh is fixed
+// (03_05_01 5.2.1.2 p.311). Overridable so parameters can be placed above the filter table.
+#ifndef KNX_091A_APPLICATION_PROGRAM_ADDR
+    #define KNX_091A_APPLICATION_PROGRAM_ADDR 0x0100
+#endif
+#ifndef KNX_091A_APPLICATION_PROGRAM_SIZE
+    #define KNX_091A_APPLICATION_PROGRAM_SIZE 0x0100
+#endif
+
 ApplicationProgramObject::ApplicationProgramObject(Memory& memory)
 #if MASK_VERSION == 0x091A
-    : TableObject(memory, 0x0100, 0x0100)
+    : TableObject(memory, KNX_091A_APPLICATION_PROGRAM_ADDR, KNX_091A_APPLICATION_PROGRAM_SIZE)
 #else
     : TableObject(memory)
 #endif

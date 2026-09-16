@@ -36,9 +36,13 @@ void TableObject::beforeStateChange(LoadState& newState)
     if (_tableUnloadCount > 0)
         return;
     if (newState == LS_UNLOADED) {
+        // Latch only when there is a callback to suppress repeats for: readMemory() unloads the 091A tables
+        // long before registerCallbacks() runs.
+        if (_beforeTablesUnload == 0)
+            return;
+
         _tableUnloadCount++;
-        if (_beforeTablesUnload != 0)
-            _beforeTablesUnload();
+        _beforeTablesUnload();
     }
 }
 
@@ -53,6 +57,9 @@ void TableObject::loadState(LoadState newState)
         return;
     beforeStateChange(newState);
     _state = newState;
+    // 03_05_01 4.23.2.1 p.293 wants the load state in non-volatile memory; saveMemory() only flushes the
+    // buffered sector.
+    _memory.scheduleSave();
 }
 
 void TableObject::masterReset(EraseCode eraseCode, uint8_t channel)
@@ -119,7 +126,10 @@ const uint8_t* TableObject::restore(const uint8_t* buffer)
 
     uint8_t state = 0;
     buffer = popByte(state, buffer);
-    _state = (LoadState)state;
+    // Clamp to the states loadEvent() dispatches on: LS_UNLOADING and LS_LOADCOMPLETING fall into its
+    // default arm and would freeze the object. 03_05_01 Table 94 p.296 maps them to Unloaded on restart.
+    _state = (state == LS_UNLOADED || state == LS_LOADED || state == LS_LOADING || state == LS_ERROR)
+                 ? (LoadState)state : LS_UNLOADED;
 
     buffer = popInt(_size, buffer);
 
@@ -127,7 +137,13 @@ const uint8_t* TableObject::restore(const uint8_t* buffer)
     buffer = popInt(relativeAddress, buffer);
     //println(relativeAddress);
 
-    if (relativeAddress != 0)
+    if (_staticTableAdr)
+    {
+        // A static table's address and size are build constants, not persisted state.
+        _size = _staticTableSize;
+        _data = _memory.toAbsolute(_staticTableAdr);
+    }
+    else if (relativeAddress != 0)
         _data = _memory.toAbsolute(relativeAddress);
     else
         _data = 0;
@@ -137,6 +153,10 @@ const uint8_t* TableObject::restore(const uint8_t* buffer)
 
 uint32_t TableObject::tableReference()
 {
+    // 03_05_01 4.2.7 p.31: zero when the allocation was not successful, and inside the 20-bit range.
+    if (_data == nullptr)
+        return 0;
+
     return (uint32_t)_memory.toRelative(_data);
 }
 
@@ -151,12 +171,20 @@ bool TableObject::allocTable(uint32_t size, bool doFill, uint8_t fillByte)
         _data = 0;
     }
 
-    if (size == 0)
-        return true;
+    // A zero size would reach LOADED with a null data pointer; a size beyond the NVM would wrap in the
+    // allocator.
+    if (size == 0 || size > _memory.memorySize())
+    {
+        _size = 0;
+        return false;
+    }
 
     _data = _memory.allocMemory(size);
     if (!_data)
+    {
+        _size = 0;
         return false;
+    }
 
     if (doFill)
     {
@@ -218,8 +246,7 @@ void TableObject::loadEventUnloaded(const uint8_t* data)
             loadState(LS_LOADING);
             break;
         default:
-            loadState(LS_ERROR);
-            errorCode(E_GOT_UNDEF_LOAD_CMD);
+            break; // 03_05_01 4.23.2.3.2 p.294: unknown events shall be ignored, without a change of state
     }
 }
 
@@ -242,8 +269,7 @@ void TableObject::loadEventLoading(const uint8_t* data)
             additionalLoadControls(data);
             break;
         default:
-            loadState(LS_ERROR);
-            errorCode(E_GOT_UNDEF_LOAD_CMD);
+            break; // 03_05_01 4.23.2.3.2 p.294: unknown events shall be ignored, without a change of state
     }
 }
 
@@ -275,8 +301,7 @@ void TableObject::loadEventLoaded(const uint8_t* data)
             errorCode(E_INVALID_OPCODE);
             break;
         default:
-            loadState(LS_ERROR);
-            errorCode(E_GOT_UNDEF_LOAD_CMD);
+            break; // 03_05_01 4.23.2.3.2 p.294: unknown events shall be ignored, without a change of state
     }
 }
 
@@ -292,10 +317,13 @@ void TableObject::loadEventError(const uint8_t* data)
             break;
         case LE_UNLOAD:
             loadState(LS_UNLOADED);
+            // 03_05_01 4.2.28 p.40: when the load state changes from Error to another state the error code
+            // shall be set to 0. It was left standing, so a client reading PID_ERROR_CODE on a later,
+            // successfully loaded object still saw the old fault.
+            errorCode(E_NO_FAULT);
             break;
         default:
-            loadState(LS_ERROR);
-            errorCode(E_GOT_UNDEF_LOAD_CMD);
+            break; // 03_05_01 4.23.2.3.2 p.294: unknown events shall be ignored, without a change of state
     }
 }
 
@@ -327,6 +355,10 @@ void TableObject::errorCode(ErrorCode errorCode)
 {
     uint8_t data = errorCode;
     Property* prop = property(PID_ERROR_CODE);
+    // A static table gets its properties from InterfaceObject::initializeProperties, which creates no
+    // PID_ERROR_CODE.
+    if (prop == nullptr)
+        return;
     prop->write(data);
 }
 
@@ -393,6 +425,15 @@ void TableObject::initializeDynTableProperties(size_t propertiesSize, Property**
             }),
         new CallbackProperty<TableObject>(this, PID_MCB_TABLE, false, PDT_GENERIC_08, 1, ReadLv3 | WriteLv0,
             [](TableObject* obj, uint16_t start, uint8_t count, uint8_t* data) -> uint8_t {
+                // The element-count read, as both sibling callbacks do it: without it the lambda writes its 8 octets
+                // into the 2-octet buffer the caller allocates for start index 0.
+                if(start == 0)
+                {
+                    uint16_t currentNoOfElements = 1;
+                    pushWord(currentNoOfElements, data);
+                    return 1;
+                }
+
                 if (obj->_state != LS_LOADED)
                     return 0; // need to check return code for invalid
                 
