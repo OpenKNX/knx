@@ -230,6 +230,15 @@ void CemiServer::frameReceived(CemiFrame& frame, uint8_t channelId)
 
 void CemiServer::handleLData(CemiFrame& frame)
 {
+    // Same gate the tunnelling path applies before forwarding a client cEMI to TP. Scoped to L_data_req:
+    // valid() tests the L_Data control fields and would reject every legitimate M_Prop/M_Reset frame.
+    // totalLenght() != 0 must short-circuit first -- valid() self-bounds only for a non-zero length.
+    if (frame.totalLenght() == 0 || !frame.valid())
+    {
+        println("cEMI server: dropping invalid L_data_req (not forwarded to the bus)");
+        return;
+    }
+
     // Fill in the cEMI client address if the client sets 
     // source address to 0.
 #ifndef KNX_TUNNELING
