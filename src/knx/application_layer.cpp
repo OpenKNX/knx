@@ -111,10 +111,13 @@ void ApplicationLayer::dataBroadcastIndication(HopCountType hopType, Priority pr
 void ApplicationLayer::dataBroadcastIndication(HopCountType hopType, Priority priority, uint16_t source, APDU& apdu, const SecurityControl& secCtrl)
 {
     uint8_t* data = apdu.data();
+    // The APDU octet count is attacker-controlled and cEMI valid() enforces only consistency, never a
+    // minimum, so a one-octet frame would reach the handlers below and read past it.
     switch (apdu.type())
     {
         case IndividualAddressWrite:
         {
+            if (apdu.length() < 3) break; // APCI + 2 address octets
             uint16_t newAddress;
             popWord(newAddress, data + 1);
             _bau.individualAddressWriteIndication(hopType, secCtrl, newAddress);
@@ -128,12 +131,14 @@ void ApplicationLayer::dataBroadcastIndication(HopCountType hopType, Priority pr
             break;
         case IndividualAddressSerialNumberRead:
         {
+            if (apdu.length() < 7) break; // APCI + 6 serial octets
             uint8_t* knxSerialNumber = &data[1];
             _bau.individualAddressSerialNumberReadIndication(priority, hopType, secCtrl, knxSerialNumber);
             break;
         }
         case IndividualAddressSerialNumberResponse:
         {
+            if (apdu.length() < 9) break; // APCI + 6 serial + 2 domain address
             uint16_t domainAddress;
             popWord(domainAddress, data + 7);
             _bau.individualAddressSerialNumberReadAppLayerConfirm(hopType, secCtrl, data + 1, apdu.frame().sourceAddress(),
@@ -142,6 +147,7 @@ void ApplicationLayer::dataBroadcastIndication(HopCountType hopType, Priority pr
         }
         case IndividualAddressSerialNumberWrite:
         {
+            if (apdu.length() < 9) break; // APCI + 6 serial + 2 new address
             uint8_t* knxSerialNumber = &data[1];
             uint16_t newIndividualAddress;
             popWord(newIndividualAddress, &data[7]);
@@ -1347,7 +1353,7 @@ void ApplicationLayer::individualIndication(HopCountType hopType, Priority prior
         //    break;
         case MemoryExtWrite:
         {
-            if (apdu.length() < 5 || data[1] > apdu.length() - 5) break; // EC: count must fit the frame -> no over-read persisted to NVM
+            if (apdu.length() < 5 || data[1] > apdu.length() - 5) break; // count must fit the frame
             uint8_t number = data[1];
             uint32_t memoryAddress =  ((data[2] & 0xff) << 16) | ((data[3] & 0xff) << 8) | (data[4] & 0xff);
             _bau.memoryExtWriteIndication(priority, hopType, tsap, secCtrl, number, memoryAddress, data + 5);
@@ -1372,7 +1378,7 @@ void ApplicationLayer::individualIndication(HopCountType hopType, Priority prior
         }
         case UserMemoryWrite:
         {
-            if (apdu.length() < 4 || (data[1] & 0xf) > apdu.length() - 4) break; // EC: count must fit the frame -> no over-read persisted to NVM
+            if (apdu.length() < 4 || (data[1] & 0xf) > apdu.length() - 4) break; // count must fit the frame
             uint32_t address = ((data[1] & 0xf0) << 12) + (data[2] << 8) + data[3];
             _bau.userMemoryWriteIndication(priority, hopType, tsap, secCtrl, data[1] & 0xf, address, data + 4);
             break;
@@ -1418,7 +1424,10 @@ void ApplicationLayer::individualConfirm(AckType ack, HopCountType hopType, Prio
         case DeviceDescriptorRead:
             _bau.deviceDescriptorReadLocalConfirm(ack, priority, hopType, tsap, secCtrl, *data & 0x3f, status);
             break;
+        // The APDU here came back with an L_Data.con, so a tunnel client picks its content; guarded per case
+        // exactly as individualIndication() does on the receive side.
         case DeviceDescriptorResponse:
+            if (apdu.length() < 3) break; // data[0] + the two descriptor octets at data+1
             _bau.deviceDescriptorReadResponseConfirm(ack, priority, hopType, tsap, secCtrl, *data & 0x3f, data + 1, status);
             break;
         case Restart:
@@ -1426,6 +1435,7 @@ void ApplicationLayer::individualConfirm(AckType ack, HopCountType hopType, Prio
             break;
         case PropertyValueRead:
         {
+            if (apdu.length() < 5) break; // obj/pid at data[1..2], count+startIndex at data[3..4]
             uint16_t startIndex;
             popWord(startIndex, data + 3);
             startIndex &= 0xfff;
@@ -1435,6 +1445,7 @@ void ApplicationLayer::individualConfirm(AckType ack, HopCountType hopType, Prio
         }
         case PropertyValueResponse:
         {
+            if (apdu.length() < 5) break; // as PropertyValueRead; payload at data+5 may be empty
             uint16_t startIndex;
             popWord(startIndex, data + 3);
             startIndex &= 0xfff;
@@ -1453,70 +1464,88 @@ void ApplicationLayer::individualConfirm(AckType ack, HopCountType hopType, Prio
             break;
         }
         case PropertyDescriptionRead:
+            if (apdu.length() < 4) break; // obj/pid/index at data[1..3]
             _bau.propertyDescriptionReadLocalConfirm(ack, priority, hopType, tsap, secCtrl, data[1], data[2], data[3], status);
             break;
         case PropertyExtDescriptionRead:
+            if (apdu.length() < 4) break;
             _bau.propertyExtDescriptionReadLocalConfirm(ack, priority, hopType, tsap, secCtrl, data[1], data[2], data[3], status);
             break;
         case PropertyDescriptionResponse:
+            if (apdu.length() < 8) break; // reads through data[7] incl. getWord(data+5)
             _bau.propertyDescriptionReadResponseConfirm(ack, priority, hopType, tsap, secCtrl, data[1], data[2], data[3],
                 (data[4] & 0x80) > 0, data[4] & 0x3f, getWord(data + 5) & 0xfff, data[7], status);
             break;
         case MemoryRead:
+            if (apdu.length() < 3) break; // address word at data[1..2]
             _bau.memoryReadLocalConfirm(ack, priority, hopType, tsap, secCtrl, data[0] & 0x3f, getWord(data + 1), status);
             break;
         case MemoryResponse:
+            if (apdu.length() < 3) break; // + payload at data+3, may be empty
             _bau.memoryReadResponseConfirm(ack, priority, hopType, tsap, secCtrl, data[0] & 0x3f, getWord(data + 1), data + 3, status);
             break;
         case MemoryWrite:
+            if (apdu.length() < 3) break;
             _bau.memoryWriteLocalConfirm(ack, priority, hopType, tsap, secCtrl, data[0] & 0x3f, getWord(data + 1), data + 3, status);
             break;
         case MemoryExtRead:
+            if (apdu.length() < 3) break;
             _bau.memoryExtReadLocalConfirm(ack, priority, hopType, tsap, secCtrl, data[0] & 0x3f, getWord(data + 1), status);
             break;
         case MemoryExtReadResponse:
+            if (apdu.length() < 3) break;
             _bau.memoryExtReadResponseConfirm(ack, priority, hopType, tsap, secCtrl, data[0] & 0x3f, getWord(data + 1), data + 3, status);
             break;
         case MemoryExtWrite:
+            if (apdu.length() < 3) break;
             _bau.memoryExtWriteLocalConfirm(ack, priority, hopType, tsap, secCtrl, data[0] & 0x3f, getWord(data + 1), data + 3, status);
             break;
         case MemoryExtWriteResponse:
+            if (apdu.length() < 3) break;
             _bau.memoryExtWriteResponseConfirm(ack, priority, hopType, tsap, secCtrl, data[0] & 0x3f, getWord(data + 1), data + 3, status);
             break;
         case UserMemoryRead:
         {
+            if (apdu.length() < 4) break; // address nibble + two octets at data[1..3]
             uint32_t address = ((data[1] & 0xf0) << 12) + (data[2] << 8) + data[3];
             _bau.memoryReadLocalConfirm(ack, priority, hopType, tsap, secCtrl, data[1] & 0xf, address, status);
             break;
         }
         case UserMemoryResponse:
         {
+            if (apdu.length() < 4) break; // + payload at data+4, may be empty
             uint32_t address = ((data[1] & 0xf0) << 12) + (data[2] << 8) + data[3];
             _bau.memoryReadResponseConfirm(ack, priority, hopType, tsap, secCtrl, data[1] & 0xf, address, data + 4, status);
             break;
         }
         case UserMemoryWrite:
         {
+            if (apdu.length() < 4) break;
             uint32_t address = ((data[1] & 0xf0) << 12) + (data[2] << 8) + data[3];
             _bau.memoryWriteLocalConfirm(ack, priority, hopType, tsap, secCtrl, data[1] & 0xf, address, data + 4, status);
             break;
-        }        
+        }
         case UserManufacturerInfoRead:
             _bau.userManufacturerInfoLocalConfirm(ack, priority, hopType, tsap, secCtrl, status);
             break;
         case UserManufacturerInfoResponse:
+            if (apdu.length() < 4) break; // three manufacturer octets at data+1
             _bau.userManufacturerInfoResponseConfirm(ack, priority, hopType, tsap, secCtrl, data + 1, status);
             break;
         case AuthorizeRequest:
+            if (apdu.length() < 6) break; // key at data[2..5]
             _bau.authorizeLocalConfirm(ack, priority, hopType, tsap, secCtrl, getInt(data + 2), status);
             break;
         case AuthorizeResponse:
+            if (apdu.length() < 2) break;
             _bau.authorizeResponseConfirm(ack, priority, hopType, tsap, secCtrl, data[1], status);
             break;
         case KeyWrite:
+            if (apdu.length() < 6) break; // level at data[1], key at data[2..5]
             _bau.keyWriteLocalConfirm(ack, priority, hopType, tsap, secCtrl, data[1], getInt(data + 2), status);
             break;
         case KeyResponse:
+            if (apdu.length() < 2) break;
             _bau.keyWriteResponseConfirm(ack, priority, hopType, tsap, secCtrl, data[1], status);
             break;
         case FunctionPropertyCommand:
