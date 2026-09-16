@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstring>  // strnlen()
 #include "knx/bits.h"
 #include "knx/config.h"
 #include "knx/bau07B0.h"
@@ -398,7 +399,9 @@ template <class P, class B> class KnxFacade : private SaveRestore
         return _bau.parameters().getFloat(addr, enc);
     }
     
-#if (MASK_VERSION == 0x07B0) || (MASK_VERSION == 0x27B0) || (MASK_VERSION == 0x57B0)
+// KNX_HAS_GROUPOBJECTS is the single source of truth, so the documented -D override reaches the
+// accessor instead of being ignored here.
+#if KNX_HAS_GROUPOBJECTS
     GroupObject& getGroupObject(uint16_t goNr)
     {
         return _bau.groupObjectTable().get(goNr);

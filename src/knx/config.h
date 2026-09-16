@@ -103,6 +103,9 @@
 // 0x_9__). This is only the DEFAULT: a product may override it via -D KNX_HAS_GROUPOBJECTS=1 / =0 (e.g. a
 // System-B based router that still exposes KOs, or a future spec allowing coupler KOs). So the
 // "coupler => no group objects" inference is a sensible default, not a hard-wired rule.
+// LIMIT: overriding this to 1 on a coupler mask does not by itself deliver group objects -- only
+// BauSystemBDevice owns a group object table, so the facade accessor would then fail to compile. The
+// override is honoured everywhere the flag is read; it cannot conjure the table.
 #ifndef KNX_HAS_GROUPOBJECTS
 #if (MASK_VERSION & 0x0900) != 0x0900
 #define KNX_HAS_GROUPOBJECTS 1
@@ -196,6 +199,29 @@
 //#define USE_CEMI_SERVER
 #if defined(USE_USB) || defined(KNX_TUNNELING)
 #define USE_CEMI_SERVER
+#endif
+
+// Guards for flag combinations that do not build, or build into something inconsistent.
+#if defined(KNX_TUNNELING) && !defined(USE_IP)
+    #error "KNX_TUNNELING needs an IP-capable mask (07B0, 57B0 or 091A) -- it pulls in the KNXnet/IP tunnel server"
+#endif
+#if defined(KNX_TUNNELING) && (MASK_VERSION == 0x57B0)
+    #error "MASK_VERSION 0x57B0 with KNX_TUNNELING has no BAU: the facade selects Bau57B0, which cannot serve a tunnel"
+#endif
+#if defined(OPENKNX_HW_BUSMON) && !defined(KNX_TUNNELING)
+    #error "OPENKNX_HW_BUSMON needs KNX_TUNNELING: the busmonitor is served over a KNXnet/IP tunnelling connection, and both the forward path and the connect handler are compiled only with it"
+#endif
+#if (KNX_SERVICE_FAMILY_CORE >= 2)
+    #error "KNX_SERVICE_FAMILY_CORE >= 2 (Core v2 / extended search) does not build: knx_ip_search_response_extended.cpp has never been compiled on any mask -- see finding 4.5 before raising it"
+#endif
+#if defined(KNX_TUNNELING) && (KNX_TUNNELING < 1)
+    #error "KNX_TUNNELING must be >= 1 -- omit the flag to build without tunnelling; 0 compiles a tunnel server that advertises the service and refuses every connection, and declares a zero-length address buffer"
+#endif
+#if defined(USE_CEMI_SERVER) && !defined(KNX_TUNNELING)
+    #error "USE_CEMI_SERVER without KNX_TUNNELING is not wired: every BAU declares its cEMI/tunnel server under KNX_TUNNELING, so the USE_USB arm references a member that does not exist"
+#endif
+#if defined(KNX_TUNNELING_STRICT_TOPOLOGY) && !defined(KNX_IS_ROUTER)
+    #error "KNX_TUNNELING_STRICT_TOPOLOGY is a coupler feature: on a device it withholds every tunnelled unicast from TP and confirms it as sent"
 #endif
 
 // KNX Data Secure Options
