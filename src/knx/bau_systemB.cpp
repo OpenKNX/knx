@@ -128,16 +128,19 @@ void BauSystemB::memoryRoutingTableWriteIndication(Priority priority, HopCountTy
     print(" data: ");
     printHex("=>", data, number);
     _memory.writeMemory(memoryAddress, number, data);
+    // Verify mode must answer with what is stored, not echo the request: writeMemory() drops an
+    // out-of-range write silently.
     if (_deviceObj.verifyMode())
-        memoryRoutingTableReadIndication(priority, hopType, asap, secCtrl, number, memoryAddress, data);
+        memoryRoutingTableReadIndication(priority, hopType, asap, secCtrl, number, memoryAddress);
 }
 
 void BauSystemB::memoryWriteIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, uint8_t number,
     uint16_t memoryAddress, uint8_t * data)
 {
     _memory.writeMemory(memoryAddress, number, data);
+    // As above: read back rather than echo.
     if (_deviceObj.verifyMode())
-        memoryReadIndication(priority, hopType, asap, secCtrl, number, memoryAddress, data);
+        memoryReadIndication(priority, hopType, asap, secCtrl, number, memoryAddress);
 }
 
 void BauSystemB::memoryReadIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, uint8_t number,
@@ -156,9 +159,16 @@ void BauSystemB::memoryReadIndication(Priority priority, HopCountType hopType, u
 
 void BauSystemB::memoryExtWriteIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, uint8_t number, uint32_t memoryAddress, uint8_t * data)
 {
-    _memory.writeMemory(memoryAddress, number, data);
+    // Bound the range first; a rejected write is answered AddressVoid with zero elements.
+    uint8_t* p = _memory.toAbsoluteChecked(memoryAddress, number);
+    if (p == nullptr)
+    {
+        applicationLayer().memoryExtWriteResponse(AckRequested, priority, hopType, asap, secCtrl, ReturnCodes::AddressVoid, 0, memoryAddress, nullptr);
+        return;
+    }
 
-    applicationLayer().memoryExtWriteResponse(AckRequested, priority, hopType, asap, secCtrl, ReturnCodes::Success, number, memoryAddress, _memory.toAbsolute(memoryAddress));
+    _memory.writeMemory(memoryAddress, number, data);
+    applicationLayer().memoryExtWriteResponse(AckRequested, priority, hopType, asap, secCtrl, ReturnCodes::Success, number, memoryAddress, p);
 }
 
 void BauSystemB::memoryExtReadIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, uint8_t number, uint32_t memoryAddress)
