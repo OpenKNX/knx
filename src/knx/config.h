@@ -111,9 +111,73 @@
 #endif
 #endif
 
+// KNX_TUNNELING_DEVMGMT — KNXnet/IP device-management connections served alongside the data tunnels.
+// Sizes the tunnels[] array together with KNX_TUNNELING.
+#ifndef KNX_TUNNELING_DEVMGMT
+#define KNX_TUNNELING_DEVMGMT 1
+#endif
+
+// KNX_CEMI_TRANSPORT_STRICT — refuse a Device-Management connect while ANY transport connection is open,
+// including the requesting client's own. Default OFF: only a FOREIGN peer is refused.
+//
+// 08_TSSH 8.3.2 p.158 (fn 60202) drives the refusal with a peer the test controller sends in
+// (`L_Data.ind 1.1.255 -> 15.15.255 Connect` as a ROUTING_INDICATION), so the connection holding the layer
+// is NOT the client that afterwards opens Device Management over its own unicast endpoint. 03_08_03 2.6.1.2
+// p.18 prescribes no refusal at all -- it only describes the implicit switch to cEMI Transport Layer mode.
+// Counting the client's own connection made ETS lock itself out: it reads the group-address tables over a
+// T_Connect through its tunnel, then asks for Device Management and is refused until the 6 s connection
+// timeout of 03_03_04 5.1 releases the connection it never closed -- then retries and blocks itself again.
+// Set this only for a certification run that demands the stricter reading.
+// #define KNX_CEMI_TRANSPORT_STRICT
+
+// KNX_TUNNEL_RESEND — server-side repetition of an unconfirmed TUNNELLING_REQUEST. ON by default, because
+// 03_08_04 2.6.1 p.9 makes it mandatory, not optional: "If a TUNNELLING_REQUEST frame is not confirmed
+// within the TUNNELLING_REQUEST_TIMEOUT time of one (1) second then the frame SHALL be repeated once with
+// the same sequence counter value by the sending KNXnet/IP device" -- and a tunnelling server is a sending
+// device the moment it forwards bus traffic to its client. Without it an unacknowledged telegram vanishes
+// silently and the client believes it has seen the whole bus.
+//
+// Cost: KNX_TUNNEL_RESEND_DEPTH * KNX_TUNNEL_RESEND_BUF per connection (~15 kB at depth 3 over 16 tunnels
+// plus device management). A product that cannot afford that should lower the DEPTH to 1 -- which still
+// satisfies the clause, since it demands exactly ONE repetition -- rather than switch the feature off.
+// KNX_NO_TUNNEL_RESEND exists for a build that genuinely cannot carry even that; it is then knowingly
+// non-conformant on 2.6.1.
+#if !defined(KNX_TUNNEL_RESEND) && !defined(KNX_NO_TUNNEL_RESEND)
+#define KNX_TUNNEL_RESEND
+#endif
+
+// KNX_TUNNEL_RESEND_BUF — largest server->client tunnelling datagram a FIFO slot must hold, incl. extended
+// frames (memory read/write, long property responses during programming): KNXnet/IP hdr 6 + connection hdr
+// 4 + cEMI (<= ~9 + maxAPDU 254) ~= 273. Undersizing this silently drops large frames and re-breaks device
+// reading/programming.
+#ifndef KNX_TUNNEL_RESEND_BUF
+#define KNX_TUNNEL_RESEND_BUF 280
+#endif
+
+// KNX_TUNNEL_RESEND_DEPTH — FIFO slots per connection (03_08_04 2.6.1 p.9). Default 1: that is exactly what
+// the clause demands ("repeated ONCE"), at ~5 kB over 16 tunnels plus device management, so the mandatory
+// behaviour costs a small product the least it can. Raise it where the RAM is there -- the device's
+// connection-oriented layer is window-1 and a client acks in milliseconds, so 2-3 is margin for bursts, and
+// only a depth > 1 makes the overflow policy meaningful (a connection-oriented frame evicts the oldest
+// queued GROUP frame instead of tearing the download down). A stuck client that overruns it is disconnected.
+#ifndef KNX_TUNNEL_RESEND_DEPTH
+#define KNX_TUNNEL_RESEND_DEPTH 1
+#endif
+
+// KNX_BUSMON_CONNECTIONS — how many KNXnet/IP busmonitor connections the tunnel server serves at once.
+// 03_08_04 2.2.4 p.8 asks for ONE per KNX subnetwork, which is the default. The capture is a read-only
+// fan-out of one bus stream, so extra readers cost nothing on the bus -- but each slot carries a
+// KnxIpTunnelConnection, and with KNX_TUNNEL_RESEND that is ~840 octets of send FIFO the busmonitor never
+// uses. Raise only with that in mind, and only once it is settled with the KNX Association.
+#ifndef KNX_BUSMON_CONNECTIONS
+#define KNX_BUSMON_CONNECTIONS 1
+#endif
+
 // KNX_UNCONFIGURED_ADDRESS — the factory-default individual address of an unprogrammed device:
 // 15.15.0 (0xFF00) for a coupler/router, 15.15.255 (0xFFFF) for a normal device.
-#ifdef KNX_IS_ROUTER
+// Must match DeviceObject::_ownAddress (device_object.h), which is the value actually loaded -- 0x2920 is
+// a coupler there too, so keying this on KNX_IS_ROUTER alone made the two disagree for that mask.
+#if defined(KNX_IS_ROUTER) || (MASK_VERSION == 0x2920)
 #define KNX_UNCONFIGURED_ADDRESS 0xFF00
 #else
 #define KNX_UNCONFIGURED_ADDRESS 0xFFFF
