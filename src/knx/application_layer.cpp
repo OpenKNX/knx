@@ -514,7 +514,7 @@ void ApplicationLayer::restartRequest(AckType ack, Priority priority, HopCountTy
     individualSend(ack, hopType, priority, _connectedTsap, apdu, secCtrl);
 }
 
-void ApplicationLayer::restartResponse(AckType ack, Priority priority, HopCountType hopType, const SecurityControl& secCtrl, uint8_t errorCode, uint16_t processTime)
+void ApplicationLayer::restartResponse(AckType ack, Priority priority, HopCountType hopType, const SecurityControl& secCtrl, uint8_t errorCode, uint16_t processTime, uint16_t asap)
 {
     CemiFrame frame(4);
     APDU& apdu = frame.apdu();
@@ -525,7 +525,10 @@ void ApplicationLayer::restartResponse(AckType ack, Priority priority, HopCountT
     data[2] = processTime >> 8;
     data[3] = processTime & 0xFF;
 
-    individualSend(ack, hopType, priority, _connectedTsap, apdu, secCtrl);
+    // The response goes to the requester; _connectedTsap is -1 without a connection and truncates to
+    // 0xFFFF here. individualSend() still picks connection-oriented when asap is the connected tsap
+    // (03_03_07 3.4.2.2 p.52).
+    individualSend(ack, hopType, priority, asap, apdu, secCtrl);
 }
 
 #ifdef OPENKNX_FTC_CLIENT

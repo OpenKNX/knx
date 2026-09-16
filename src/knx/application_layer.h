@@ -103,7 +103,7 @@ class ApplicationLayer
     void disconnectRequest(Priority priority);
     bool isConnected();
     void restartRequest(AckType ack, Priority priority, HopCountType hopType, const SecurityControl& secCtrl);
-    void restartResponse(AckType ack, Priority priority, HopCountType hopType, const SecurityControl& secCtrl, uint8_t errorCode, uint16_t processTime);
+    void restartResponse(AckType ack, Priority priority, HopCountType hopType, const SecurityControl& secCtrl, uint8_t errorCode, uint16_t processTime, uint16_t asap);
     void propertyValueReadRequest(AckType ack, Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl& secCtrl,
                                   uint8_t objectIndex, uint8_t propertyId, uint8_t numberOfElements, uint16_t startIndex);
     void propertyValueReadResponse(AckType ack, Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl& secCtrl, uint8_t objectIndex,

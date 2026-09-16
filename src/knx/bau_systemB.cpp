@@ -198,7 +198,13 @@ void BauSystemB::restartRequestIndication(Priority priority, HopCountType hopTyp
         uint8_t errorCode = checkmasterResetValidity(eraseCode, channel);
         // We send the restart response now before actually applying the reset values
         // Processing time is kRestartProcessTime (example 3 seconds) that we require for the applying the master reset with restart
-        applicationLayer().restartResponse(AckRequested, priority, hopType, secCtrl, errorCode, (errorCode == 0) ? kRestartProcessTime : 0);
+        applicationLayer().restartResponse(AckRequested, priority, hopType, secCtrl, errorCode, (errorCode == 0) ? kRestartProcessTime : 0, asap);
+
+        // 03_05_02 Table 4 p.83: for an unsupported erase code the server shall neither execute a Basic
+        // Restart nor any Master Reset.
+        if (errorCode != 0)
+            return;
+
         doMasterReset(eraseCode, channel);
     }
     else
