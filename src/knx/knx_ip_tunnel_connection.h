@@ -42,21 +42,20 @@ class KnxIpTunnelConnection
     // (same seq) after 1 s and the tunnel is disconnected on the 2nd timeout. Queueing (never dropping) is
     // required because the device's own connection-oriented responses arrive in local bursts, faster than
     // the client acks -- dropping them (the earlier single-slot design) collapsed reading/programming.
-    #ifndef KNX_TUNNEL_RESEND_BUF
-        // Must hold the LARGEST tunnelling datagram, incl. extended frames (memory read/write, long property
-        // responses during programming): KNXnet/IP hdr 6 + connection hdr 4 + cEMI (<= ~9 + maxAPDU 254) ~= 273.
-        // Undersizing this would silently drop large frames and re-break device read/programming.
-        #define KNX_TUNNEL_RESEND_BUF 280
-    #endif
-    #ifndef KNX_TUNNEL_RESEND_DEPTH
-        // FIFO slots per connection. The device's connection-oriented layer is window-1 and the client acks in
-        // ms, so the realistic queue depth is 1-2; 3 gives margin. A stuck client that overruns it is disconnected.
-        #define KNX_TUNNEL_RESEND_DEPTH 3
+    // BUF and DEPTH are defined in config.h. No fallback here on purpose: together they size _txBuf, so a
+    // second definition that ever diverged would change sizeof(KnxIpTunnelConnection) between translation
+    // units -- silent memory corruption rather than a compile error.
+    #if !defined(KNX_TUNNEL_RESEND_BUF) || !defined(KNX_TUNNEL_RESEND_DEPTH)
+        #error "KNX_TUNNEL_RESEND_BUF / _DEPTH must be defined (config.h, or by a NO_KNX_CONFIG build)"
     #endif
     uint8_t _txBuf[KNX_TUNNEL_RESEND_DEPTH][KNX_TUNNEL_RESEND_BUF]; // full datagrams, resent verbatim
     uint16_t _txLen[KNX_TUNNEL_RESEND_DEPTH] = {0}; // used bytes per slot (<= BUF=280); MUST be 16-bit -- an
                                                     // extended-frame datagram (~273 B) truncated in a uint8_t
                                                     // would make pumpTunnel send the wrong length
+    bool _txIsGroup[KNX_TUNNEL_RESEND_DEPTH] = {false}; // per slot: queued frame is group-addressed, i.e.
+                                                        // best-effort and evictable to make room for a
+                                                        // connection-oriented frame. Only read for slots
+                                                        // below _txCount, so Reset() need not clear it.
     uint8_t _txHead = 0;    // slot in flight / next to send
     uint8_t _txTail = 0;    // next free slot to enqueue
     uint8_t _txCount = 0;   // queued slots (0..DEPTH)

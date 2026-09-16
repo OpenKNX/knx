@@ -2,8 +2,10 @@
 
 #include "config.h"
 #ifdef KNX_TUNNELING
+// Defined in config.h. No fallback here on purpose: it sizes tunnels[], so a second definition that ever
+// diverged would change sizeof(IpTunnelServer) between translation units.
 #ifndef KNX_TUNNELING_DEVMGMT
-#define KNX_TUNNELING_DEVMGMT 1
+    #error "KNX_TUNNELING_DEVMGMT must be defined (config.h, or by a NO_KNX_CONFIG build)"
 #endif
 
 #include <stdint.h>
@@ -183,6 +185,8 @@ class IpTunnelServer
     bool sendDisconnectRequest(KnxIpTunnelConnection *t); // tell the client; false = datagram never left
 #ifdef KNX_TUNNEL_RESEND
     void pumpTunnel(KnxIpTunnelConnection *t);                 // send the FIFO head if nothing is in flight
+    bool evictOldestGroupFrame(KnxIpTunnelConnection *t);     // free one slot by dropping the oldest queued
+                                                              // group telegram; false = nothing evictable
     void disconnectTunnel(KnxIpTunnelConnection *t, uint8_t reason); // server-initiated teardown + reap
     void handleTunnelAck(uint8_t *buffer, uint16_t length);    // pop the acked head + pump the next
 #endif

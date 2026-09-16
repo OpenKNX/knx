@@ -602,14 +602,22 @@ void IpTunnelServer::sendFrameToTunnel(KnxIpTunnelConnection* tunnel, CemiFrame&
     {
         // FIFO full: drop a best-effort group telegram and keep the connection (the 1 s ACK-timeout in loop()
         // is the disconnect authority, 03_08_04 §2.6.1). A non-group (CO/mgmt) overflow still disconnects.
-        if (frame.addressType() == AddressType::GroupAddress)
+        if (svc == TunnelingRequest && frame.addressType() == AddressType::GroupAddress)
         {
             bumpTo(tunnel->StatGrpDrop); // best-effort by design: the connection is worth more than the frame
             return;
         }
-        bumpTo(tunnel->StatTxDrop); // the frame that overflowed is lost as well, not just the connection
-        disconnectTunnel(tunnel, END_OVERFLOW);
-        return;
+
+        // Non-group = connection-oriented / management, i.e. the traffic of a running download. Dropping it
+        // breaks the transfer, and the queue is usually full of UNRELATED group telegrams from the bus -- so
+        // sacrifice the oldest of those instead of the connection. Disconnect only when nothing is evictable.
+        if (!evictOldestGroupFrame(tunnel))
+        {
+            bumpTo(tunnel->StatTxDrop); // the frame that overflowed is lost as well, not just the connection
+            disconnectTunnel(tunnel, END_OVERFLOW);
+            return;
+        }
+        bumpTo(tunnel->StatGrpDrop); // counted where every other group drop is counted
     }
     // Build the datagram DIRECTLY into the FIFO slot -> no per-frame new[] and no intermediate copy (was:
     // KnxIpTunnelingRequest new[] then memcpy into the slot). Fixed KNXnet/IP layout: 6-byte header + 4-byte
@@ -628,6 +636,9 @@ void IpTunnelServer::sendFrameToTunnel(KnxIpTunnelConnection* tunnel, CemiFrame&
     memcpy(buf + LEN_KNXIP_HEADER + LEN_CH, frame.data(), cemiLen);
 
     tunnel->_txLen[tunnel->_txTail] = totalLen;
+    // addressType() dereferences _ctrl1, which the pointer ctor computes as data + data[1] -- an L_Data
+    // layout. svc is TunnelingRequest only for L_data_*, so gate on it.
+    tunnel->_txIsGroup[tunnel->_txTail] = (svc == TunnelingRequest) && (frame.addressType() == AddressType::GroupAddress);
     tunnel->_txTail = (tunnel->_txTail + 1) % KNX_TUNNEL_RESEND_DEPTH;
     tunnel->_txCount++;
     if (tunnel->_txCount > tunnel->StatQueuePeak) tunnel->StatQueuePeak = tunnel->_txCount;
@@ -732,6 +743,38 @@ uint8_t IpTunnelServer::closeAllTunnels(uint8_t reason, bool withBusMon, uint8_t
 #ifdef KNX_TUNNEL_RESEND
 // Send the head of a tunnel's FIFO if nothing is in flight. Exactly one unacked TUNNELLING_REQUEST per
 // tunnel; the sequence counter is stamped into the connection header here (KNX 03_08_04 Tunnelling §2.6.1).
+// Free one FIFO slot by dropping the OLDEST queued group telegram, so a connection-oriented frame can be
+// queued instead of the connection being torn down. The head is skipped while armed: it is already on the
+// wire with a stamped sequence number, and 03_08_04 2.6.1 requires a repeat to be verbatim. Returns false
+// when the queue holds nothing but connection-oriented frames -- a genuine jam, where disconnecting is the
+// honest answer.
+bool IpTunnelServer::evictOldestGroupFrame(KnxIpTunnelConnection* t)
+{
+    const uint8_t firstEvictable = t->_armed ? 1 : 0;
+
+    for (uint8_t j = firstEvictable; j < t->_txCount; j++)
+    {
+        const uint8_t slot = (uint8_t)((t->_txHead + j) % KNX_TUNNEL_RESEND_DEPTH);
+        if (!t->_txIsGroup[slot])
+            continue;
+
+        // Close the gap: shift every later entry one position towards the head, so the FIFO order of the
+        // survivors is preserved and _txTail stays the next free slot.
+        for (uint8_t k = j; k + 1 < t->_txCount; k++)
+        {
+            const uint8_t dst = (uint8_t)((t->_txHead + k) % KNX_TUNNEL_RESEND_DEPTH);
+            const uint8_t src = (uint8_t)((t->_txHead + k + 1) % KNX_TUNNEL_RESEND_DEPTH);
+            memcpy(t->_txBuf[dst], t->_txBuf[src], t->_txLen[src]);
+            t->_txLen[dst] = t->_txLen[src];
+            t->_txIsGroup[dst] = t->_txIsGroup[src];
+        }
+        t->_txCount--;
+        t->_txTail = (uint8_t)((t->_txHead + t->_txCount) % KNX_TUNNEL_RESEND_DEPTH);
+        return true;
+    }
+    return false;
+}
+
 void IpTunnelServer::pumpTunnel(KnxIpTunnelConnection* t)
 {
     if (t->_armed || t->_txCount == 0) return;
