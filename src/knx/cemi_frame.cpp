@@ -232,7 +232,11 @@ void CemiFrame::fillTelegramTP(uint8_t* data)
 
 uint16_t CemiFrame::telegramLengthtRF() const
 {
-    return totalLenght() - 3;
+    // As in telegramLengthtTP(): _ctrl1 already skips the additional information, so the length must too -
+    // without it an RF frame carrying any addInfo reported more octets than the telegram has. The -3 holds:
+    // valid() enforces _length == addInfoLen + apduLen + 10, so this returns what fillTelegramRF writes.
+    const uint8_t addInfoLen = _data[1];
+    return totalLenght() - 3 - addInfoLen;
 }
 
 void CemiFrame::fillTelegramRF(uint8_t* data)
