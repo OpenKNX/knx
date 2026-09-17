@@ -19,6 +19,13 @@
 class CemiServer;
 
 #ifdef OPENKNX_HW_BUSMON
+// KNX_BUSMON_CONNECTIONS is defined in config.h. Deliberately NO fallback here: the value sizes a member
+// array, so a second definition that ever diverged would change sizeof(IpTunnelServer) between translation
+// units. A build that bypasses config.h (NO_KNX_CONFIG) must supply it.
+#ifndef KNX_BUSMON_CONNECTIONS
+    #error "KNX_BUSMON_CONNECTIONS must be defined (config.h, or by a NO_KNX_CONFIG build)"
+#endif
+
 class KnxIpConnectRequest;
 
 /**
@@ -191,11 +198,32 @@ class IpTunnelServer
 #ifdef OPENKNX_HW_BUSMON
     /** @brief Register the TP DLL bridge used to enter/leave HW busmonitor mode (router BAU only). */
     void setHwBusMonitorDll(IHwBusMonitorDll* dll) { _hwBusMon = dll; }
-    /** @brief True while a KNX-Busmonitor tunnel is open (chip in HW monitor mode). */
-    bool busMonitorActive() { return _busMonTunnel.ChannelId != 0; }
-    /** @brief Channel id of the open busmonitor tunnel, 0 if none. Saves snapshotting the whole list. */
-    uint8_t busMonitorChannelId() const { return _busMonTunnel.ChannelId; }
-    /** @brief Forward one raw monitor-mode LPDU (incl. FCS) to the busmon tunnel as cEMI L_Busmon.ind. */
+    /** @brief True while at least one KNX-Busmonitor tunnel is open (chip in HW monitor mode). */
+    bool busMonitorActive()
+    {
+        for (uint8_t i = 0; i < KNX_BUSMON_CONNECTIONS; i++)
+            if (_busMonTunnel[i].ChannelId != 0)
+                return true;
+        return false;
+    }
+    /** @brief Channel id of the FIRST open busmonitor tunnel, 0 if none. Saves snapshotting the whole list. */
+    uint8_t busMonitorChannelId() const
+    {
+        for (uint8_t i = 0; i < KNX_BUSMON_CONNECTIONS; i++)
+            if (_busMonTunnel[i].ChannelId != 0)
+                return _busMonTunnel[i].ChannelId;
+        return 0;
+    }
+    /** @brief Number of open busmonitor tunnels. */
+    uint8_t busMonitorCount() const
+    {
+        uint8_t n = 0;
+        for (uint8_t i = 0; i < KNX_BUSMON_CONNECTIONS; i++)
+            if (_busMonTunnel[i].ChannelId != 0)
+                n++;
+        return n;
+    }
+    /** @brief Forward one raw monitor-mode LPDU (incl. FCS) to every open busmon tunnel as L_Busmon.ind. */
     void busMonitorFrame(uint8_t* lpdu, uint16_t len, uint8_t status = 0);
     /** @brief Close every open data/config tunnel so a busmonitor is the only connection (03_08_04 §2.2.4).
      *  Used by the ETS busmon connect AND the local console `bcu mon` toggle so both are equally exclusive. */
@@ -267,9 +295,13 @@ class IpTunnelServer
 
 #ifdef OPENKNX_HW_BUSMON
     void HandleBusMonitorConnect(KnxIpConnectRequest& connRequest, uint32_t src_addr, uint16_t src_port);
-    void busMonitorTeardown(uint8_t reason = END_CLOSED);
+    void busMonitorTeardown(uint8_t slot, uint8_t reason = END_CLOSED);
+    int busMonSlotByChannel(uint8_t channelId);  // index of the busmon slot holding channelId, -1 if none
+    int busMonFreeSlot();                        // index of a free busmon slot, -1 if all are taken
 
-    KnxIpTunnelConnection _busMonTunnel;      // dedicated busmon connection (kept out of the L_Data fan-out)
+    // Busmon connections. 03_08_04 2.2.4 p.8 asks for one per subnetwork, which is the DEFAULT; the count
+    // is configurable because the raw capture stream itself is fan-out friendly (pending KNXA alignment).
+    KnxIpTunnelConnection _busMonTunnel[KNX_BUSMON_CONNECTIONS]; // kept out of the L_Data fan-out
     IHwBusMonitorDll* _hwBusMon = nullptr;    // TP chip bridge (null on non-router BAUs)
     uint8_t _busMonSeq = 0;                   // rolling status/sequence nibble for L_Busmon.ind
     bool _busMonExitPending = false;          // exit-recovery poll running (non-blocking)

@@ -147,21 +147,24 @@ uint8_t IpTunnelServer::activeTunnels(TunnelEvent* out, uint8_t maxOut) const
         n++;
     }
 #ifdef OPENKNX_HW_BUSMON
-    const uint8_t bmCh = readChannelId(_busMonTunnel.ChannelId);
-    if (n < maxOut && bmCh != 0)
+    for (uint8_t bm = 0; bm < KNX_BUSMON_CONNECTIONS && n < maxOut; bm++)
     {
-        out[n].ip = _busMonTunnel.IpAddress;
+        const uint8_t bmCh = readChannelId(_busMonTunnel[bm].ChannelId);
+        if (bmCh == 0)
+            continue;
+
+        out[n].ip = _busMonTunnel[bm].IpAddress;
         out[n].pa = 0;
         out[n].type = TUN_BUSMON;
         out[n].reason = END_ACTIVE;
-        out[n].startMillis = _busMonTunnel.connectStart;
+        out[n].startMillis = _busMonTunnel[bm].connectStart;
         out[n].endMillis = 0;
         out[n].slot = 0xFF; // the busmonitor has no reservable slot
         out[n].resSlot = 0xFF;
         out[n].chId = bmCh;
-        copyCounters(out[n], _busMonTunnel);
+        copyCounters(out[n], _busMonTunnel[bm]);
         out[n].queueDepth = 0; // the busmonitor has no send FIFO -- its frames go out fire-and-forget
-        if (readChannelId(_busMonTunnel.ChannelId) != bmCh) return n; // torn: teardown ran during the copy
+        if (readChannelId(_busMonTunnel[bm].ChannelId) != bmCh) continue; // torn: teardown ran during the copy
         n++;
     }
 #endif
@@ -399,11 +402,14 @@ void IpTunnelServer::loop()
 #ifdef OPENKNX_HW_BUSMON
     // Busmon self-heal safety-net: if ETS vanishes, the heartbeat times out -> leave monitor mode so
     // routing is never permanently stuck off (plan 5b.3).
-    if (_busMonTunnel.ChannelId != 0 && millis() - _busMonTunnel.lastHeartbeat > 120000)
+    for (uint8_t bm = 0; bm < KNX_BUSMON_CONNECTIONS; bm++)
     {
-        println("HW-Busmon: no heartbeat in 2 minutes -> leaving monitor mode");
-        sendDisconnectRequest(&_busMonTunnel);
-        busMonitorTeardown(END_TIMEOUT);
+        if (_busMonTunnel[bm].ChannelId == 0 || millis() - _busMonTunnel[bm].lastHeartbeat <= 120000)
+            continue;
+
+        println("HW-Busmon: no heartbeat in 2 minutes -> closing this busmonitor connection");
+        sendDisconnectRequest(&_busMonTunnel[bm]);
+        busMonitorTeardown(bm, END_TIMEOUT);
     }
 
     // Monitor mode can end WITHOUT anyone asking: the chip's own U_RESET_IND, the thermal auto-heal's
@@ -412,11 +418,16 @@ void IpTunnelServer::loop()
     // with the client waiting for telegrams that can never arrive again. End it and say why.
     // Entry cannot race this: HandleBusMonitorConnect only hands out the channel AFTER hwBusMonEnter()
     // confirmed the chip entered, so a set ChannelId with the chip idle is only ever the aftermath.
-    if (_busMonTunnel.ChannelId != 0 && _hwBusMon != nullptr && !_hwBusMon->hwBusMonActive())
+    if (busMonitorActive() && _hwBusMon != nullptr && !_hwBusMon->hwBusMonActive())
     {
-        println("HW-Busmon: chip left monitor mode unexpectedly -> closing the busmonitor connection");
-        sendDisconnectRequest(&_busMonTunnel);
-        busMonitorTeardown(END_BUSMON_LOST);
+        println("HW-Busmon: chip left monitor mode unexpectedly -> closing every busmonitor connection");
+        for (uint8_t bm = 0; bm < KNX_BUSMON_CONNECTIONS; bm++)
+        {
+            if (_busMonTunnel[bm].ChannelId == 0)
+                continue;
+            sendDisconnectRequest(&_busMonTunnel[bm]);
+            busMonitorTeardown(bm, END_BUSMON_LOST);
+        }
     }
 
     // Bounded, non-blocking exit recovery: wait for the CHIP to confirm the reset with a U_Reset.ind.
@@ -702,14 +713,15 @@ bool IpTunnelServer::closeTunnel(uint8_t channelId, uint8_t reason, bool* sent)
         return true;
     }
 #ifdef OPENKNX_HW_BUSMON
-    if (_busMonTunnel.ChannelId == channelId)
+    const int bmIdx = busMonSlotByChannel(channelId);
+    if (bmIdx >= 0)
     {
         // Told first: busMonitorTeardown() sends nothing and its Reset() zeroes the very fields the
         // datagram is built from, so afterwards the client could not be told at all.
-        const bool ok = sendDisconnectRequest(&_busMonTunnel);
+        const bool ok = sendDisconnectRequest(&_busMonTunnel[bmIdx]);
         if (sent != nullptr)
             *sent = ok;
-        busMonitorTeardown(reason);
+        busMonitorTeardown((uint8_t)bmIdx, reason);
         return true;
     }
 #endif
@@ -733,11 +745,16 @@ uint8_t IpTunnelServer::closeAllTunnels(uint8_t reason, bool withBusMon, uint8_t
         closed++;
     }
 #ifdef OPENKNX_HW_BUSMON
-    if (withBusMon && _busMonTunnel.ChannelId != 0)
+    if (withBusMon)
     {
-        if (sendDisconnectRequest(&_busMonTunnel)) told++;
-        busMonitorTeardown(reason);
-        closed++;
+        for (uint8_t bm = 0; bm < KNX_BUSMON_CONNECTIONS; bm++)
+        {
+            if (_busMonTunnel[bm].ChannelId == 0)
+                continue;
+            if (sendDisconnectRequest(&_busMonTunnel[bm])) told++;
+            busMonitorTeardown(bm, reason);
+            closed++;
+        }
     }
 #else
     (void)withBusMon;
@@ -1492,7 +1509,7 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
 #ifdef OPENKNX_HW_BUSMON
         // The busmon connection's id lives in _busMonTunnel, outside tunnels[] -> include it so a wrapped
         // _lastChannelId can never collide with an active busmon channel (03_08_02 Core §5.3.3 uniqueness).
-        if (_busMonTunnel.ChannelId != 0 && _busMonTunnel.ChannelId == _lastChannelId)
+        if (busMonSlotByChannel(_lastChannelId) >= 0)
             channelIdInUse = true;
 #endif
     } while (channelIdInUse);
@@ -1591,8 +1608,12 @@ void IpTunnelServer::HandleConnectionStateRequest(uint8_t* buffer, uint16_t leng
     }
 
 #ifdef OPENKNX_HW_BUSMON
-    if (tun == nullptr && _busMonTunnel.ChannelId != 0 && _busMonTunnel.ChannelId == stateRequest.channelId())
-        tun = &_busMonTunnel;
+    if (tun == nullptr)
+    {
+        const int bmIdx = busMonSlotByChannel(stateRequest.channelId());
+        if (bmIdx >= 0)
+            tun = &_busMonTunnel[bmIdx];
+    }
 #endif
 
     if (tun == nullptr)
@@ -1657,16 +1678,17 @@ void IpTunnelServer::HandleDisconnectRequest(uint8_t* buffer, uint16_t length, u
     }
 
 #ifdef OPENKNX_HW_BUSMON
-    if (tun == nullptr && _busMonTunnel.ChannelId != 0 && _busMonTunnel.ChannelId == discReq.channelId())
+    const int bmDisc = (tun == nullptr) ? busMonSlotByChannel(discReq.channelId()) : -1;
+    if (bmDisc >= 0)
     {
-        // Busmon tunnel closed by ETS -> leave HW monitor mode, routing returns (see plan 5b/6).
-        KnxIpDisconnectResponse discRes(_busMonTunnel.ChannelId, E_NO_ERROR);
+        // Busmon tunnel closed by ETS -> this slot ends; monitor mode is left when the LAST one goes.
+        KnxIpDisconnectResponse discRes(_busMonTunnel[bmDisc].ChannelId, E_NO_ERROR);
         // Route-back (03_08_02 Core §5.2): a route-back client's control HPAI is 0.0.0.0:0 -> reply to the
         // stored busmon control endpoint (mirrors the data/config disconnect path below).
-        uint32_t rIp = discReq.hpaiCtrl().ipAddress() ? discReq.hpaiCtrl().ipAddress() : _busMonTunnel.IpAddress;
-        uint16_t rPort = discReq.hpaiCtrl().ipPortNumber() ? discReq.hpaiCtrl().ipPortNumber() : _busMonTunnel.PortCtrl;
+        uint32_t rIp = discReq.hpaiCtrl().ipAddress() ? discReq.hpaiCtrl().ipAddress() : _busMonTunnel[bmDisc].IpAddress;
+        uint16_t rPort = discReq.hpaiCtrl().ipPortNumber() ? discReq.hpaiCtrl().ipPortNumber() : _busMonTunnel[bmDisc].PortCtrl;
         sendCounted(rIp, rPort, discRes.data(), discRes.totalLength());
-        busMonitorTeardown();
+        busMonitorTeardown((uint8_t)bmDisc, END_CLOSED);
         return;
     }
 #endif
@@ -1897,19 +1919,38 @@ void IpTunnelServer::HandleBusMonitorConnect(KnxIpConnectRequest& connRequest, u
     uint32_t srcIP = connRequest.hpaiCtrl().ipAddress() ? connRequest.hpaiCtrl().ipAddress() : src_addr;
     uint16_t srcPort = connRequest.hpaiCtrl().ipPortNumber() ? connRequest.hpaiCtrl().ipPortNumber() : src_port;
 
-    // Single busmonitor connection only.
-    if (_busMonTunnel.ChannelId != 0 || _hwBusMon == nullptr)
+    // Busmonitor slots: KNX_BUSMON_CONNECTIONS, default 1 (03_08_04 2.2.4 p.8 asks for one per subnetwork).
+    const int bmSlot = (_hwBusMon == nullptr) ? -1 : busMonFreeSlot();
+    if (bmSlot < 0)
     {
         KnxIpConnectResponse connRes(0x00, _hwBusMon == nullptr ? E_TUNNELING_LAYER : E_NO_MORE_CONNECTIONS);
         sendCounted(srcIP, srcPort, connRes.data(), connRes.totalLength()); // route-back (srcIP/srcPort resolved at fn top)
         return;
     }
+    const bool firstBusMon = (busMonitorCount() == 0);
+
+#ifdef KNX_BUSMON_REFUSE_WHEN_TUNNELS_OPEN
+    // 03_08_04 2.2.4 p.8 fixes the state WHILE the busmonitor runs ("may not support any other KNXnet/IP
+    // services"), not what happens to connections that are already open. Default keeps the eviction below;
+    // with this flag the busmonitor is refused instead, so a running download is never killed by someone
+    // opening a monitor. E_NO_MORE_CONNECTIONS = cannot serve a further connection right now.
+    for (int x = 0; x < KNX_TUNNELING + KNX_TUNNELING_DEVMGMT; x++)
+    {
+        if (tunnels[x].ChannelId == 0)
+            continue;
+
+        println("HW-Busmon: data/config tunnel open -> refusing the busmonitor connect");
+        KnxIpConnectResponse connResBusy(0x00, E_NO_MORE_CONNECTIONS);
+        sendCounted(srcIP, srcPort, connResBusy.data(), connResBusy.totalLength());
+        return;
+    }
+#endif
 
     // Enter monitor mode BEFORE anything is committed. hwBusMonEnter() refuses while the BCU is not up
     // (no TP chip, dead bus), and accepting the connect anyway used to cost every other client its tunnel
     // for a monitor that never started -- followed by a CONNECT_RESPONSE(OK) and an immediate disconnect.
     // Refused here means nothing was touched: no channel handed out, no tunnel closed.
-    if (!_hwBusMon->hwBusMonEnter())
+    if (firstBusMon && !_hwBusMon->hwBusMonEnter())
     {
         println("HW-Busmon: chip cannot enter monitor mode -> refusing the connect");
         KnxIpConnectResponse connRes(0x00, E_NO_MORE_CONNECTIONS);
@@ -1919,7 +1960,8 @@ void IpTunnelServer::HandleBusMonitorConnect(KnxIpConnectRequest& connRequest, u
 
     // KNX 03_08_04 Tunnelling §2.2.4 p.8: a busmonitor connection is exclusive per subnetwork -> close any
     // open data/config tunnels (e.g. a running group monitor) so the busmonitor becomes the only connection.
-    closeTunnelsForBusmon();
+    if (firstBusMon)
+        closeTunnelsForBusmon();
 
     // Unique channel id across all normal tunnels and the busmon connection.
     bool channelIdInUse;
@@ -1930,42 +1972,70 @@ void IpTunnelServer::HandleBusMonitorConnect(KnxIpConnectRequest& connRequest, u
         for (int x = 0; x < KNX_TUNNELING + KNX_TUNNELING_DEVMGMT; x++)
             if (tunnels[x].ChannelId == _lastChannelId)
                 channelIdInUse = true;
+        if (busMonSlotByChannel(_lastChannelId) >= 0) // another busmon slot may already hold it
+            channelIdInUse = true;
     } while (channelIdInUse);
 
-    _busMonTunnel.IsConfig = false;
-    _busMonTunnel.IndividualAddress = 0;
-    _busMonTunnel.IpAddress = srcIP;
-    _busMonTunnel.PortData = connRequest.hpaiData().ipPortNumber() ? connRequest.hpaiData().ipPortNumber() : srcPort;
-    _busMonTunnel.PortCtrl = connRequest.hpaiCtrl().ipPortNumber() ? connRequest.hpaiCtrl().ipPortNumber() : srcPort;
-    _busMonTunnel.SequenceCounter_S = 0;
-    _busMonSeq = 0; // restart the cEMI L_Busmon.ind status-octet sequence counter for the new busmon session
-    _busMonTunnel.lastHeartbeat = millis();
-    _busMonTunnel.connectStart = millis();
-    _busMonTunnel.ConnectUptimeS = _uptimeS;
-    _busMonTunnel.ChannelId = _lastChannelId; // set last -> busMonitorActive() true only once fully set up
+    _busMonTunnel[bmSlot].IsConfig = false;
+    _busMonTunnel[bmSlot].IndividualAddress = 0;
+    _busMonTunnel[bmSlot].IpAddress = srcIP;
+    _busMonTunnel[bmSlot].PortData = connRequest.hpaiData().ipPortNumber() ? connRequest.hpaiData().ipPortNumber() : srcPort;
+    _busMonTunnel[bmSlot].PortCtrl = connRequest.hpaiCtrl().ipPortNumber() ? connRequest.hpaiCtrl().ipPortNumber() : srcPort;
+    _busMonTunnel[bmSlot].SequenceCounter_S = 0;
+    if (firstBusMon)
+        _busMonSeq = 0; // the L_Busmon.ind status-octet sequence describes the CAPTURE and is shared by all
+                        // clients -- restarting it for a late joiner would tear the running client's numbering
+    _busMonTunnel[bmSlot].lastHeartbeat = millis();
+    _busMonTunnel[bmSlot].connectStart = millis();
+    _busMonTunnel[bmSlot].ConnectUptimeS = _uptimeS;
+    _busMonTunnel[bmSlot].ChannelId = _lastChannelId; // set last -> the slot forwards only once fully set up
     _busMonExitPending = false;
 
     print("New HW-Busmon connection, Channel: 0x");
-    print(_busMonTunnel.ChannelId, 16);
+    print(_busMonTunnel[bmSlot].ChannelId, 16);
     println(" (routing paused until disconnect)");
 
-    KnxIpConnectResponse connRes(_ipParameters, _deviceObject.individualAddress(), 3671, _busMonTunnel.ChannelId, TUNNEL_CONNECTION);
+    KnxIpConnectResponse connRes(_ipParameters, _deviceObject.individualAddress(), 3671, _busMonTunnel[bmSlot].ChannelId, TUNNEL_CONNECTION);
     // Same route-back symmetry as the data/management path above (03_08_02 8.6.2.2 p.49).
-    if (connRequest.hpaiData().ipAddress() == 0 && connRequest.hpaiData().ipPortNumber() == 0)
+    if (connRequest.hpaiData().ipAddress() == 0 || connRequest.hpaiData().ipPortNumber() == 0)
     {
         connRes.controlEndpoint().ipAddress(0);
         connRes.controlEndpoint().ipPortNumber(0);
     }
-    sendCounted(_busMonTunnel.IpAddress, _busMonTunnel.PortCtrl, connRes.data(), connRes.totalLength());
+    sendCounted(_busMonTunnel[bmSlot].IpAddress, _busMonTunnel[bmSlot].PortCtrl, connRes.data(), connRes.totalLength());
 }
 
-void IpTunnelServer::busMonitorTeardown(uint8_t reason)
+int IpTunnelServer::busMonSlotByChannel(uint8_t channelId)
 {
-    if (_busMonTunnel.ChannelId == 0)
+    if (channelId == 0)
+        return -1;
+    for (uint8_t i = 0; i < KNX_BUSMON_CONNECTIONS; i++)
+        if (_busMonTunnel[i].ChannelId == channelId)
+            return (int)i;
+    return -1;
+}
+
+int IpTunnelServer::busMonFreeSlot()
+{
+    for (uint8_t i = 0; i < KNX_BUSMON_CONNECTIONS; i++)
+        if (_busMonTunnel[i].ChannelId == 0)
+            return (int)i;
+    return -1;
+}
+
+void IpTunnelServer::busMonitorTeardown(uint8_t slot, uint8_t reason)
+{
+    if (slot >= KNX_BUSMON_CONNECTIONS || _busMonTunnel[slot].ChannelId == 0)
         return;
 
-    recordTunnelSession(_busMonTunnel.IpAddress, 0, TUN_BUSMON, _busMonTunnel.connectStart, reason, 0, &_busMonTunnel);
-    _busMonTunnel.Reset(); // stop forwarding at once (busMonitorActive() -> false)
+    recordTunnelSession(_busMonTunnel[slot].IpAddress, 0, TUN_BUSMON, _busMonTunnel[slot].connectStart, reason, 0, &_busMonTunnel[slot]);
+    _busMonTunnel[slot].Reset(); // stop forwarding on this slot at once
+
+    // Monitor mode is shared by every busmon client -> leave it only when the last one is gone. Checked
+    // AFTER the Reset above, so the slot just closed no longer counts.
+    if (busMonitorActive())
+        return;
+
     if (_hwBusMon)
     {
         // hwBusMonExit() returns true only if it ACTUALLY requested the reset. If a local console busmon
@@ -1989,7 +2059,7 @@ void IpTunnelServer::busMonitorTeardown(uint8_t reason)
 
 void IpTunnelServer::busMonitorFrame(uint8_t* lpdu, uint16_t len, uint8_t status)
 {
-    if (_busMonTunnel.ChannelId == 0 || len == 0)
+    if (!busMonitorActive() || len == 0)
         return;
 
     // Max raw TP1 LPDU incl. FCS: extended frame = 9 metadata bytes (incl. FCS) + up to 255 LSDU = 264.
@@ -1999,7 +2069,10 @@ void IpTunnelServer::busMonitorFrame(uint8_t* lpdu, uint16_t len, uint8_t status
     constexpr uint16_t HDR = 11; // MC(1) + AddIL(1) + status AI(3) + extended-timestamp AI(6)
     if (len > MAX_LPDU)
     {
-        bumpTo(_busMonTunnel.StatTxDrop); // the one mode where a silent drop must never look like a clean capture
+        // The one mode where a silent drop must never look like a clean capture -- count it on every client.
+        for (uint8_t bm = 0; bm < KNX_BUSMON_CONNECTIONS; bm++)
+            if (_busMonTunnel[bm].ChannelId != 0)
+                bumpTo(_busMonTunnel[bm].StatTxDrop);
         return;
     }
 
@@ -2029,15 +2102,23 @@ void IpTunnelServer::busMonitorFrame(uint8_t* lpdu, uint16_t len, uint8_t status
 
     CemiFrame frame(buf, HDR + len);
     KnxIpTunnelingRequest req(frame); // ctor sets serviceTypeIdentifier(TunnelingRequest)
-    req.connectionHeader().sequenceCounter(_busMonTunnel.SequenceCounter_S++);
     req.connectionHeader().length(LEN_CH);
-    req.connectionHeader().channelId(_busMonTunnel.ChannelId);
-    // Fire and forget: no FIFO, no resend. A failed send under bus load is exactly what a busmonitor
-    // must not report as captured.
-    if (sendCounted(_busMonTunnel.IpAddress, _busMonTunnel.PortData, req.data(), req.totalLength()))
-        bumpTo(_busMonTunnel.StatToClient);
-    else
-        bumpTo(_busMonTunnel.StatTxDrop);
+
+    // One capture, N readers: the cEMI payload (incl. the shared status/sequence octet) is built once; only
+    // the KNXnet/IP connection header differs per client. Fire and forget: no FIFO, no resend. A failed send
+    // under bus load is exactly what a busmonitor must not report as captured.
+    for (uint8_t bm = 0; bm < KNX_BUSMON_CONNECTIONS; bm++)
+    {
+        if (_busMonTunnel[bm].ChannelId == 0)
+            continue;
+
+        req.connectionHeader().sequenceCounter(_busMonTunnel[bm].SequenceCounter_S++);
+        req.connectionHeader().channelId(_busMonTunnel[bm].ChannelId);
+        if (sendCounted(_busMonTunnel[bm].IpAddress, _busMonTunnel[bm].PortData, req.data(), req.totalLength()))
+            bumpTo(_busMonTunnel[bm].StatToClient);
+        else
+            bumpTo(_busMonTunnel[bm].StatTxDrop);
+    }
 }
 #endif
 
