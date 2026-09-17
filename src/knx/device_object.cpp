@@ -54,7 +54,10 @@ DeviceObject::DeviceObject()
                 if(start == 0)
                     return 1;
 
-                io->_prgMode = *data;
+                // PDT_BITSET8: only bit 0 is the programming mode, and progMode() tests the stored byte
+                // for exactly 1 -- storing the reserved bits made a write of 03h read back as "not in
+                // programming mode" while the device reported 03h.
+                io->_prgMode = *data & 0x01;
                 return 1;
             }),
         new DataProperty(PID_MAX_APDU_LENGTH, false, PDT_UNSIGNED_INT, 1, ReadLv3 | WriteLv0, (uint16_t)254),
