@@ -18,6 +18,7 @@ class DataProperty : public Property
     uint16_t saveSize() override;
     const uint8_t* data();
     const uint8_t* data(uint16_t elementIndex);
+    bool isDataProperty() const override { return true; }
 
   private:
     uint16_t _currentElements = 0;

@@ -228,12 +228,20 @@ const Property* InterfaceObject::property(PropertyID id) const
 
 const uint8_t* InterfaceObject::propertyData(PropertyID id)
 {
-    DataProperty* prop = (DataProperty*)property(id);
-    return prop->data();
+    // property() returns nullptr for a PID this object does not carry, and the callers do check the
+    // returned pointer -- but the dereference happened before they could. The type is checked as well:
+    // the cast was unconditional, so a PID served by a CallbackProperty or a FunctionProperty was read as
+    // if it kept a data block, and what came back was whatever sat at that offset.
+    Property* prop = property(id);
+    if (prop == nullptr || !prop->isDataProperty())
+        return nullptr;
+    return ((DataProperty*)prop)->data();
 }
 
 const uint8_t* InterfaceObject::propertyData(PropertyID id, uint16_t elementIndex)
 {
-    DataProperty* prop = (DataProperty*)property(id);
-    return prop->data(elementIndex);
+    Property* prop = property(id);
+    if (prop == nullptr || !prop->isDataProperty())
+        return nullptr;
+    return ((DataProperty*)prop)->data(elementIndex);
 }

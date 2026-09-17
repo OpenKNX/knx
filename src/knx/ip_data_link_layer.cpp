@@ -184,9 +184,16 @@ void IpDataLinkLayer::loopHandleSearchRequestExtended(uint8_t* buffer, uint16_t 
     if(searchRequest.srpByMacAddr)
     {
         println("srpByMacAddr");
-        const uint8_t *x = _ipParameters.propertyData(PID_MAC_ADDRESS);
+        // PID_MAC_ADDRESS is a CallbackProperty and keeps no data block, so propertyData() has nothing to
+        // hand out - the old unchecked cast compared the requested MAC against six octets of code. Read it
+        // through the property and answer nothing when it cannot be read.
+        uint8_t mac[6] = {0};
+        uint8_t macCount = 1;
+        _ipParameters.readProperty(PID_MAC_ADDRESS, 1, macCount, mac);
+        if (macCount == 0)
+            return;
         for(int i = 0; i<6;i++)
-            if(searchRequest.srpMacAddr[i] != x[i])
+            if(searchRequest.srpMacAddr[i] != mac[i])
                 return;
     }
 

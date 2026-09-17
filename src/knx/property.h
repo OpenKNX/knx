@@ -277,6 +277,13 @@ class Property : public SaveRestore
     virtual uint8_t write(uint16_t start, uint8_t count, const uint8_t* data) = 0;
     virtual void command(uint8_t* data, uint8_t length, uint8_t* resultData, uint8_t& resultLength);
     virtual void state(uint8_t* data, uint8_t length, uint8_t* resultData, uint8_t& resultLength);
+    /**
+     * @brief Whether this property keeps its value in a block of its own, i.e. is a DataProperty.
+     * @details Only a DataProperty answers propertyData(); a CallbackProperty or a FunctionProperty keeps
+     *          no block, and casting one to DataProperty* hands out whatever lies at that offset. Property
+     *          is already polymorphic, so this costs nothing per instance.
+     */
+    virtual bool isDataProperty() const { return false; }
     uint8_t read(uint8_t& value) const;
     uint8_t read(uint16_t& value) const;
     uint8_t read(uint32_t& value) const;
