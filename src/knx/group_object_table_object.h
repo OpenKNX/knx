@@ -12,7 +12,6 @@ class GroupObjectTableObject : public TableObject
     virtual ~GroupObjectTableObject();
     uint16_t entryCount();
     GroupObject& get(uint16_t asap);
-    GroupObject& nextUpdatedObject(bool& valid);
     void groupObjects(GroupObject* objs, uint16_t size);
 
     const uint8_t* restore(const uint8_t* buffer) override;

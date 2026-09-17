@@ -47,30 +47,6 @@ const uint8_t* GroupObjectTableObject::restore(const uint8_t* buffer)
     return buffer;
 }
 
-GroupObject& GroupObjectTableObject::nextUpdatedObject(bool& valid)
-{
-    static uint16_t startIdx = 1;
-
-    uint16_t objCount = entryCount();
-
-    for (uint16_t asap = startIdx; asap <= objCount; asap++)
-    {
-        GroupObject& go = get(asap);
-
-        if (go.commFlag() == Updated)
-        {
-            go.commFlag(Ok);
-            startIdx = asap + 1;
-            valid = true;
-            return go;
-        }
-    }
-
-    startIdx = 1;
-    valid = false;
-    return get(1);
-}
-
 void GroupObjectTableObject::groupObjects(GroupObject * objs, uint16_t size)
 {
     freeGroupObjects();
