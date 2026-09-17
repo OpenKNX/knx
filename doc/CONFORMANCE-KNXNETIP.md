@@ -73,9 +73,20 @@ unterscheidet, ist das vermerkt (siehe „Produkt-Unterschiede").
 - **cEMI-Transport-Layer** — **AKTIV im Interface** hinter `KNX_CEMI_TRANSPORT_LAYER`: `T_Data_Individual_req
   0x4A` / `T_Data_Connected_req 0x41` werden lokal bedient (`cemi_server.cpp:191-204, :512-543`;
   `transport_layer.cpp:433-467`), die Antwort geht als `T_Data_*_ind` auf derselben Verbindung raus, nichts
-  erreicht den Bus. **Router: Flag nicht gesetzt** → 0x4A/0x41 fallen weiter durch (dort weiterhin ein
-  konformer „unterstützt-kein-cEMI-TL"-Server: DEVICE_CONFIGURATION_ACK geht zuerst raus). *Management
-  §2.6.1.2 S.18; AN118.*
+  erreicht den Bus. **Auch im Router gesetzt** (`OAM-IP-Router/platformio.custom.ini:12`, mit Verweis auf
+  fn 60202) — die frühere Notiz „Router: Flag nicht gesetzt" ist überholt. *Management §2.6.1.2 S.18; AN118.*
+- **Device-Management bei offener Transportverbindung** — abgewiesen wird **nur ein FREMDER** Transport-Partner,
+  Vorgabe `KNX_CEMI_TRANSPORT_STRICT` (in `config.h`, **default AUS**) stellt die unbedingte Abweisung her.
+  08_TSSH 8.3.2 S.158 (fn 60202) treibt den Prüffall mit einem Partner, den der Prüfling **hereinbekommt**
+  (`L_Data.ind 1.1.255 -> 15.15.255 Connect` als ROUTING_INDICATION); die Verbindung gehört also **nicht**
+  dem Client, der danach Device Management öffnet. §2.6.1.2 S.18 verlangt gar keine Abweisung, sondern
+  beschreibt nur das Umschalten. „Eigen" heißt: die Partneradresse ist die IA eines Tunnels **derselben IP**
+  (`ip_tunnel_server.cpp`, DEVICE_MGMT-Zweig). Ohne diese Unterscheidung sperrte sich ETS selbst aus — es
+  liest die GA-Tabellen über ein `T_Connect` durch seinen Tunnel und will danach Device Management, bis der
+  6-s-Verbindungs-Timeout (03_03_04 §5.1) die vom Client nie getrennte Verbindung freigibt. **HW-verifiziert
+  am Router 11.11.0.126:** eigener Tunnel → `E_NO_ERROR`, `1.1.255` über Routing → `E_NO_MORE_CONNECTIONS`.
+  Abgelehnte Versuche melden eigenen Grund `END_REJ_TRANSPORT` (vorher als „kein freier Tunnel" sichtbar,
+  bei 16 freien Tunneln).
 - **#3 M_PropWrite** — aktiv (kein Flag), siehe 🔧.
 - **DISCONNECT_RESPONSE (0x20A)** abgefangen (kein „Unhandled"-Log) (`ip_tunnel_server.cpp` `HandleIpFrame()`, `case DisconnectResponse`);
   **Busmon-Kick** schließt laufende Tunnel bei Busmon-Start (`:1367, :1332-1350`, gated `OPENKNX_HW_BUSMON`).
