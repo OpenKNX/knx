@@ -402,7 +402,16 @@ void TpUartDataLinkLayer::processRxFrame(TPUart::Frame &tpFrame)
             // (ACK 0xCC / NACK 0x0C / BUSY 0xC0 -- exactly the values seen on the bus).
             if (tpFrame.isAck())
             {
-                uint8_t ackByte = tpFrame.isBusy() ? 0xC0 : (tpFrame.isNack() ? 0x0C : 0xCC);
+                // Both flags set means two devices answered at once: a logical 0 dominates the line, so
+                // what the bus actually carried is 0x0C & 0xC0 = 0x00. Reporting it as BUSY invented a
+                // verdict that was never on the wire.
+                uint8_t ackByte = 0xCC;
+                if (tpFrame.isBusy() && tpFrame.isNack())
+                    ackByte = 0x00;
+                else if (tpFrame.isBusy())
+                    ackByte = 0xC0;
+                else if (tpFrame.isNack())
+                    ackByte = 0x0C;
                 _ipTunnelServer.busMonitorFrame(&ackByte, 1, busMonStatus(false));
             }
         }
