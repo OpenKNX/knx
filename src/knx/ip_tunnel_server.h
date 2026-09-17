@@ -112,7 +112,11 @@ class IpTunnelServer
         // products relies on that split, so a new SESSION reason goes above this line, never appended.
         END_REJ_TYPE = 9,   // connection type not supported (03_08_02 Table 7) -> detail = CRI type
         END_REJ_LAYER = 10, // tunnelling layer not supported (03_08_04 Table 10) -> detail = layer
-        END_REJ_BUSY = 11   // no connection available right now (busmon owns the bus / all slots taken)
+        END_REJ_BUSY = 11,     // no connection available right now (busmon owns the bus / all slots taken)
+        END_REJ_TRANSPORT = 12 // Device Management refused: a FOREIGN transport connection holds the layer
+                               // (03_08_03 2.6.1.2 / 08_TSSH 8.3.2). Own reason because it also answers
+                               // 0x24, and reporting it as "no free tunnel" on a device with 16 free
+                               // tunnels sends every diagnosis in the wrong direction.
     };
     // One tunnel session. Times are millis()-relative (uptime); the console converts start to an absolute
     // wall-clock time on the fly when the clock is valid, so it stays correct even if the clock arrives later.
@@ -210,11 +214,12 @@ class IpTunnelServer
     void handleTunnelAck(uint8_t *buffer, uint16_t length);    // pop the acked head + pump the next
 #endif
     void HandleConnectRequest(uint8_t* buffer, uint16_t length, uint32_t& src_addr, uint16_t& src_port);
-    void HandleConnectionStateRequest(uint8_t* buffer, uint16_t length);
-    void HandleDisconnectRequest(uint8_t* buffer, uint16_t length);
-    void HandleDescriptionRequest(uint8_t* buffer, uint16_t length);
-    void HandleDeviceConfigurationRequest(uint8_t* buffer, uint16_t length);
-    void HandleTunnelingRequest(uint8_t* buffer, uint16_t length);
+    // src_addr/src_port: the UDP sender, needed to resolve a route-back control HPAI (03_08_02 8.6.2.2).
+    void HandleConnectionStateRequest(uint8_t* buffer, uint16_t length, uint32_t src_addr, uint16_t src_port);
+    void HandleDisconnectRequest(uint8_t* buffer, uint16_t length, uint32_t src_addr, uint16_t src_port);
+    void HandleDescriptionRequest(uint8_t* buffer, uint16_t length, uint32_t src_addr, uint16_t src_port);
+    void HandleDeviceConfigurationRequest(uint8_t* buffer, uint16_t length, uint32_t src_addr);
+    void HandleTunnelingRequest(uint8_t* buffer, uint16_t length, uint32_t src_addr);
 
 
     KnxIpTunnelConnection tunnels[KNX_TUNNELING+KNX_TUNNELING_DEVMGMT];

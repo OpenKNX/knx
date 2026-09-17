@@ -940,31 +940,31 @@ bool IpTunnelServer::HandleIpFrame(uint8_t* buffer, uint16_t length, uint32_t& s
 
         case ConnectionStateRequest: {
             if (length < LEN_KNXIP_HEADER + 2 + LEN_IPHPAI) return true; // channel id + reserved + the reply HPAI at buffer[8..]; else the reply endpoint is stale
-            HandleConnectionStateRequest(buffer, length);
+            HandleConnectionStateRequest(buffer, length, src_addr, src_port);
             break;
         }
 
         case DisconnectRequest: {
             if (length < LEN_KNXIP_HEADER + 2 + LEN_IPHPAI) return true; // channel id + reserved + the reply HPAI at buffer[8..]; else the reply endpoint is stale
-            HandleDisconnectRequest(buffer, length);
+            HandleDisconnectRequest(buffer, length, src_addr, src_port);
             break;
         }
 
         case DescriptionRequest: {
             if (length < LEN_KNXIP_HEADER + LEN_IPHPAI) return true; // header + control HPAI; else hpaiCtrl() is stale
-            HandleDescriptionRequest(buffer, length);
+            HandleDescriptionRequest(buffer, length, src_addr, src_port);
             break;
         }
 
         case DeviceConfigurationRequest: {
             if (length < LEN_KNXIP_HEADER + LEN_CH + 1) return true; // header + conn header + >=1 cEMI byte (messageCode); the M_Prop path has no L_Data valid() gate, so guard the messageCode read here
-            HandleDeviceConfigurationRequest(buffer, length);
+            HandleDeviceConfigurationRequest(buffer, length, src_addr);
             break;
         }
 
         case TunnelingRequest: {
             if (length < LEN_KNXIP_HEADER + LEN_CH) return true; // header + connection header; else ctor underflows
-            HandleTunnelingRequest(buffer, length);
+            HandleTunnelingRequest(buffer, length, src_addr);
             break;
         }
 
@@ -999,6 +999,23 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
     // a conformant ETS never sends it. Adding it means raising Core to v2 plus the 2Dh/28h/2Eh evaluation
     // and a CONNECT_RESPONSE response-matrix re-audit.
     KnxIpConnectRequest connRequest(buffer, length);
+
+    // 03_08_02 8.6.2.1 p.49: the HPAI host protocol code is IPV4_UDP (01h) or IPV4_TCP (02h); any other
+    // encoding is invalid and "result[s] in discarding the containing KNXnet/IP frame". This stack has no
+    // TCP, and a TCP HPAI may only carry the Route Back form answered over an existing TCP connection
+    // (8.6.2.2 p.50) -- there is none, so it is invalid here too. Discard silently: E_HOST_PROTOCOL_TYPE
+    // is NOT in the CONNECT_RESPONSE status table (03_08_02 Table 8 p.39), so answering would itself be
+    // off-spec. Accepting one used to hand a TCP client a UDP CONNECT_RESPONSE it never hears, while the
+    // slot and its additional individual address stayed committed for the full 120 s heartbeat timeout.
+    // The SEARCH_REQUEST path already does exactly this (ip_data_link_layer.cpp).
+    if (connRequest.hpaiCtrl().code() != IPV4_UDP || connRequest.hpaiData().code() != IPV4_UDP)
+    {
+#ifdef KNX_LOG_TUNNELING
+        println("Connect Request with a non-UDP HPAI host protocol code -> discarded");
+#endif
+        return;
+    }
+
 #ifdef KNX_LOG_TUNNELING
     println("Got Connect Request!");
     switch (connRequest.cri().type())
@@ -1180,26 +1197,40 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
 #endif
 
     uint8_t tunIdx = 0xff;
+    // Set when a Device-Management connect is turned away because a remote transport connection is open,
+    // so the reject below can name that reason instead of the generic "no free tunnel".
+    bool dmTransportBusy = false;
     uint8_t tunResSlot = 0xff;      // slot the reservation table holds for this client (0xff = none)
     bool tunReservedAssign = false; // true = tunIdx is a RESERVED slot (fixed slot->IA); false = free pool
     if (connRequest.cri().type() == DEVICE_MGMT_CONNECTION)
     {
 #ifdef KNX_CEMI_TRANSPORT_LAYER
-        // 03_08_03 2.6.1.2 p.18: opening a device management connection switches the Transport Layer into
-        // cEMI Transport Layer mode. A layer that already carries a connection cannot be switched, so the
-        // request is refused instead of quietly serving two transport peers at once -- 08_TSSH 8.3.2 p.158
-        // (fn 60202) opens a transport connection first and then requires CONNECT_RESPONSE
-        // E_NO_MORE_CONNECTIONS. Leaving tunIdx at 0xFF produces exactly that answer below.
-        //
-        // This covers a connection in EITHER direction, including one this device opened itself (the file
-        // transfer client programming another device): the layer is equally unavailable then, and the
-        // clause draws no distinction. The connection is not torn down -- the management client is asked
-        // to come back, which is the outcome that loses no work.
-        if (_cemiServer.transportLayerBusy())
+        // Refuse only a foreign transport peer. On p.158 the test controller opens the transport connection as
+        // a ROUTING_INDICATION from 1.1.255, so the peer holding the layer is not the client that afterwards
+        // opens Device Management -- that case still answers E_NO_MORE_CONNECTIONS. Refusing a client its own
+        // connection locks ETS out: it reads the group-address tables over a T_Connect through its own tunnel.
+        // KNX_CEMI_TRANSPORT_STRICT restores the unconditional refusal for a certification run.
+        bool foreignPeer = _cemiServer.transportLayerBusy();
+#ifndef KNX_CEMI_TRANSPORT_STRICT
+        if (foreignPeer)
         {
-#ifdef KNX_LOG_TUNNELING
-            println("device management refused: the transport layer already carries a connection");
+            // The peer is this client's own if it is the individual address of a tunnel this very IP holds.
+            const uint16_t peer = _cemiServer.transportPeer();
+            for (int i = 0; i < KNX_TUNNELING; i++)
+                if (tunnels[i].ChannelId != 0 && tunnels[i].IndividualAddress == peer && tunnels[i].IpAddress == srcIP)
+                {
+                    foreignPeer = false;
+                    break;
+                }
+        }
 #endif
+        if (foreignPeer)
+        {
+            // Unconditional: this refusal used to be invisible in a release build while the generic reject
+            // below reported "no free tunnel availible" -- the wrong reason, and the one that made this cost
+            // hours to diagnose from the outside.
+            println("device management refused: a foreign transport connection is open");
+            dmTransportBusy = true;
         }
         else
 #endif
@@ -1432,13 +1463,15 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
         // (E_NO_MORE_CONNECTIONS 0x24) from "slot free but the assignable tunnelling IA is not unique"
         // (E_NO_MORE_UNIQUE_CONNECTIONS 0x25). NOT distinguished for a depleted pool -- see the comment
         // at the depleted-pool writer above for why 0x25 is reported there and what it would take to split.
-        println(paNotUnique ? "tunnel connect rejected: no unique individual address available"
-                            : "no free tunnel availible");
+        println(dmTransportBusy ? "device management rejected: a foreign transport connection is open"
+                : paNotUnique   ? "tunnel connect rejected: no unique individual address available"
+                                : "no free tunnel availible");
         // The other three reject paths are recorded; this one was not, so a connect turned away because
         // every slot is taken -- or because a reserved slot is busy and configured to decline -- left no
         // trace at all. detail carries the KNX error code (0x24 / 0x25) that went back to the client.
         recordRejectedConnect(rIp, connRequest.cri().type() == DEVICE_MGMT_CONNECTION ? TUN_CONFIG : TUN_DATA,
-                              END_REJ_BUSY, paNotUnique ? E_NO_MORE_UNIQUE_CONNECTIONS : E_NO_MORE_CONNECTIONS);
+                              dmTransportBusy ? END_REJ_TRANSPORT : END_REJ_BUSY,
+                              paNotUnique ? E_NO_MORE_UNIQUE_CONNECTIONS : E_NO_MORE_CONNECTIONS);
         KnxIpConnectResponse connRes(0x00, paNotUnique ? E_NO_MORE_UNIQUE_CONNECTIONS : E_NO_MORE_CONNECTIONS);
         sendCounted(rIp, rPort, connRes.data(), connRes.totalLength());
         return;
@@ -1527,17 +1560,22 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
     // same symmetry is spelled out for the TCP case in 03_08_02 8.4.3.4.3 p.45 ("If Client requested Route
     // Back Data Endpoint, Server shall also select Route Back Data Endpoint of same type"). Filling in
     // PID_CURRENT_IP_ADDRESS here hands a NATed client an address it cannot reach.
-    // Only the fully zeroed HPAI counts: 8.6.2.2 p.49 declares an HPAI with only the address OR only the
-    // port set to zero invalid, so a half-zero one is not a route-back request and keeps the real address.
-    if (connRequest.hpaiData().ipAddress() == 0 && connRequest.hpaiData().ipPortNumber() == 0)
+    // EITHER field zero is enough. 03_08_02 8.6.2.2 p.49 calls a half-zero HPAI invalid, but 08_TSSH
+    // overrides that for certification: 5.4.5 p.99 (real IP, port 0000h) and 5.4.6 p.101 (IP 00000000h,
+    // real port) both send one, both expect CONNECT_RESPONSE NO_ERROR with a working tunnel, and both
+    // pin the response data endpoint as 00000000h : 0000h -- the same as the fully zeroed 5.4.4 p.98.
+    // Requiring BOTH fields here answered those two tests with the real server address and failed them.
+    if (connRequest.hpaiData().ipAddress() == 0 || connRequest.hpaiData().ipPortNumber() == 0)
     {
         connRes.controlEndpoint().ipAddress(0);
         connRes.controlEndpoint().ipPortNumber(0);
     }
-    sendCounted(tun->IpAddress, tun->PortCtrl, connRes.data(), connRes.totalLength());
+    // 03_08_02 7.8.2 p.38 wants the client's control endpoint; srcIP/srcPort are exactly that, already
+    // resolved for route-back.
+    sendCounted(srcIP, srcPort, connRes.data(), connRes.totalLength());
 }
 
-void IpTunnelServer::HandleConnectionStateRequest(uint8_t* buffer, uint16_t length)
+void IpTunnelServer::HandleConnectionStateRequest(uint8_t* buffer, uint16_t length, uint32_t src_addr, uint16_t src_port)
 {
     KnxIpStateRequest stateRequest(buffer, length);
 
@@ -1565,7 +1603,12 @@ void IpTunnelServer::HandleConnectionStateRequest(uint8_t* buffer, uint16_t leng
 #endif
         // Echo the requested (unknown) channel id in the error, not 0 (03_08_04 §7.8.3; both refs do this).
         KnxIpStateResponse stateRes(stateRequest.channelId(), E_CONNECTION_ID);
-        sendCounted(stateRequest.hpaiCtrl().ipAddress(), stateRequest.hpaiCtrl().ipPortNumber(), stateRes.data(), stateRes.totalLength());
+        // Route-back (03_08_02 8.6.2.2): a zeroed control HPAI means "answer where this came from". Without
+        // this the reply went to 0.0.0.0:0 and only the RP2040/ESP32 platform's own last-sender substitution
+        // rescued it -- a platform that does not do that (EspPlatform) dropped the reply.
+        sendCounted(stateRequest.hpaiCtrl().ipAddress() ? stateRequest.hpaiCtrl().ipAddress() : src_addr,
+                    stateRequest.hpaiCtrl().ipPortNumber() ? stateRequest.hpaiCtrl().ipPortNumber() : src_port,
+                    stateRes.data(), stateRes.totalLength());
         return;
     }
 
@@ -1593,7 +1636,7 @@ void IpTunnelServer::HandleConnectionStateRequest(uint8_t* buffer, uint16_t leng
     sendCounted(rIp, rPort, stateRes.data(), stateRes.totalLength());
 }
 
-void IpTunnelServer::HandleDisconnectRequest(uint8_t* buffer, uint16_t length)
+void IpTunnelServer::HandleDisconnectRequest(uint8_t* buffer, uint16_t length, uint32_t src_addr, uint16_t src_port)
 {
     KnxIpDisconnectRequest discReq(buffer, length);
 
@@ -1636,7 +1679,18 @@ void IpTunnelServer::HandleDisconnectRequest(uint8_t* buffer, uint16_t length)
 #endif
         // Echo the requested (unknown) channel id back in the error, not 0 (03_08_04 §7.8.4 / TSSH 3.6.2).
         KnxIpDisconnectResponse discRes(discReq.channelId(), E_CONNECTION_ID);
-        sendCounted(discReq.hpaiCtrl().ipAddress(), discReq.hpaiCtrl().ipPortNumber(), discRes.data(), discRes.totalLength());
+        sendCounted(discReq.hpaiCtrl().ipAddress() ? discReq.hpaiCtrl().ipAddress() : src_addr,
+                    discReq.hpaiCtrl().ipPortNumber() ? discReq.hpaiCtrl().ipPortNumber() : src_port,
+                    discRes.data(), discRes.totalLength());
+        return;
+    }
+
+    // A forged DISCONNECT on a swept channel id ends someone else's session; treat it like an unknown
+    // channel. CONNECTIONSTATE stays open: a forged one only refreshes a heartbeat the real client
+    // refreshes anyway, and its reply goes to the stored endpoint.
+    if (!fromTunnelPeer(tun, src_addr))
+    {
+        println("disconnect request from a foreign source address -> ignored");
         return;
     }
 
@@ -1649,14 +1703,16 @@ void IpTunnelServer::HandleDisconnectRequest(uint8_t* buffer, uint16_t length)
     tun->Reset();
 }
 
-void IpTunnelServer::HandleDescriptionRequest(uint8_t* buffer, uint16_t length)
+void IpTunnelServer::HandleDescriptionRequest(uint8_t* buffer, uint16_t length, uint32_t src_addr, uint16_t src_port)
 {
     KnxIpDescriptionRequest descReq(buffer, length);
     KnxIpDescriptionResponse descRes(_ipParameters, _deviceObject);
-    sendCounted(descReq.hpaiCtrl().ipAddress(), descReq.hpaiCtrl().ipPortNumber(), descRes.data(), descRes.totalLength());
+    sendCounted(descReq.hpaiCtrl().ipAddress() ? descReq.hpaiCtrl().ipAddress() : src_addr,
+                descReq.hpaiCtrl().ipPortNumber() ? descReq.hpaiCtrl().ipPortNumber() : src_port,
+                descRes.data(), descRes.totalLength());
 }
 
-void IpTunnelServer::HandleDeviceConfigurationRequest(uint8_t* buffer, uint16_t length)
+void IpTunnelServer::HandleDeviceConfigurationRequest(uint8_t* buffer, uint16_t length, uint32_t src_addr)
 {
     KnxIpConfigRequest confReq(buffer, length);
 
@@ -1678,6 +1734,15 @@ void IpTunnelServer::HandleDeviceConfigurationRequest(uint8_t* buffer, uint16_t 
         println(confReq.connectionHeader().channelId());
 #endif
         // KNX 03_08_02 Core §5.5 p.14: unknown communication channel id -> silently ignore (no malformed reply to 0.0.0.0:0).
+        return;
+    }
+
+    // Compare the client endpoint the CONNECT_REQUEST announced (IP only; control and data may use
+    // different source ports), so a swept channel id cannot act on someone else's session.
+    // Ignored like an unknown channel id, 03_08_02 5.5 p.14.
+    if (!fromTunnelPeer(tun, src_addr))
+    {
+        println("tunnel frame from a foreign source address -> ignored");
         return;
     }
 
@@ -1719,7 +1784,7 @@ void IpTunnelServer::HandleDeviceConfigurationRequest(uint8_t* buffer, uint16_t 
     _cemiServer.frameReceived(confReq.frame(), tun->ChannelId);
 }
 
-void IpTunnelServer::HandleTunnelingRequest(uint8_t* buffer, uint16_t length)
+void IpTunnelServer::HandleTunnelingRequest(uint8_t* buffer, uint16_t length, uint32_t src_addr)
 {
     KnxIpTunnelingRequest tunnReq(buffer, length);
 
@@ -1742,6 +1807,15 @@ void IpTunnelServer::HandleTunnelingRequest(uint8_t* buffer, uint16_t length)
 #endif
         // KNX 03_08_02 Core §5.5 p.14: an unknown communication channel id is silently ignored (no reply). The previous
         // code sent a malformed KnxIpStateResponse to 0.0.0.0:0 (wrong service type + null endpoint).
+        return;
+    }
+
+    // Compare the client endpoint the CONNECT_REQUEST announced (IP only; control and data may use
+    // different source ports), so a swept channel id cannot act on someone else's session.
+    // Ignored like an unknown channel id, 03_08_02 5.5 p.14.
+    if (!fromTunnelPeer(tun, src_addr))
+    {
+        println("tunnel frame from a foreign source address -> ignored");
         return;
     }
 
