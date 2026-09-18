@@ -1172,7 +1172,9 @@ void ApplicationLayer::memoryRouterSend(ApduType type, AckType ack, Priority pri
     APDU& apdu = frame.apdu();
     apdu.type(type);
     uint8_t* data = apdu.data();
-    data[1] |= (number & 0xf);
+    // The count of the router-memory and filter-table services is a full octet, 1 to 254 (03_03_07
+    // 3.6.5 p.139 and 3.6.2 p.132); masking it to 4 bits reported 0Ah for 250 octets.
+    data[1] = number;
     pushWord(memoryAddress & 0xffff, data + 2);
     if (number > 0)
         memcpy(data + 4, memoryData, number);
@@ -1186,7 +1188,7 @@ void ApplicationLayer::memoryRoutingTableSend(ApduType type, AckType ack, Priori
     APDU& apdu = frame.apdu();
     apdu.type(type);
     uint8_t* data = apdu.data();
-    data[1] |= (number & 0xf);
+    data[1] = number; // full octet, as in memoryRouterSend
     pushWord(memoryAddress & 0xffff, data + 2);
     if (number > 0)
         memcpy(data + 4, memoryData, number);
