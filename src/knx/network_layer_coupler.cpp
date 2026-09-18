@@ -11,8 +11,7 @@ NetworkLayerCoupler::NetworkLayerCoupler(DeviceObject &deviceObj,
     NetworkLayer(deviceObj, layer),
     _netLayerEntities { {*this, kPrimaryIfIndex}, {*this, kSecondaryIfIndex} }
 {
-    _currentAddress = deviceObj.individualAddress();
-    evaluateCouplerType();
+    evaluateCouplerType(); // records _currentAddress itself
 }
 
 NetworkLayerEntity& NetworkLayerCoupler::getPrimaryInterface()
@@ -43,12 +42,22 @@ void NetworkLayerCoupler::rtObjSecondary(RouterObject& rtObjSecondary)
 
 void NetworkLayerCoupler::evaluateCouplerType()
 {
+    // Read once: this runs in the TP receive context (UART IRQ on RP2040, driver task on ESP32) while
+    // the main loop may write the address, so three separate reads could disagree with each other.
+    const uint16_t address = _deviceObj.individualAddress();
+
+    // Recorded before the type is derived, on purpose: if the address changes in between, the stored one
+    // is the older of the two and the next guard check evaluates again instead of latching a wrong role.
+    // The callers only re-evaluate when the address differs from this, and without recording it here the
+    // comparison stayed true after the first change and re-evaluated on every received frame.
+    _currentAddress = address;
+
     // Check coupler mode
-    if ((_deviceObj.individualAddress() & 0x00FF) == 0x00)
+    if ((address & 0x00FF) == 0x00)
     {
         // Device is a router
         // Check if line coupler or backbone coupler
-        if ((_deviceObj.individualAddress() & 0x0F00) == 0x0)
+        if ((address & 0x0F00) == 0x0)
         {
             // Device is a backbone coupler -> individual address: x.0.0
             _couplerType = BackboneCoupler;
@@ -61,6 +70,11 @@ void NetworkLayerCoupler::evaluateCouplerType()
     }
     else
     {
+        // Not a coupler address: the device part is non-zero. Nothing of anyone else's is routed or
+        // acknowledged; frames this device originates still go out, see routeDataIndividual(). Leaving the
+        // member alone kept the previous type across a move to a device address.
+        _couplerType = UnknownCoupler;
+
         // Device is not a router, check if TP1 bridge or TP1 repeater
 /*
       if (PID_L2_COUPLER_TYPE.BIT0 == 0)
@@ -244,7 +258,9 @@ bool NetworkLayerCoupler::isRoutedIndividualAddress(uint16_t individualAddress, 
     }
     else
     {
-        //unknown coupler type, should not happen
+        // No coupler type: the device address carries a device part, so this is not a coupler (yet).
+        // Routing nothing is the safe verdict - Bau091A::isAckRequired reads it, and a wrong "routed"
+        // here puts an L2 acknowledge on TP for a device that never received the telegram.
         return false;
     }
 }
@@ -393,7 +409,18 @@ void NetworkLayerCoupler::routeDataIndividual(AckType ack, uint16_t destination,
     //print(" own addr 0x");
     //println(_deviceObj.individualAddress(), HEX);
 
-    if(destination == _deviceObj.individualAddress())
+    // Read once: on ESP32 the receive side is a task, not an interrupt, so the address can change while
+    // this runs and separate reads could disagree with each other.
+    const uint16_t ownAddress = _deviceObj.individualAddress();
+
+    // Same guard as in isRoutedIndividualAddress(): the interface decision below reads _couplerType, and
+    // a frame addressed to the device itself returns just after this point, so this path can be reached
+    // without that one ever having refreshed the type - an address written over IP would otherwise be
+    // acted on with the previous role.
+    if (_currentAddress != ownAddress)
+        evaluateCouplerType();
+
+    if(destination == ownAddress)
     {
         // FORWARD_LOCALLY
         //println("NetworkLayerCoupler::routeDataIndividual locally");
@@ -405,23 +432,14 @@ void NetworkLayerCoupler::routeDataIndividual(AckType ack, uint16_t destination,
     // Local to main or sub line
     if (srcIfIndex == kLocalIfIndex)
     {
-        uint16_t netaddr;
-        uint16_t Z;
-        if(_couplerType == CouplerType::BackboneCoupler)
-        {
-            netaddr = _deviceObj.individualAddress() & 0xF000;
-            Z = destination & 0xF000;
-        }
-        else if(_couplerType == CouplerType::LineCoupler)
-        {
-            netaddr = _deviceObj.individualAddress() & 0xFF00;
-            Z = destination & 0xFF00;
-        }
-        else
-        {
-            //unknown coupler type, should not happen
-            return ;
-        }
+        // Which interface carries a frame THIS device originated. Unlike isRoutedIndividualAddress(), which
+        // decides whether to carry someone else's frame, this must name an interface in every role -
+        // dropping it left the device acknowledging on layer 2 and then answering nothing.
+        // The mask is derived from the address as DataLinkLayer::isRoutedPA() does it, so the two
+        // address-derived topology rules cannot contradict each other: x.0.0 area mask, x.y.0 subnet mask.
+        const uint16_t ownMask = ((ownAddress & 0x0F00) == 0x0) ? 0xF000 : 0xFF00;
+        const uint16_t netaddr = ownAddress & ownMask;
+        const uint16_t Z = destination & ownMask;
 
         // if destination is not within our scope then send via primary interface, else via secondary interface
         uint8_t destIfidx = (Z != netaddr) ? kPrimaryIfIndex : kSecondaryIfIndex;
@@ -459,6 +477,15 @@ void NetworkLayerCoupler::routeDataIndividual(AckType ack, uint16_t destination,
         // individual address topologically on the other side. The way to make a block visible to the sender
         // is PHYS_IACK = NACK, which bau091A::isAckRequired() implements.
         //println("NetworkLayerCoupler::routeDataIndividual locked");
+        // Counted like the IGNORE_TOTALLY verdict below: a frame the configuration blocks is a filtered
+        // frame, and leaving it out made a locked line look like a quiet one in the statistics.
+        if (_counters != nullptr)
+        {
+            if (srcIfIndex == kSecondaryIfIndex)
+                _counters->incrementFilteredToIp();
+            else
+                _counters->incrementFilteredToKnx();
+        }
 #ifdef OPENKNX_ROUTE_TRACE
         _trace.record(RouteTrace::PHYS_LOCKED, srcIfIndex == kSecondaryIfIndex, false,
                                            npdu.hopCount(), source, destination);
@@ -482,7 +509,15 @@ void NetworkLayerCoupler::routeDataIndividual(AckType ack, uint16_t destination,
         else
         {
             //println("NetworkLayerCoupler::routeDataIndividual not routed");
-            // IGNORE_TOTALLY
+            // IGNORE_TOTALLY -- counted here, where the verdict turns into a drop; isRoutedIndividualAddress()
+            // is a pure predicate and counting inside it would count the same frame twice.
+            if (_counters != nullptr)
+            {
+                if (srcIfIndex == kSecondaryIfIndex)
+                    _counters->incrementFilteredToIp();
+                else
+                    _counters->incrementFilteredToKnx();
+            }
 #ifdef OPENKNX_ROUTE_TRACE
             _trace.record(RouteTrace::PHYS_NOT_ROUTED, srcIfIndex == kSecondaryIfIndex, false,
                                                npdu.hopCount(), source, destination);

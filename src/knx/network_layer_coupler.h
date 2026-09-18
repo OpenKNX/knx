@@ -51,6 +51,9 @@ class NetworkLayerCoupler : public NetworkLayer
 
     enum CouplerType
     {
+        // First, so that zeroed storage also reads as "no coupler address" rather than LineCoupler.
+        // Nothing persists or transmits these values; they live inside this class only.
+        UnknownCoupler,
         LineCoupler,
         BackboneCoupler,
         TP1Bridge,
@@ -89,6 +92,9 @@ class NetworkLayerCoupler : public NetworkLayer
     RouterObject* _rtObjPrimary {nullptr};
     RouterObject* _rtObjSecondary {nullptr};
 
-    CouplerType _couplerType;
-    uint16_t _currentAddress;
+    // Read on the acknowledge path from the first frame on, so it must not start out indeterminate.
+    // The mask defaults (15.15.0 on 091A/2920, device_object.h) do carry a device part of 0 and take a
+    // coupler branch, so this initialiser is the guard for the addresses that do not.
+    CouplerType _couplerType = UnknownCoupler;
+    uint16_t _currentAddress = 0;
 };
