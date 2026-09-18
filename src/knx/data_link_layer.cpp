@@ -222,6 +222,8 @@ bool DataLinkLayer::sendTelegram(NPDU & npdu, AckType ack, uint16_t destinationA
     // checks ctrl1 and the frame type, which the lines below are what set.
     if (frame.oversized())
     {
+        // No L_Data.con here on purpose: an oversized frame's _data/_ctrl1 may already be overwritten, and
+        // dataConReceived() reads exactly those. The sender sees the false return.
         println("oversized frame dropped");
         return false;
     }
@@ -247,7 +249,11 @@ bool DataLinkLayer::sendTelegram(NPDU & npdu, AckType ack, uint16_t destinationA
 
     if (!frame.valid())
     {
+        // The request was refused before it reached the medium, so confirm it negatively instead of
+        // leaving the layer above -- or a tunnel client -- waiting out its own timeout. Safe here: the
+        // fields dataConReceived() reads were just written, and the oversized check above already passed.
         println("invalid frame");
+        dataConReceived(frame, false);
         return false;
     }
 
