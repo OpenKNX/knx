@@ -301,7 +301,11 @@ bool DataLinkLayer::sendTelegram(NPDU & npdu, AckType ack, uint16_t destinationA
 #endif
     tmpFrame.confirm(ConfirmNoError);
 
-    if(_networkLayerEntity.getEntityIndex() == 1 || _forwardToTunnel)    // send own transmitted frames to the tunnel: coupler secondary (TP) interface, or single-interface device opted in
+    // Only what really went out: the forward used to run even when sendFrame() refused the frame, so a
+    // tunnel client was told a telegram reached the bus that never did. success stays true when the frame
+    // was deliberately withheld from TP because its destination is a tunnel PA -- there the forward IS
+    // the delivery.
+    if (success && (_networkLayerEntity.getEntityIndex() == 1 || _forwardToTunnel))
         _cemiServer->dataIndicationToTunnel(tmpFrame);
 #endif
 
