@@ -56,6 +56,7 @@ class TableObject: public InterfaceObject
      * must not be written at nor freed.
      */
     uint8_t* data();
+    bool staticTableFitsNvm(); // a static table's build constants against the NVM window
     /**
      * Set the reason for a state change failure.
      */

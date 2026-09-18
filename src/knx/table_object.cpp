@@ -55,6 +55,12 @@ void TableObject::loadState(LoadState newState)
 {
     if (newState == _state)
         return;
+
+    // 03_05_01 4.2.28 p.40: leaving Error clears the error code. Here rather than at one event, so the
+    // master reset -- which unloads directly through resetTable() -- clears it too.
+    if (_state == LS_ERROR)
+        errorCode(E_NO_FAULT);
+
     beforeStateChange(newState);
     _state = newState;
     // 03_05_01 4.23.2.1 p.293 wants the load state in non-volatile memory; saveMemory() only flushes the
@@ -98,6 +104,7 @@ void TableObject::resetTable()
     {
         _memory.freeMemory(_data);
         _data = 0;
+        _size = 0; // the extent described a block that no longer exists
     }
 }
 
@@ -140,8 +147,19 @@ const uint8_t* TableObject::restore(const uint8_t* buffer)
     if (_staticTableAdr)
     {
         // A static table's address and size are build constants, not persisted state.
-        _size = _staticTableSize;
-        _data = _memory.toAbsolute(_staticTableAdr);
+        if (staticTableFitsNvm())
+        {
+            _size = _staticTableSize;
+            _data = _memory.toAbsolute(_staticTableAdr);
+        }
+        else
+        {
+            // Memory::readMemory() hands a restored pointer to addNewUsedBlock(), which calls
+            // fatalError() when the block does not fit. Leave both at zero so it skips this table.
+            println("static table does not fit the NVM -- not restored");
+            _size = 0;
+            _data = 0;
+        }
     }
     else if (relativeAddress != 0)
         _data = _memory.toAbsolute(relativeAddress);
@@ -199,10 +217,25 @@ bool TableObject::allocTable(uint32_t size, bool doFill, uint8_t fillByte)
 }
 
 
+/**
+ * @brief Whether a static table's build constants fit the NVM window.
+ *
+ * The address and the extent come from the product, not from flash, and were never compared against the
+ * window. allocTable() refuses a static table in any case, so the load state machine ends in LS_ERROR;
+ * what this prevents is the pointer past the end that addNewUsedBlock() turns into a fatalError().
+ */
+bool TableObject::staticTableFitsNvm()
+{
+    return (uint32_t)_staticTableAdr + _staticTableSize <= _memory.memorySize();
+}
+
 void TableObject::allocTableStatic()
 {
     if(_staticTableAdr && !_data)
     {
+        if (!staticTableFitsNvm())
+            return;
+
         _data = _memory.toAbsolute(_staticTableAdr);
         _size = _staticTableSize;
         _memory.addNewUsedBlock(_data, _size);
@@ -259,6 +292,16 @@ void TableObject::loadEventLoading(const uint8_t* data)
         case LE_START_LOADING:
             break;
         case LE_LOAD_COMPLETED:
+            // No allocation was received: LOADED would hand consumers a null data(). A zero-size allocation
+            // already ends in Error; completing without any must too. A static table gets its block here
+            // when no save has placed it yet (fresh flash).
+            allocTableStatic();
+            if (_data == nullptr)
+            {
+                loadState(LS_ERROR);
+                errorCode(E_GOT_MEM_ALLOC_ZERO);
+                break;
+            }
             _memory.saveMemory();
             loadState(LS_LOADED);
             break;
@@ -293,6 +336,7 @@ void TableObject::loadEventLoaded(const uint8_t* data)
                 {
                     _memory.freeMemory(_data);
                     _data = 0;
+                    _size = 0; // the extent described a block that no longer exists
                 }
             }
             break;
@@ -316,11 +360,7 @@ void TableObject::loadEventError(const uint8_t* data)
         case LE_START_LOADING:
             break;
         case LE_UNLOAD:
-            loadState(LS_UNLOADED);
-            // 03_05_01 4.2.28 p.40: when the load state changes from Error to another state the error code
-            // shall be set to 0. It was left standing, so a client reading PID_ERROR_CODE on a later,
-            // successfully loaded object still saw the old fault.
-            errorCode(E_NO_FAULT);
+            loadState(LS_UNLOADED); // loadState() clears the error code on the way out of Error
             break;
         default:
             break; // 03_05_01 4.23.2.3.2 p.294: unknown events shall be ignored, without a change of state
@@ -438,7 +478,10 @@ void TableObject::initializeDynTableProperties(size_t propertiesSize, Property**
                     return 0; // need to check return code for invalid
                 
                 uint32_t segmentSize = obj->_size;
-                uint16_t crc16 = crc16Ccitt(obj->data(), segmentSize); 
+                // crc16Ccitt() takes a uint16_t length: a segment above 65535 octets would be checksummed
+                // over size & 0xFFFF. Unreachable while KNX_FLASH_SIZE stays below that -- widen the helper
+                // before allocating more.
+                uint16_t crc16 = crc16Ccitt(obj->data(), (uint16_t)segmentSize);
 
                 pushInt(segmentSize, data);     // Segment size
                 pushByte(0x00, data + 4);       // CRC control byte -> 0: always valid
