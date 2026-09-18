@@ -497,7 +497,9 @@ void ApplicationLayer::individualAddressSerialNumberReadRequest(AckType ack, Hop
 void ApplicationLayer::individualAddressSerialNumberReadResponse(AckType ack, HopCountType hopType, const SecurityControl& secCtrl,
     uint8_t * serialNumber, uint16_t domainAddress)
 {
-    CemiFrame frame(7);
+    // 03_03_07 Figure 13: serial (6), domain address (2), reserved (2) -- as IndividualAddressSerialNumberReadResponse()
+    // builds it, which is the one the BAU calls. Built for 7 the domain address would land past the APDU.
+    CemiFrame frame(11);
     APDU& apdu = frame.apdu();
     apdu.type(IndividualAddressSerialNumberResponse);
     uint8_t* data = apdu.data() + 1;
@@ -1042,7 +1044,8 @@ void ApplicationLayer::keyWriteRequest(AckType ack, Priority priority, HopCountT
 
 void ApplicationLayer::keyWriteResponse(AckType ack, Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl& secCtrl, uint8_t level)
 {
-    CemiFrame frame(6);
+    // APCI + the access level; built for 6 it would send four surplus zero octets (no caller in this stack)
+    CemiFrame frame(2);
     APDU& apdu = frame.apdu();
     apdu.type(KeyResponse);
     uint8_t* data = apdu.data();
