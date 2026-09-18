@@ -1015,7 +1015,7 @@ void ApplicationLayer::userManufacturerInfoReadResponse(AckType ack, Priority pr
 {
     CemiFrame frame(4);
     APDU& apdu = frame.apdu();
-    apdu.type(UserMemoryRead);
+    apdu.type(UserManufacturerInfoResponse);
     uint8_t* data = apdu.data();
     memcpy(data + 1, info, 3);
     individualSend(ack, hopType, priority, asap, apdu, secCtrl);
