@@ -749,6 +749,16 @@ void TransportLayer::A10(uint16_t source)
 
 void TransportLayer::A11(uint16_t tsap, Priority priority, APDU& apdu)
 {
+    // 03_03_04 A11 p.20 stores the event back and forbids reordering T_Data_Connected.req. There is room
+    // for exactly one, so overwriting it dropped the older request without ever delivering it.
+    // The newer one is dropped and counted instead; the slot is emptied on the next event.
+    if (_savedConnectingValid)
+    {
+        if (_deferredDropped < 0xFFFF)
+            _deferredDropped++;
+        return;
+    }
+
     _savedTsapConnecting = tsap;
     _savedPriorityConnecting = priority;
     _savedFrameConnecting = apdu.frame();

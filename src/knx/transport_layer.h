@@ -19,6 +19,8 @@ public:
     TransportLayer(ApplicationLayer& layer);
     void networkLayer(NetworkLayer& layer);
     void groupAddressTable(AddressTableObject& addrTable);
+    /** @brief Connected requests dropped because one was already stored; 0 with a peer that acknowledges. */
+    uint16_t deferredDropped() const { return _deferredDropped; }
 
 #pragma region from network layer
     void dataIndividualIndication(uint16_t destination, HopCountType hopType, Priority priority, uint16_t source, TPDU& tpdu);
@@ -98,6 +100,7 @@ private:
     CemiFrame _savedFrame;
     Priority _savedPriorityConnecting;
     CemiFrame _savedFrameConnecting;
+    uint16_t _deferredDropped = 0; // connected requests refused because one was already stored (03_03_04 A11)
     uint16_t _savedTsapConnecting;
     bool _savedConnectingValid = false;
     enum StateEvent
