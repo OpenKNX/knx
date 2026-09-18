@@ -183,8 +183,14 @@ const uint8_t* RouterObject::restore(const uint8_t* buffer)
     return TableObject::restore(buffer);
 }
 
-void RouterObject::commandClearSetRoutingTable(bool bitIsSet)
+bool RouterObject::commandClearSetRoutingTable(bool bitIsSet)
 {
+    // 03_05_01 p.95: FFh when the clearing or setting did not happen. Reporting success for work that was
+    // refused is worse than the out-of-bounds access it prevents.
+    if (!filterTableReadable())
+        return false;
+
+    const uint32_t octets = filterTableOctets();
     uint8_t fillbyte = bitIsSet ? 0xFF : 0x00;
     uint32_t relptr = _memory.toRelative(data());
 #ifdef KNX_LOG_COUPLER
@@ -194,19 +200,42 @@ void RouterObject::commandClearSetRoutingTable(bool bitIsSet)
     println((uint32_t)data());
 #endif
 
-    for (uint16_t i = 0; i < kFilterTableSize; i++)
+    for (uint32_t i = 0; i < octets; i++)
     {
         _memory.writeMemory(relptr+i, 1, &fillbyte);
     }
+
+    return true;
+}
+
+// The filter table is null until ETS loads it, and tableSize() is what the allocation really holds.
+// The services are bounded by that, not by the full 64k-group-address span: demanding all 8192 octets
+// refused a legitimate download on a coupler whose ETS allocates a shorter table.
+uint32_t RouterObject::filterTableOctets()
+{
+    if (data() == nullptr)
+        return 0;
+
+    const uint32_t size = tableSize();
+    return size < kFilterTableSize ? size : kFilterTableSize;
+}
+
+bool RouterObject::filterTableReadable()
+{
+    return filterTableOctets() > 0;
 }
 
 bool RouterObject::statusClearSetRoutingTable(bool bitIsSet)
 {
+    if (!filterTableReadable())
+        return false;
+
 #ifdef KNX_LOG_COUPLER
     print("RouterObject::statusClearSetRoutingTable ");
     println(bitIsSet);
 #endif
-    for (uint16_t i = 0; i < kFilterTableSize; i++)
+    const uint32_t octets = filterTableOctets();
+    for (uint32_t i = 0; i < octets; i++)
     {
         if (data()[i] != (bitIsSet ? 0xFF : 0x00))
             return false;
@@ -214,8 +243,11 @@ bool RouterObject::statusClearSetRoutingTable(bool bitIsSet)
     return true;
 }
 
-void RouterObject::commandClearSetGroupAddress(uint16_t startAddress, uint16_t endAddress, bool bitIsSet)
+bool RouterObject::commandClearSetGroupAddress(uint16_t startAddress, uint16_t endAddress, bool bitIsSet)
 {
+    if (!filterTableReadable())
+        return false;
+
 #ifdef KNX_LOG_COUPLER
     print("RouterObject::commandClearSetGroupAddress ");
     print(startAddress);
@@ -229,6 +261,11 @@ void RouterObject::commandClearSetGroupAddress(uint16_t startAddress, uint16_t e
     uint8_t startBitPosition = startAddress % 8;
     uint16_t endOctet = endAddress / 8;
     uint8_t endBitPosition = endAddress % 8;
+
+    // Only the octets of the requested range have to exist, so a table loaded shorter than the full
+    // 8192-octet span still serves a request that falls inside what it holds.
+    if (endAddress < startAddress || endOctet >= filterTableOctets())
+        return false;
 
     if (startOctet == endOctet)
     {
@@ -244,7 +281,7 @@ void RouterObject::commandClearSetGroupAddress(uint16_t startAddress, uint16_t e
                 octetData &= ~(1 << bitPos);
         }
         _memory.writeMemory(relptr, 1, &octetData);
-        return;
+        return true;
     }
 
     for (uint16_t i = startOctet; i <= endOctet; i++)
@@ -281,10 +318,15 @@ void RouterObject::commandClearSetGroupAddress(uint16_t startAddress, uint16_t e
         }
         _memory.writeMemory(relptr, 1, &octetData);
     }
+
+    return true;
 }
 
 bool RouterObject::statusClearSetGroupAddress(uint16_t startAddress, uint16_t endAddress, bool bitIsSet)
 {
+    if (!filterTableReadable())
+        return false;
+
 #ifdef KNX_LOG_COUPLER
     print("RouterObject::statusClearSetGroupAddress ");
     print(startAddress);
@@ -298,6 +340,10 @@ bool RouterObject::statusClearSetGroupAddress(uint16_t startAddress, uint16_t en
     uint8_t startBitPosition = startAddress % 8;
     uint16_t endOctet = endAddress / 8;
     uint8_t endBitPosition = endAddress % 8;
+
+    // As in commandClearSetGroupAddress: judge only octets the allocation really holds.
+    if (endAddress < startAddress || endOctet >= filterTableOctets())
+        return false;
 
     if (startOctet == endOctet)
     {
@@ -389,14 +435,12 @@ void RouterObject::functionRouteTableControl(bool isCommand, uint8_t* data, uint
         switch(srvId)
         {
             case ClearRoutingTable:
-                commandClearSetRoutingTable(false);
-                resultData[0] = ReturnCodes::Success;
+                resultData[0] = commandClearSetRoutingTable(false) ? ReturnCodes::Success : ReturnCodes::GenericError;
                 resultData[1] = srvId;
                 resultLength = 2;
                 return;
             case SetRoutingTable:
-                commandClearSetRoutingTable(true);
-                resultData[0] = ReturnCodes::Success;
+                resultData[0] = commandClearSetRoutingTable(true) ? ReturnCodes::Success : ReturnCodes::GenericError;
                 resultData[1] = srvId;
                 resultLength = 2;
                 return;
@@ -406,8 +450,7 @@ void RouterObject::functionRouteTableControl(bool isCommand, uint8_t* data, uint
                 uint16_t endAddress;
                 popWord(startAddress, &data[2]);
                 popWord(endAddress, &data[4]);
-                commandClearSetGroupAddress(startAddress, endAddress, false);
-                resultData[0] = ReturnCodes::Success;
+                resultData[0] = commandClearSetGroupAddress(startAddress, endAddress, false) ? ReturnCodes::Success : ReturnCodes::GenericError;
                 resultData[1] = srvId;
                 pushWord(startAddress, &resultData[2]);
                 pushWord(endAddress, &resultData[4]);
@@ -420,8 +463,7 @@ void RouterObject::functionRouteTableControl(bool isCommand, uint8_t* data, uint
                 uint16_t endAddress;
                 popWord(startAddress, &data[2]);
                 popWord(endAddress, &data[4]);
-                commandClearSetGroupAddress(startAddress, endAddress, true);
-                resultData[0] = ReturnCodes::Success;
+                resultData[0] = commandClearSetGroupAddress(startAddress, endAddress, true) ? ReturnCodes::Success : ReturnCodes::GenericError;
                 resultData[1] = srvId;
                 pushWord(startAddress, &resultData[2]);
                 pushWord(endAddress, &resultData[4]);
@@ -571,7 +613,12 @@ bool RouterObject::isGroupAddressInFilterTable(uint16_t groupAddress)
         // bit_position = GA_value mod 8
         uint16_t octetAddress = groupAddress / 8;
         uint8_t bitPosition = groupAddress % 8;
-        
+
+        // The group address span needs 8192 octets, which a 091A build allocates in full; a table loaded
+        // shorter than that (Coupler 2.0) would be read past its block, like the status services were
+        // before filterTableOctets() capped them.
+        if (octetAddress >= filterTableOctets())
+            return false;
 
         if(filterTable)
             return (filterTable[octetAddress] & (1 << bitPosition)) == (1 << bitPosition);

@@ -57,9 +57,11 @@ private:
   void functionRfEnableSbc(bool isCommand, uint8_t* data, uint8_t length, uint8_t* resultData, uint8_t& resultLength);
   void functionIpEnableSbc(bool isCommand, uint8_t* data, uint8_t length, uint8_t* resultData, uint8_t& resultLength);
 
-  void commandClearSetRoutingTable(bool bitIsSet);
+  uint32_t filterTableOctets(); // octets the allocation really holds, capped at the full span
+  bool filterTableReadable();   // data() present and at least one octet allocated
+  bool commandClearSetRoutingTable(bool bitIsSet);
   bool statusClearSetRoutingTable(bool bitIsSet);
-  void commandClearSetGroupAddress(uint16_t startAddress, uint16_t endAddress, bool bitIsSet);
+  bool commandClearSetGroupAddress(uint16_t startAddress, uint16_t endAddress, bool bitIsSet);
   bool statusClearSetGroupAddress(uint16_t startAddress, uint16_t endAddress, bool bitIsSet);
 
   bool _rfSbcRoutingEnabled = false;
