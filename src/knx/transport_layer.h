@@ -19,6 +19,12 @@ public:
     TransportLayer(ApplicationLayer& layer);
     void networkLayer(NetworkLayer& layer);
     void groupAddressTable(AddressTableObject& addrTable);
+    /**
+     * @brief The group address a TSAP stands for, 0 when no address table is loaded.
+     * @details The application layer sends with a TSAP but is confirmed with the group address, so it
+     *          needs this one step back to tell two outstanding sends apart.
+     */
+    uint16_t groupAddressFromTsap(uint16_t tsap);
     /** @brief Connected requests dropped because one was already stored; 0 with a peer that acknowledges. */
     uint16_t deferredDropped() const { return _deferredDropped; }
 

@@ -229,8 +229,17 @@ class ApplicationLayer
     void individualSend(AckType ack, HopCountType hopType, Priority priority, uint16_t asap, APDU& apdu, const SecurityControl& secCtrl);
 
     uint16_t _savedAsapReadRequest = 0;
-    uint16_t _savedAsapWriteRequest = 0;
     uint16_t _savedAsapResponse = 0;
+
+    // Outstanding local group WRITES, oldest first. One slot lost the older object's confirmation when two
+    // group objects sent in the same period, leaving the first in Transmitting for good. Matched by GROUP
+    // ADDRESS, not arrival order: four priority buckets mean a later telegram can leave first.
+    static constexpr uint8_t kSavedAsapMax = 8;
+    uint16_t _savedAsapWrite[kSavedAsapMax] = {0};
+    uint8_t _savedAsapWriteCount = 0;
+    void pushSavedAsapWrite(uint16_t asap);
+    void dropSavedAsapWrite(uint16_t asap);
+    uint16_t takeSavedAsapWrite(uint16_t groupAddress);
     AssociationTableObject* _assocTable = nullptr;
     BusAccessUnit& _bau;
 

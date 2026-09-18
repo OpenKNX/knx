@@ -93,10 +93,12 @@ void ApplicationLayer::dataGroupConfirm(AckType ack, HopCountType hopType, Prior
         _savedAsapResponse = 0;
         break;
     case GroupValueWrite:
-        if (_savedAsapWriteRequest > 0)
-            _bau.groupValueWriteLocalConfirm(ack, _savedAsapWriteRequest, priority, hopType, secCtrl, apdu.data(), apdu.length() - 1, status);
-        _savedAsapWriteRequest = 0;
+    {
+        const uint16_t asap = takeSavedAsapWrite(tsap);
+        if (asap > 0)
+            _bau.groupValueWriteLocalConfirm(ack, asap, priority, hopType, secCtrl, apdu.data(), apdu.length() - 1, status);
         break;
+    }
     default:
         print("datagroup-confirm: unhandled APDU-Type: ");
         println(apdu.type());
@@ -392,9 +394,67 @@ void ApplicationLayer::groupValueReadResponse(AckType ack, uint16_t asap, Priori
     groupValueSend(GroupValueResponse, ack, asap, priority, hopType, secCtrl, data, dataLength);
 }
 
+// Oldest entry is dropped when the ring is full: that object keeps the behaviour it had before the ring
+// existed, and a burst deeper than the ring costs a status, never a wrong one.
+void ApplicationLayer::pushSavedAsapWrite(uint16_t asap)
+{
+    if (asap == 0)
+        return;
+
+    if (_savedAsapWriteCount == kSavedAsapMax)
+    {
+        for (uint8_t i = 1; i < kSavedAsapMax; i++)
+            _savedAsapWrite[i - 1] = _savedAsapWrite[i];
+        _savedAsapWriteCount--;
+    }
+
+    _savedAsapWrite[_savedAsapWriteCount++] = asap;
+}
+
+// Nothing went on the bus for this ASAP, so no confirmation will come: take it out again.
+void ApplicationLayer::dropSavedAsapWrite(uint16_t asap)
+{
+    for (uint8_t i = 0; i < _savedAsapWriteCount; i++)
+    {
+        if (_savedAsapWrite[i] != asap)
+            continue;
+
+        for (uint8_t k = i + 1; k < _savedAsapWriteCount; k++)
+            _savedAsapWrite[k - 1] = _savedAsapWrite[k];
+        _savedAsapWriteCount--;
+        return;
+    }
+}
+
+// The oldest outstanding send that went to the group address just confirmed. 0 when none matches, and
+// then nothing is reported rather than something wrong -- the transmitter serves priority buckets, so
+// arrival order alone would confirm the wrong object.
+uint16_t ApplicationLayer::takeSavedAsapWrite(uint16_t groupAddress)
+{
+    if (_assocTable == nullptr || _transportLayer == nullptr)
+        return 0;
+
+    for (uint8_t i = 0; i < _savedAsapWriteCount; i++)
+    {
+        // Out through a TSAP, back with the group address: one step back through the address table puts
+        // both in the same terms.
+        const int32_t tsap = _assocTable->translateAsap(_savedAsapWrite[i]);
+        if (tsap < 0 || _transportLayer->groupAddressFromTsap((uint16_t)tsap) != groupAddress)
+            continue;
+
+        const uint16_t asap = _savedAsapWrite[i];
+        for (uint8_t k = i + 1; k < _savedAsapWriteCount; k++)
+            _savedAsapWrite[k - 1] = _savedAsapWrite[k];
+        _savedAsapWriteCount--;
+        return asap;
+    }
+
+    return 0;
+}
+
 void ApplicationLayer::groupValueWriteRequest(AckType ack, uint16_t asap, Priority priority, HopCountType hopType, const SecurityControl& secCtrl, uint8_t * data, uint8_t dataLength)
 {
-    _savedAsapWriteRequest = asap;
+    pushSavedAsapWrite(asap);
     groupValueSend(GroupValueWrite, ack, asap, priority, hopType, secCtrl, data, dataLength);
 }
 
@@ -1078,8 +1138,8 @@ void ApplicationLayer::groupValueSend(ApduType type, AckType ack, uint16_t asap,
     {
         // Nothing goes on the bus, so no dataGroupConfirm will arrive: clear the slot the caller just
         // filled, or the NEXT telegram's confirm is attributed to this ASAP.
-        if (type == GroupValueWrite && _savedAsapWriteRequest == asap)
-            _savedAsapWriteRequest = 0;
+        if (type == GroupValueWrite)
+            dropSavedAsapWrite(asap);
         if (type == GroupValueResponse && _savedAsapResponse == asap)
             _savedAsapResponse = 0;
         return; // no tsap in the association table for this asap

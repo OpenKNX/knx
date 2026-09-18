@@ -392,6 +392,11 @@ void TransportLayer::dataGroupIndication(uint16_t destination, HopCountType hopT
     _applicationLayer.dataGroupIndication(hopType, priority, tsap, tpdu.apdu());
 }
 
+uint16_t TransportLayer::groupAddressFromTsap(uint16_t tsap)
+{
+    return _groupAddressTable == nullptr ? 0 : _groupAddressTable->getGroupAddress(tsap);
+}
+
 void TransportLayer::dataGroupConfirm(AckType ack, uint16_t source, uint16_t destination, HopCountType hopType, Priority priority, TPDU& tpdu, bool status)
 {
     _applicationLayer.dataGroupConfirm(ack, hopType, priority, destination, tpdu.apdu(), status);
