@@ -31,7 +31,9 @@ uint8_t DataProperty::write(uint16_t start, uint8_t count, const uint8_t* data)
 
     if (start == 0)
     {
-        if (count == 1 && data[0] == 0 && data[1] == 0)
+        // Only an array can be emptied: a single-element property is read through data() by callers that
+        // expect it to exist (the hardware type went into the NVM header from a null pointer).
+        if (count == 1 && _maxElements > 1 && data[0] == 0 && data[1] == 0)
         {
             // reset _data
             _currentElements = 0;
@@ -135,8 +137,10 @@ const uint8_t* DataProperty::restore(const uint8_t* buffer)
     {
         if (_data != nullptr)
             delete[] _data;
-        
-        _data = new uint8_t[elements * ElementSize()];
+
+        // new uint8_t[0] is non-null and zero-length; the raw accessors hand that straight to a
+        // fixed-length read, so a zero-element record must clear the pointer instead.
+        _data = (elements > 0) ? new uint8_t[elements * ElementSize()] : nullptr;
         _currentElements = elements;
     }
 
