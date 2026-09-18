@@ -1374,13 +1374,22 @@ void ApplicationLayer::individualIndication(HopCountType hopType, Priority prior
             _bau.adcReadAppLayerConfirm(priority, hopType, tsap, secCtrl, data[0] & 0x3f, data[1], (int16_t)getWord(data + 2));
             break;
         case MemoryWrite:
-            if (apdu.length() < 3 || (data[0] & 0x3f) > apdu.length() - 3) break;
-            _bau.memoryWriteIndication(priority, hopType, tsap, secCtrl, data[0] & 0x3f, getWord(data + 1), data + 3);
+        {
+            if (apdu.length() < 3) break;
+            // 03_03_07 p.113: the indication is ignored when number differs from the octets received --
+            // in either direction. Passed on with count 0, which writes nothing and, in verify mode,
+            // answers nr_of_elem 0 with no data (08_03_07 2.7.7 p.34).
+            const uint8_t count = data[0] & 0x3f;
+            _bau.memoryWriteIndication(priority, hopType, tsap, secCtrl, count == apdu.length() - 3 ? count : 0,
+                                       getWord(data + 1), data + 3);
             break;
+        }
         case MemoryRouterWrite:
-            if (apdu.length() < 4 || data[1] > apdu.length() - 4) break;
+            if (apdu.length() < 4) break;
             print("MemoryRouterWrite: ");
-            _bau.memoryRouterWriteIndication(priority, hopType, tsap, secCtrl, data[1], getWord(data + 2), data + 4);
+            // As MemoryWrite: a count that does not match the payload writes nothing (03_03_07 p.141).
+            _bau.memoryRouterWriteIndication(priority, hopType, tsap, secCtrl, data[1] == apdu.length() - 4 ? data[1] : 0,
+                                             getWord(data + 2), data + 4);
             break;
         case MemoryRouterReadResponse:
             if (apdu.length() < 4 || data[1] > apdu.length() - 4) break;
@@ -1398,8 +1407,9 @@ void ApplicationLayer::individualIndication(HopCountType hopType, Priority prior
             _bau.memoryRoutingTableReadAppLayerConfirm(priority, hopType, tsap, secCtrl, data[1], getWord(data + 2), data + 4);
             break;
         case RoutingTableWrite:
-            if (apdu.length() < 4 || data[1] > apdu.length() - 4) break;
-            _bau.memoryRoutingTableWriteIndication(priority, hopType, tsap, secCtrl, data[1], getWord(data + 2), data + 4);
+            if (apdu.length() < 4) break;
+            _bau.memoryRoutingTableWriteIndication(priority, hopType, tsap, secCtrl, data[1] == apdu.length() - 4 ? data[1] : 0,
+                                                   getWord(data + 2), data + 4);
             break;
         case MemoryExtRead: {
             if (apdu.length() < 5) break;
@@ -1438,9 +1448,12 @@ void ApplicationLayer::individualIndication(HopCountType hopType, Priority prior
         }
         case UserMemoryWrite:
         {
-            if (apdu.length() < 4 || (data[1] & 0xf) > apdu.length() - 4) break; // count must fit the frame
+            if (apdu.length() < 4) break;
             uint32_t address = ((data[1] & 0xf0) << 12) + (data[2] << 8) + data[3];
-            _bau.userMemoryWriteIndication(priority, hopType, tsap, secCtrl, data[1] & 0xf, address, data + 4);
+            // As MemoryWrite (03_03_07 p.122).
+            const uint8_t count = data[1] & 0xf;
+            _bau.userMemoryWriteIndication(priority, hopType, tsap, secCtrl, count == apdu.length() - 4 ? count : 0,
+                                           address, data + 4);
             break;
         }
         case UserManufacturerInfoRead:
