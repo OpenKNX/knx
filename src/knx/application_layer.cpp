@@ -736,10 +736,7 @@ void ApplicationLayer::adcReadResponse(AckType ack, Priority priority, HopCountT
     data[2] = value >> 8;
     data[3] = value & 0xFF;
 
-    if (asap == _connectedTsap)
-        dataConnectedRequest(asap, priority, apdu, secCtrl);
-    else
-        dataIndividualRequest(ack, hopType, priority, asap, apdu, secCtrl);
+    individualSend(ack, hopType, priority, asap, apdu, secCtrl);
 }
 
 void ApplicationLayer::adcReadRequest(AckType ack, Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl& secCtrl,
@@ -752,10 +749,7 @@ void ApplicationLayer::adcReadRequest(AckType ack, Priority priority, HopCountTy
     data[0] |= (channelNr & 0b111111);
     data[1] = readCount;
 
-    if (asap == _connectedTsap)
-        dataConnectedRequest(asap, priority, apdu, secCtrl);
-    else
-        dataIndividualRequest(ack, hopType, priority, asap, apdu, secCtrl);
+    individualSend(ack, hopType, priority, asap, apdu, secCtrl);
 }
 
 void ApplicationLayer::functionPropertyStateResponse(AckType ack, Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl& secCtrl,
@@ -776,10 +770,7 @@ void ApplicationLayer::functionPropertyStateResponse(AckType ack, Priority prior
     if (resultLength > 0)
         memcpy(&data[2], resultData, resultLength);
 
-    if (asap == _connectedTsap)
-        dataConnectedRequest(asap, priority, apdu, secCtrl);
-    else
-        dataIndividualRequest(ack, hopType, priority, asap, apdu, secCtrl);
+    individualSend(ack, hopType, priority, asap, apdu, secCtrl);
 }
 
 #ifdef OPENKNX_FTC_CLIENT
@@ -825,10 +816,7 @@ void ApplicationLayer::functionPropertyExtStateResponse(AckType ack, Priority pr
     if (resultLength > 0)
         memcpy(&data[5], resultData, resultLength);
 
-    if (asap == _connectedTsap)
-        dataConnectedRequest(asap, priority, apdu, secCtrl);
-    else
-        dataIndividualRequest(ack, hopType, priority, asap, apdu, secCtrl);
+    individualSend(ack, hopType, priority, asap, apdu, secCtrl);
 }
 
 void ApplicationLayer::propertyDescriptionReadRequest(AckType ack, Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl,
@@ -1078,10 +1066,7 @@ void ApplicationLayer::propertyDataSend(ApduType type, AckType ack, Priority pri
     if (length > 0)
         memcpy(apduData, data, length);
 
-    if (asap == _connectedTsap)
-        dataConnectedRequest(asap, priority, apdu, secCtrl);
-    else
-        dataIndividualRequest(ack, hopType, priority, asap, apdu, secCtrl);
+    individualSend(ack, hopType, priority, asap, apdu, secCtrl);
 }
 
 void ApplicationLayer::propertyExtDataSend(ApduType type, AckType ack, Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl& secCtrl,
@@ -1105,10 +1090,7 @@ void ApplicationLayer::propertyExtDataSend(ApduType type, AckType ack, Priority 
     if (length > 0)
         memcpy(apduData+8, data, length);
 
-    if (asap == _connectedTsap)
-        dataConnectedRequest(asap, priority, apdu, secCtrl);
-    else
-        dataIndividualRequest(ack, hopType, priority, asap, apdu, secCtrl);
+    individualSend(ack, hopType, priority, asap, apdu, secCtrl);
 }
 
 void ApplicationLayer::groupValueSend(ApduType type, AckType ack, uint16_t asap, Priority priority, HopCountType hopType, const SecurityControl &secCtrl,
@@ -1644,6 +1626,8 @@ void ApplicationLayer::individualConfirm(AckType ack, HopCountType hopType, Prio
 
 void ApplicationLayer::individualSend(AckType ack, HopCountType hopType, Priority priority, uint16_t asap, APDU& apdu, const SecurityControl& secCtrl)
 {
+    // The one place that decides connection-oriented vs connectionless; six callers used to carry a
+    // byte-identical copy of this.
     if (asap == _connectedTsap)
         dataConnectedRequest(asap, priority, apdu, secCtrl);
     else
