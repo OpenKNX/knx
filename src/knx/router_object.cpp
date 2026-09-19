@@ -542,7 +542,9 @@ bool RouterObject::isRfSbcRoutingEnabled()
     return _rfSbcRoutingEnabled;
 }
 
-// TODO: check if IP SBC works the same way, just copied from RF
+// 03_05_01 4.5.16.1.2/4.5.16.1.3: octet 10 is reserved, octet 11 carries the ServiceID and octet 12 the
+// ServiceInfo, so data[0] is the reserved octet and the mode sits in data[2]. The write response repeats
+// the ServiceID and does NOT report the resulting mode (NOTE 22); only the read response appends it.
 void RouterObject::functionIpEnableSbc(bool isCommand, uint8_t* data, uint8_t length, uint8_t* resultData, uint8_t& resultLength)
 {
 #ifdef KNX_LOG_COUPLER
@@ -551,24 +553,76 @@ void RouterObject::functionIpEnableSbc(bool isCommand, uint8_t* data, uint8_t le
     printHex(" ", data, length);
 #endif
 
+    if (length < 2) // no ServiceID to echo back
+    {
+        resultData[0] = ReturnCodes::DataVoid;
+        resultData[1] = 0;
+        resultLength = 2;
+        return;
+    }
+
+    const uint8_t serviceId = data[1];
+
+    if (serviceId != 0) // the only defined Read- and WriteServiceID
+    {
+        resultData[0] = ReturnCodes::InvalidCommand;
+        resultData[1] = serviceId;
+        resultLength = 2;
+        return;
+    }
+
     if (isCommand)
     {
-        _ipSbcRoutingEnabled = (data[0] == 1) ? true : false;
+        // Table 30: an unsupported ServiceInfo value is E_DATA_VOID
+        if (length < 3 || data[2] > 1)
+        {
+            resultData[0] = ReturnCodes::DataVoid;
+            resultData[1] = serviceId;
+            resultLength = 2;
+            return;
+        }
+
+        setIpSbcRouting(data[2] == 1);
+        resultData[0] = ReturnCodes::Success;
+        resultData[1] = serviceId;
+        resultLength = 2;
+        return;
     }
 
     resultData[0] = ReturnCodes::Success;
-    resultData[1] = _ipSbcRoutingEnabled ? 1 : 0;
-    resultLength = 2;
+    resultData[1] = serviceId;
+    resultData[2] = isIpSbcRoutingEnabled() ? 1 : 0;
+    resultLength = 3;
 }
 
-// TODO: check if IP SBC works the same way, just copied from RF
+// A deadline of 0 means disabled; millis() + timeout can legitimately be 0 after a wrap, so that one
+// value is pushed by a millisecond instead of turning the mode off.
+void RouterObject::setIpSbcRouting(bool enable)
+{
+    if (!enable)
+    {
+        _ipSbcRoutingUntil = 0;
+        return;
+    }
+
+    _ipSbcRoutingUntil = millis() + kIpSbcRoutingTimeoutMs;
+
+    if (_ipSbcRoutingUntil == 0)
+        _ipSbcRoutingUntil = 1;
+}
+
 bool RouterObject::isIpSbcRoutingEnabled()
 {
-#ifdef KNX_LOG_COUPLER
-    print("RouterObject::isIpSbcRoutingEnabled ");
-    println(_ipSbcRoutingEnabled);
-#endif
-    return _ipSbcRoutingEnabled;
+    if (_ipSbcRoutingUntil == 0)
+        return false;
+
+    if ((int32_t)(millis() - _ipSbcRoutingUntil) >= 0)
+    {
+        _ipSbcRoutingUntil = 0;
+        return false;
+    }
+
+    return true;
 }
 
 void RouterObject::beforeStateChange(LoadState& newState)

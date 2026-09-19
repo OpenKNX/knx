@@ -56,6 +56,7 @@ private:
   void functionRouteTableControl(bool isCommand, uint8_t* data, uint8_t length, uint8_t* resultData, uint8_t& resultLength);
   void functionRfEnableSbc(bool isCommand, uint8_t* data, uint8_t length, uint8_t* resultData, uint8_t& resultLength);
   void functionIpEnableSbc(bool isCommand, uint8_t* data, uint8_t length, uint8_t* resultData, uint8_t& resultLength);
+  void setIpSbcRouting(bool enable);
 
   uint32_t filterTableOctets(); // octets the allocation really holds, capped at the full span
   bool filterTableReadable();   // data() present and at least one octet allocated
@@ -65,6 +66,10 @@ private:
   bool statusClearSetGroupAddress(uint16_t startAddress, uint16_t endAddress, bool bitIsSet);
 
   bool _rfSbcRoutingEnabled = false;
-  bool _ipSbcRoutingEnabled = false;
+  // 03_05_01 4.5.16.1.1: the IP System Broadcast Routing Mode falls back to "Disable" 20 s after it was
+  // enabled, and another command prolongs it. Kept as a deadline instead of a flag plus a tick: the mode
+  // is only ever read on the routing path, so it can expire lazily. 0 means disabled.
+  uint32_t _ipSbcRoutingUntil = 0;
+  static constexpr uint32_t kIpSbcRoutingTimeoutMs = 20000;
   CouplerModel _model = CouplerModel::Model_20;
 };
