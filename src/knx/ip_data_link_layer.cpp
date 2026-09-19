@@ -97,7 +97,17 @@ void IpDataLinkLayer::loop()
     
     if (buffer[0] != KNXIP_HEADER_LEN
         || buffer[1] != KNXIP_PROTOCOL_VERSION)
+    {
+        // Stays a silent discard -- 08_TSSH 3.2.2 (ID 10202, p.16) expects no answer at all, and a
+        // negative confirmation would fail that case. What 03_08_02 6.2 p.15 asks for on top is the
+        // teardown of a connection whose version changed mid-stream, which needs the channel and the
+        // sender, so the tunnel server decides it.
+#ifdef KNX_TUNNELING
+        if (buffer[0] == KNXIP_HEADER_LEN)
+            _ipTunnelServer.shutdownOnProtocolVersionChange(buffer, (uint16_t)len, remoteAddr);
+#endif
         return;
+    }
 
     // KNXnet/IP total length (octets 4-5) must equal the received datagram; a mismatch is malformed ->
     // discard (TSSH 3.2.4/3.2.5, both refs do). Well-formed short frames (declared==len) still pass.

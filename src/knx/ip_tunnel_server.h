@@ -115,12 +115,13 @@ class IpTunnelServer
         END_OVERFLOW = 6, // send queue overflowed with a frame that must not be dropped
         END_LOCAL = 7,       // closed on the device's own request (web / console / before a restart)
         END_BUSMON_LOST = 8, // HW monitor mode ended underneath the connection -- nobody asked for it
+        END_VERSION = 9,     // the protocol version changed mid-stream on this channel (03_08_02 6.2)
         // Everything below is a REFUSED connect, not a session. The `reason >= END_REJ_TYPE` test in the
         // products relies on that split, so a new SESSION reason goes above this line, never appended.
-        END_REJ_TYPE = 9,   // connection type not supported (03_08_02 Table 7) -> detail = CRI type
-        END_REJ_LAYER = 10, // tunnelling layer not supported (03_08_04 Table 10) -> detail = layer
-        END_REJ_BUSY = 11,     // no connection available right now (busmon owns the bus / all slots taken)
-        END_REJ_TRANSPORT = 12 // Device Management refused: a FOREIGN transport connection holds the layer
+        END_REJ_TYPE = 10,  // connection type not supported (03_08_02 Table 7) -> detail = CRI type
+        END_REJ_LAYER = 11, // tunnelling layer not supported (03_08_04 Table 10) -> detail = layer
+        END_REJ_BUSY = 12,     // no connection available right now (busmon owns the bus / all slots taken)
+        END_REJ_TRANSPORT = 13 // Device Management refused: a FOREIGN transport connection holds the layer
                                // (03_08_03 2.6.1.2 / 08_TSSH 8.3.2). Own reason because it also answers
                                // 0x24, and reporting it as "no free tunnel" on a device with 16 free
                                // tunnels sends every diagnosis in the wrong direction.
@@ -186,6 +187,10 @@ class IpTunnelServer
      * in the server->client direction. Must run in the KNX loop, not from a web task.
      */
     bool closeTunnel(uint8_t channelId, uint8_t reason = END_LOCAL, bool* sent = nullptr);
+
+    // 03_08_02 6.2 p.15: a protocol version that changes mid-stream on an established connection shall
+    // shut that connection down. Only the endpoint owning the channel can trigger it.
+    bool shutdownOnProtocolVersionChange(uint8_t* buffer, uint16_t length, uint32_t src_addr);
     /**
      * @brief Close every open connection and return how many were closed.
      * @param withBusMon also end a KNX-Busmonitor tunnel, which leaves HW monitor mode with it.

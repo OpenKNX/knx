@@ -953,6 +953,73 @@ bool IpTunnelServer::fromTunnelPeer(const KnxIpTunnelConnection* tun, uint32_t s
     return tun->IpAddress == src_addr;
 }
 
+// 03_08_02 6.2 p.15: a protocol version change on an established connection shuts it down. Only a
+// datagram naming a channel, and only from the endpoint owning it - otherwise eight forged octets from any
+// host would end an ETS session. No reply is sent: 08_TSSH 3.2.2 p.16 requires the frame to be ignored.
+bool IpTunnelServer::shutdownOnProtocolVersionChange(uint8_t* buffer, uint16_t length, uint32_t src_addr)
+{
+    if (length < LEN_KNXIP_HEADER + 2)
+        return false;
+
+    uint16_t code;
+    popWord(code, buffer + 2);
+
+    uint8_t channelId = 0;
+
+    switch ((KnxIpServiceType)code)
+    {
+        case TunnelingRequest:
+        case TunnelingAck:
+        case DeviceConfigurationRequest:
+        case DeviceConfigurationAck:
+            // connection header at buffer+6: structure length, channel id, sequence, status
+            if (length < LEN_KNXIP_HEADER + LEN_CH)
+                return false;
+            channelId = buffer[LEN_KNXIP_HEADER + 1];
+            break;
+
+        case ConnectionStateRequest:
+        case DisconnectRequest:
+            // body at buffer+6: channel id, reserved, HPAI
+            if (length < LEN_KNXIP_HEADER + 1)
+                return false;
+            channelId = buffer[LEN_KNXIP_HEADER];
+            break;
+
+        default:
+            return false;
+    }
+
+    if (channelId == 0)
+        return false;
+
+    // Same span closeTunnel() covers: data tunnels, device management, and the busmonitor slots. A loop
+    // over KNX_TUNNELING alone would leave a management or monitor channel running.
+    for (int i = 0; i < KNX_TUNNELING + KNX_TUNNELING_DEVMGMT; i++)
+    {
+        if (tunnels[i].ChannelId != channelId)
+            continue;
+
+        if (!fromTunnelPeer(&tunnels[i], src_addr))
+            return false;
+
+        return closeTunnel(channelId, END_VERSION);
+    }
+
+#ifdef OPENKNX_HW_BUSMON
+    const int bmIdx = busMonSlotByChannel(channelId);
+    if (bmIdx >= 0)
+    {
+        if (!fromTunnelPeer(&_busMonTunnel[bmIdx], src_addr))
+            return false;
+
+        return closeTunnel(channelId, END_VERSION);
+    }
+#endif
+
+    return false;
+}
+
 bool IpTunnelServer::isSentToTunnel(uint16_t address, bool isGrpAddr)
 {
     if (isGrpAddr)
