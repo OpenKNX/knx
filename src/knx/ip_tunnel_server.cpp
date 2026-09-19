@@ -356,31 +356,7 @@ void IpTunnelServer::loop()
             // disconnect after the last repeat. Data (TUNNELLING_REQUEST): 1 s + 1 repeat (03_08_04 §2.6.1 p.9).
             // Config (DEVICE_CONFIGURATION_REQUEST): 10 s + 3 repeats (03_08_03; = certified refs 0/10/20/30 s).
             else if (tunnels[i]._armed && millis() - tunnels[i]._sentAt > (tunnels[i].IsConfig ? 10000u : 1000u))
-            {
-                if (tunnels[i]._retries < (tunnels[i].IsConfig ? 3 : 1))
-                {
-                    if (sendCounted(tunnels[i].IpAddress, tunnels[i].PortData, tunnels[i]._txBuf[tunnels[i]._txHead], tunnels[i]._txLen[tunnels[i]._txHead]))
-                    {
-                        if (tunnels[i]._headSent)
-                            bumpTo(tunnels[i].StatResend); // a real repetition: the frame was already out
-                        else
-                        {
-                            // The first attempt never left the device, so this is the delivery, not a repeat.
-                            bumpTo(tunnels[i].StatToClient);
-                            tunnels[i]._headSent = true;
-                        }
-                    }
-#ifdef OPENKNX_CON_DIAG
-                    g_conRetry++; // resend fired
-#endif
-                    tunnels[i]._retries++;
-                    tunnels[i]._sentAt = millis();
-                }
-                else
-                {
-                    disconnectTunnel(&tunnels[i], END_NOACK);
-                }
-            }
+                repeatOrDisconnect(&tunnels[i]);
 #endif
             // loop() scans ALL slots and reaps every expired tunnel -- no early break at the first occupied
             // slot (which would leave dead tunnels in later slots unreaped -> slot exhaustion).
@@ -839,6 +815,39 @@ void IpTunnelServer::pumpTunnel(KnxIpTunnelConnection* t)
     else
         g_conSendFail++;
 #endif
+}
+
+/**
+ * @brief Repeat the in-flight head once, and disconnect once the repeats are used up.
+ *
+ * 03_08_04 2.6.1 p.9 asks for the same reaction to a missing acknowledge and to one whose status signals
+ * any error: repeat the request once, then terminate the connection. Data: 1 repeat; a configuration
+ * connection follows 03_08_03 with 3.
+ */
+void IpTunnelServer::repeatOrDisconnect(KnxIpTunnelConnection* t)
+{
+    if (t->_retries >= (t->IsConfig ? 3 : 1))
+    {
+        disconnectTunnel(t, END_NOACK);
+        return;
+    }
+
+    if (sendCounted(t->IpAddress, t->PortData, t->_txBuf[t->_txHead], t->_txLen[t->_txHead]))
+    {
+        if (t->_headSent)
+            bumpTo(t->StatResend); // a real repetition: the frame was already out
+        else
+        {
+            // The first attempt never left the device, so this is the delivery, not a repeat.
+            bumpTo(t->StatToClient);
+            t->_headSent = true;
+        }
+    }
+#ifdef OPENKNX_CON_DIAG
+    g_conRetry++;
+#endif
+    t->_retries++;
+    t->_sentAt = millis();
 }
 
 // Server-initiated teardown (retry-exhausted / queue-overflow): tell the client and reap the slot.

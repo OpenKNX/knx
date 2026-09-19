@@ -238,6 +238,7 @@ class IpTunnelServer
     void pumpTunnel(KnxIpTunnelConnection *t);                 // send the FIFO head if nothing is in flight
     bool evictOldestGroupFrame(KnxIpTunnelConnection *t);     // free one slot by dropping the oldest queued
                                                               // group telegram; false = nothing evictable
+    void repeatOrDisconnect(KnxIpTunnelConnection *t);         // repeat the head once, then tear down
     void disconnectTunnel(KnxIpTunnelConnection *t, uint8_t reason); // server-initiated teardown + reap
     void handleTunnelAck(uint8_t *buffer, uint16_t length);    // pop the acked head + pump the next
 #endif
