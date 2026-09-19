@@ -1201,9 +1201,11 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
     // instead of reading a stale leftover byte (in-bounds of the rx buffer, but undefined) as the layer.
     if (connRequest.cri().type() == TUNNEL_CONNECTION && length < LEN_KNXIP_HEADER + 2 * LEN_IPHPAI + 4)
     {
+        // Discarded rather than answered: the frame is structurally invalid, and E_CONNECTION_TYPE would
+        // state that the requested type is unsupported -- it is TUNNEL_CONNECTION, which this server does
+        // support. 03_08_02 6.2 p.15 asks for an invalid data packet to be ignored without further action.
+        // The rejection is still recorded, so it stays visible in the connection history.
         recordRejectedConnect(rIp, TUN_DATA, END_REJ_TYPE, (uint8_t)TUNNEL_CONNECTION);
-        KnxIpConnectResponse connRes(0x00, E_CONNECTION_TYPE);
-        sendCounted(rIp, rPort, connRes.data(), connRes.totalLength());
         return;
     }
 
