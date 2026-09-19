@@ -601,9 +601,18 @@ void IpTunnelServer::sendFrameToTunnel(KnxIpTunnelConnection* tunnel, CemiFrame&
     println(tunnel->ChannelId, 16);
 #endif
 
-    // L_Data goes as a TUNNELLING_REQUEST; everything else (M_Prop*/cEMI mgmt) as DEVICE_CONFIGURATION_REQUEST.
-    const uint16_t svc = (frame.messageCode() == L_data_req || frame.messageCode() == L_data_con
-                          || frame.messageCode() == L_data_ind) ? TunnelingRequest : DeviceConfigurationRequest;
+    // The service is decided by the CONNECTION, not the cEMI message code: device management speaks
+    // DEVICE_CONFIGURATION_REQUEST (03_08_03 2.2), tunnelling speaks TUNNELLING_REQUEST (03_08_04 2.2).
+    // Choosing by message code put a config frame on a tunnel, which the client never acknowledges.
+    const uint16_t svc = tunnel->IsConfig ? DeviceConfigurationRequest : TunnelingRequest;
+
+    // What may be dropped when the queue overflows is a best-effort GROUP TELEGRAM. That used to be
+    // spelled "svc == TunnelingRequest", which was the same thing only as long as the service was picked
+    // by the message code; addressType() reads a control-field bit that carries no meaning in an M_Prop
+    // frame, so the test has to name the message code itself.
+    const bool isGroupTelegram = (frame.messageCode() == L_data_req || frame.messageCode() == L_data_con
+                                  || frame.messageCode() == L_data_ind)
+                                 && frame.addressType() == AddressType::GroupAddress;
 
 #ifdef KNX_TUNNEL_RESEND
     const uint16_t cemiLen = frame.totalLenght();
@@ -625,7 +634,7 @@ void IpTunnelServer::sendFrameToTunnel(KnxIpTunnelConnection* tunnel, CemiFrame&
     {
         // FIFO full: drop a best-effort group telegram and keep the connection (the 1 s ACK-timeout in loop()
         // is the disconnect authority, 03_08_04 §2.6.1). A non-group (CO/mgmt) overflow still disconnects.
-        if (svc == TunnelingRequest && frame.addressType() == AddressType::GroupAddress)
+        if (isGroupTelegram)
         {
             bumpTo(tunnel->StatGrpDrop); // best-effort by design: the connection is worth more than the frame
             return;
@@ -661,7 +670,7 @@ void IpTunnelServer::sendFrameToTunnel(KnxIpTunnelConnection* tunnel, CemiFrame&
     tunnel->_txLen[tunnel->_txTail] = totalLen;
     // addressType() dereferences _ctrl1, which the pointer ctor computes as data + data[1] -- an L_Data
     // layout. svc is TunnelingRequest only for L_data_*, so gate on it.
-    tunnel->_txIsGroup[tunnel->_txTail] = (svc == TunnelingRequest) && (frame.addressType() == AddressType::GroupAddress);
+    tunnel->_txIsGroup[tunnel->_txTail] = isGroupTelegram;
     tunnel->_txTail = (tunnel->_txTail + 1) % KNX_TUNNEL_RESEND_DEPTH;
     tunnel->_txCount++;
     if (tunnel->_txCount > tunnel->StatQueuePeak) tunnel->StatQueuePeak = tunnel->_txCount;
