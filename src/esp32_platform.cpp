@@ -148,11 +148,28 @@ bool Esp32Platform::sendBytesUniCast(uint32_t addr, uint16_t port, uint8_t* buff
 
 uint8_t * Esp32Platform::getEepromBuffer(uint32_t size)
 {
-    uint8_t * eepromptr = EEPROM.getDataPtr();
-    if(eepromptr == nullptr) {
-        EEPROM.begin(size);
-        eepromptr = EEPROM.getDataPtr();
+    // An earlier begin() may describe a SMALLER buffer than this caller needs, and its result was
+    // discarded - both ended past the allocation. length() reports 16 bits while begin() takes a size_t,
+    // so 64 KiB or more could never be reported back and every call would reallocate. Refuse it.
+    if (size > 0xFFFF)
+    {
+        println("EEPROM size of 64 KiB or more cannot be served on this platform");
+        return nullptr;
     }
+
+    if (EEPROM.length() < size)
+    {
+        if (!EEPROM.begin(size))
+        {
+            println("EEPROM.begin failed -- no non-volatile buffer");
+            return nullptr;
+        }
+    }
+
+    uint8_t* eepromptr = EEPROM.getDataPtr();
+    if (eepromptr == nullptr)
+        println("EEPROM data pointer is null after begin");
+
     return eepromptr;
 }
 
