@@ -38,9 +38,18 @@ class IpDataLinkLayer : public DataLinkLayer
     // Discovery (SearchRequest) and the tunnel receive-path stay active regardless.
     void enableRoutingIndications(bool value) { _rxRoutingIndications = value; }
 
+    // IP system broadcast rides on the system setup group, which need not be the routing group
+    // (03_02_06 4.1.3). Follows the router's IP System Broadcast Routing Mode: the second socket exists
+    // only while that mode is on.
+    void enableSystemBroadcast(bool value);
+
   private:
     bool joinMultiCast();        // join _joinedGroup
     uint32_t multiCastAddress(); // property source; read once at enable, then latched
+    uint32_t systemSetupMultiCastAddress();
+    void loopSystemBroadcast();
+    bool sendSystemBroadcast(CemiFrame& frame);
+    bool _sbcSocketOpen = false;
     uint32_t _joinedGroup = 0; // 03_08_03 2.5.17: PID 66 becomes active on reset, not at runtime
     KnxIpCounters* _counters = nullptr;
     bool sendUniCastCounted(uint32_t addr, uint16_t port, uint8_t* buffer, uint16_t len);

@@ -7,6 +7,7 @@
 #include "platform.h"
 #include "device_object.h"
 #include "knx_ip_routing_indication.h"
+#include "knx_ip_routing_system_broadcast.h"
 #include "knx_ip_search_request.h"
 #include "knx_ip_search_response.h"
 #include "knx_ip_search_request_extended.h"
@@ -44,6 +45,12 @@ bool IpDataLinkLayer::sendFrame(CemiFrame& frame)
         dataConReceived(frame, false);
         return false;
     }
+    // 03_02_06 4.1.3: a system broadcast leaves as ROUTING_SYSTEM_BROADCAST on the system setup group,
+    // never as a routing indication. The coupler only marks a frame this way while the router has the IP
+    // System Broadcast Routing Mode enabled, so this branch is unreachable in the delivery state.
+    if (frame.systemBroadcast() == SysBroadcast)
+        return sendSystemBroadcast(frame);
+
     KnxIpRoutingIndication packet(frame);
     // only send 50 packet per second: see KNX 3.2.6 p.6
     if (isSendLimitReached())
@@ -75,6 +82,8 @@ void IpDataLinkLayer::loop()
     if (!_enabled)
         return;
 
+
+    loopSystemBroadcast();
 
     uint8_t buffer[512];
     uint16_t remotePort = 0;
@@ -125,7 +134,14 @@ void IpDataLinkLayer::loop()
                 frameReceived(routingIndication.frame());
             break;
         }
-        
+
+        case RoutingSystemBroadcast:
+            // 03_02_06 4.1.3: valid only when received on the system setup multicast address, which the
+            // dedicated socket in loopSystemBroadcast() owns. Whatever arrives here came in on the routing
+            // group or as unicast and shall be ignored.
+            break;
+
+
         case SearchRequest:
         {
             // The discovery endpoint HPAI sits at buffer[6..13] (03_08_02 7.6.1). Without this bound a
@@ -306,6 +322,94 @@ void IpDataLinkLayer::loopHandleSearchRequestExtended(uint8_t* buffer, uint16_t 
 
 
 
+// The system setup group is where every IP system broadcast goes, whatever the routing group is set to
+// (03_02_06 4.1.3). Sending to a multicast address needs no membership -- only receiving does -- so the
+// unicast API, which is the only one carrying a destination, does the job here.
+bool IpDataLinkLayer::sendSystemBroadcast(CemiFrame& frame)
+{
+    if (isSendLimitReached())
+    {
+        if (_counters != nullptr)
+            _counters->incrementOverflowToIp();
+        dataConReceived(frame, false);
+        return false;
+    }
+
+    KnxIpRoutingSystemBroadcast packet(frame);
+    const bool success = sendUniCastCounted(systemSetupMultiCastAddress(), KNXIP_MULTICAST_PORT,
+                                            packet.data(), packet.totalLength());
+    dataConReceived(frame, success);
+    return success;
+}
+
+// Opened only while the router holds the mode enabled, and that falls back after 20 s: a device that
+// never uses system broadcast keeps one socket, as before.
+void IpDataLinkLayer::enableSystemBroadcast(bool value)
+{
+    if (value == _sbcSocketOpen)
+        return;
+
+    if (!value)
+    {
+        _platform.closeMultiCastSecondary();
+        _sbcSocketOpen = false;
+        return;
+    }
+
+    if (!_enabled)
+        return;
+
+    _sbcSocketOpen = _platform.setupMultiCastSecondary(systemSetupMultiCastAddress(), KNXIP_MULTICAST_PORT);
+
+    if (!_sbcSocketOpen)
+        println("IP system broadcast: the system setup group could not be joined");
+}
+
+// A second socket instead of the arrival address of the datagram: the destination is not available on
+// every platform, and a group of its own makes "received on the system setup multicast address"
+// structural rather than a runtime comparison.
+void IpDataLinkLayer::loopSystemBroadcast()
+{
+    if (!_sbcSocketOpen)
+        return;
+
+    uint8_t buffer[512];
+    int len = _platform.readBytesMultiCastSecondary(buffer, 512);
+
+    if (len < KNXIP_HEADER_LEN)
+        return;
+
+    if (buffer[0] != KNXIP_HEADER_LEN || buffer[1] != KNXIP_PROTOCOL_VERSION)
+        return;
+
+    uint16_t declaredLen;
+    popWord(declaredLen, buffer + 4);
+    if (declaredLen != (uint16_t)len)
+        return;
+
+    uint16_t code;
+    popWord(code, buffer + 2);
+    if ((KnxIpServiceType)code != RoutingSystemBroadcast)
+        return; // every other service is served on the routing socket
+
+    KnxIpRoutingSystemBroadcast sbc(buffer, len);
+
+    // Order as on the routing path: a zero-length frame must not reach valid(), which would read past it.
+    if (sbc.frame().totalLenght() == 0 || !sbc.frame().valid())
+        return;
+
+    // 03_02_06 4.1.3: a frame whose cEMI does not meet the conditions shall be ignored.
+    if (!sbc.cemiIsSystemBroadcast())
+        return;
+
+    frameReceived(sbc.frame());
+}
+
+uint32_t IpDataLinkLayer::systemSetupMultiCastAddress()
+{
+    return _ipParameters.propertyValue<uint32_t>(PID_SYSTEM_SETUP_MULTICAST_ADDRESS);
+}
+
 uint32_t IpDataLinkLayer::multiCastAddress()
 {
 #ifdef KNX_IS_ROUTER
@@ -341,6 +445,9 @@ bool IpDataLinkLayer::networkChanged(bool afterOutage)
 
     if (!afterOutage) return true; // endpoint is fresh; a needless Leave prunes the group on a switch
 
+    // Same for the system broadcast socket: it was bound to the interface that just went away. Dropping
+    // it here lets the next loop pass rebuild it while the mode is still on.
+    enableSystemBroadcast(false);
     _platform.closeMultiCast();
     _enabled = joinMultiCast(); // the socket is gone if this failed; enabled() must not claim otherwise
     return _enabled;
@@ -368,6 +475,9 @@ void IpDataLinkLayer::enabled(bool value)
 
     if(!value && _enabled)
     {
+        // The system broadcast socket goes with it: the mode may still be on, and the next loop pass
+        // re-opens it once the endpoint is back. Without this it would survive as a stale handle.
+        enableSystemBroadcast(false);
         _platform.closeMultiCast();
         _enabled = false;
         return;
