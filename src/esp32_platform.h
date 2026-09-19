@@ -28,8 +28,13 @@ public:
     void closeMultiCast() override;
     bool sendBytesMultiCast(uint8_t* buffer, uint16_t len) override;
     int readBytesMultiCast(uint8_t* buffer, uint16_t maxLen, uint32_t& src_addr, uint16_t& src_port) override;
-    
-    //unicast 
+
+    //second multicast socket: system setup group, for IP system broadcast
+    bool setupMultiCastSecondary(uint32_t addr, uint16_t port) override;
+    void closeMultiCastSecondary() override;
+    int readBytesMultiCastSecondary(uint8_t* buffer, uint16_t maxLen) override;
+
+    //unicast
     bool sendBytesUniCast(uint32_t addr, uint16_t port, uint8_t* buffer, uint16_t len) override;
 
     //memory
@@ -41,6 +46,7 @@ public:
 
 private:
     WiFiUDP _udp;
+    WiFiUDP _udpSbc;
     // int8_t _rxPin = -1; 
     // int8_t _txPin = -1;
 };

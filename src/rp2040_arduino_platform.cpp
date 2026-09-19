@@ -300,6 +300,46 @@ void RP2040ArduinoPlatform::closeMultiCast()
     _udp.stop();
 }
 
+// The system setup group can be the same group the routing socket already joined; lwIP counts the
+// membership per group, so a second join is a second reference and no interference.
+bool RP2040ArduinoPlatform::setupMultiCastSecondary(uint32_t addr, uint16_t port)
+{
+    mcastaddrSbc = IPAddress(htonl(addr));
+    const bool joined = (_udpSbc.beginMulticast(mcastaddrSbc, port) != 0);
+
+    if (!joined)
+        println("  KNX system broadcast multicast join FAILED");
+
+    return joined;
+}
+
+// No igmp_leavegroup here, unlike closeMultiCast(): when both sockets sit on the same group -- the
+// default, routing group == system setup group -- leaving it would take the routing socket down with it.
+// Staying a member of a group we no longer read costs an occasional membership report, nothing else.
+void RP2040ArduinoPlatform::closeMultiCastSecondary()
+{
+    _udpSbc.stop();
+}
+
+int RP2040ArduinoPlatform::readBytesMultiCastSecondary(uint8_t* buffer, uint16_t maxLen)
+{
+    int len = _udpSbc.parsePacket();
+
+    if (len == 0)
+        return 0;
+
+    if (len > maxLen)
+    {
+        println("Unexpected UDP data packet length - drop packet");
+        for (size_t i = 0; i < len; i++)
+            _udpSbc.read();
+        return 0;
+    }
+
+    _udpSbc.read(buffer, len);
+    return len;
+}
+
 bool RP2040ArduinoPlatform::sendBytesMultiCast(uint8_t* buffer, uint16_t len)
 {
     // printHex("<- ",buffer, len);

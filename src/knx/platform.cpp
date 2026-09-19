@@ -129,6 +129,24 @@ int Platform::readBytesMultiCast(uint8_t* buffer, uint16_t maxLen, uint32_t& src
     return readBytesMultiCast(buffer, maxLen);
 }
 
+// Not joined, so the caller keeps IP system broadcast switched off rather than silently dropping frames.
+bool Platform::setupMultiCastSecondary(uint32_t addr, uint16_t port)
+{
+    (void)addr;
+    (void)port;
+    return false;
+}
+
+void Platform::closeMultiCastSecondary()
+{}
+
+int Platform::readBytesMultiCastSecondary(uint8_t* buffer, uint16_t maxLen)
+{
+    (void)buffer;
+    (void)maxLen;
+    return 0;
+}
+
 size_t Platform::flashEraseBlockSize()
 {
     return 0;

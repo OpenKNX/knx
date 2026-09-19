@@ -90,6 +90,52 @@ void Esp32Platform::closeMultiCast()
     _udp.stop();
 }
 
+// Second group for IP system broadcast. It may be the same group the routing socket holds -- that is the
+// default configuration -- which lwIP handles as a second membership reference.
+bool Esp32Platform::setupMultiCastSecondary(uint32_t addr, uint16_t port)
+{
+#ifdef KNX_IP_LAN
+    esp_netif_t* check = esp_netif_get_handle_from_ifkey("ETH_DEF");
+#else
+    esp_netif_t* check = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+#endif
+
+    if (check == nullptr)
+        return false; // no interface yet; the caller retries when the mode is set again
+
+    IPAddress mcastaddr(htonl(addr));
+    const bool joined = (_udpSbc.beginMulticast(mcastaddr, port) != 0);
+
+    if (!joined)
+        println("  KNX system broadcast multicast join FAILED");
+
+    return joined;
+}
+
+void Esp32Platform::closeMultiCastSecondary()
+{
+    _udpSbc.stop();
+}
+
+int Esp32Platform::readBytesMultiCastSecondary(uint8_t* buffer, uint16_t maxLen)
+{
+    int len = _udpSbc.parsePacket();
+
+    if (len == 0)
+        return 0;
+
+    if (len > maxLen)
+    {
+        println("Unexpected UDP data packet length - drop packet");
+        for (size_t i = 0; i < len; i++)
+            _udpSbc.read();
+        return 0;
+    }
+
+    _udpSbc.read(buffer, len);
+    return len;
+}
+
 bool Esp32Platform::sendBytesMultiCast(uint8_t * buffer, uint16_t len)
 {
     //printHex("<- ",buffer, len);

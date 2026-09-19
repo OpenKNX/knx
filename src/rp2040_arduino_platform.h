@@ -100,6 +100,11 @@ public:
     bool sendBytesMultiCast(uint8_t* buffer, uint16_t len) override;
     int readBytesMultiCast(uint8_t* buffer, uint16_t maxLen, uint32_t& src_addr, uint16_t& src_port) override;
 
+    // second multicast socket: system setup group, for IP system broadcast
+    bool setupMultiCastSecondary(uint32_t addr, uint16_t port) override;
+    void closeMultiCastSecondary() override;
+    int readBytesMultiCastSecondary(uint8_t* buffer, uint16_t maxLen) override;
+
     // unicast
     bool sendBytesUniCast(uint32_t addr, uint16_t port, uint8_t* buffer, uint16_t len) override;
 
@@ -107,6 +112,8 @@ public:
     protected: WiFiUDP _udp;
     protected: IPAddress mcastaddr;
     protected: uint16_t _port;
+    protected: WiFiUDP _udpSbc;
+    protected: IPAddress mcastaddrSbc;
     #endif
     protected: pin_size_t _rxPin = UART_PIN_NOT_DEFINED; 
     protected: pin_size_t _txPin = UART_PIN_NOT_DEFINED;

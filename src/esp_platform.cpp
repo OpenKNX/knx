@@ -71,6 +71,33 @@ void EspPlatform::closeMultiCast()
     _udp.stop();
 }
 
+// Second group for IP system broadcast; may be the same group the routing socket holds, which lwIP
+// counts as a further membership reference.
+bool EspPlatform::setupMultiCastSecondary(uint32_t addr, uint16_t port)
+{
+    IPAddress mcastaddr(htonl(addr));
+    return _udpSbc.beginMulticast(WiFi.localIP(), mcastaddr, port) != 0;
+}
+
+void EspPlatform::closeMultiCastSecondary()
+{
+    _udpSbc.stop();
+}
+
+int EspPlatform::readBytesMultiCastSecondary(uint8_t* buffer, uint16_t maxLen)
+{
+    int len = _udpSbc.parsePacket();
+
+    if (len == 0)
+        return 0;
+
+    if (len > maxLen)
+        return 0; // unlike the routing socket this never calls fatalError(): a malformed system broadcast must not take the device down
+
+    _udpSbc.read(buffer, len);
+    return len;
+}
+
 bool EspPlatform::sendBytesMultiCast(uint8_t * buffer, uint16_t len)
 {
     //printHex("<- ",buffer, len);

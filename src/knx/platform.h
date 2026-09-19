@@ -58,6 +58,12 @@ class Platform
     virtual int readBytesMultiCast(uint8_t* buffer, uint16_t maxLen);
     virtual int readBytesMultiCast(uint8_t* buffer, uint16_t maxLen, uint32_t& src_addr, uint16_t& src_port);
 
+    // Second multicast socket, for KNXnet/IP system broadcast on the system setup group (03_02_06 4.1.3).
+    // A platform that does not implement it keeps the default below, and the feature stays off there.
+    virtual bool setupMultiCastSecondary(uint32_t addr, uint16_t port); // false: the group was not joined
+    virtual void closeMultiCastSecondary();
+    virtual int readBytesMultiCastSecondary(uint8_t* buffer, uint16_t maxLen);
+
     //unicast socket
     virtual bool sendBytesUniCast(uint32_t addr, uint16_t port, uint8_t* buffer, uint16_t len);
 

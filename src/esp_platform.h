@@ -27,7 +27,12 @@ class EspPlatform : public ArduinoPlatform
     void closeMultiCast() override;
     bool sendBytesMultiCast(uint8_t* buffer, uint16_t len) override;
     int readBytesMultiCast(uint8_t* buffer, uint16_t maxLen) override;
-   
+
+    //second multicast socket: system setup group, for IP system broadcast
+    bool setupMultiCastSecondary(uint32_t addr, uint16_t port) override;
+    void closeMultiCastSecondary() override;
+    int readBytesMultiCastSecondary(uint8_t* buffer, uint16_t maxLen) override;
+
     //unicast 
     bool sendBytesUniCast(uint32_t addr, uint16_t port, uint8_t* buffer, uint16_t len) override;
     
@@ -36,6 +41,7 @@ class EspPlatform : public ArduinoPlatform
     void commitToEeprom();
 private:
     WiFiUDP _udp;
+    WiFiUDP _udpSbc;
     uint32_t _multicastAddr;
     uint16_t _multicastPort;
 };
