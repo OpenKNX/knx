@@ -240,7 +240,7 @@ class IpTunnelServer
                                                               // group telegram; false = nothing evictable
     void repeatOrDisconnect(KnxIpTunnelConnection *t);         // repeat the head once, then tear down
     void disconnectTunnel(KnxIpTunnelConnection *t, uint8_t reason); // server-initiated teardown + reap
-    void handleTunnelAck(uint8_t *buffer, uint16_t length);    // pop the acked head + pump the next
+    void handleTunnelAck(uint8_t *buffer, uint16_t length, uint32_t src_addr); // pop the acked head + pump the next
 #endif
     void HandleConnectRequest(uint8_t* buffer, uint16_t length, uint32_t& src_addr, uint16_t& src_port);
     // src_addr/src_port: the UDP sender, needed to resolve a route-back control HPAI (03_08_02 8.6.2.2).

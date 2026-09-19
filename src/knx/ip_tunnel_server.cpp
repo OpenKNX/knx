@@ -859,7 +859,7 @@ void IpTunnelServer::disconnectTunnel(KnxIpTunnelConnection* t, uint8_t reason)
 }
 
 // A TUNNELLING_ACK / DEVICE_CONFIGURATION_ACK cleared the in-flight head -> pop it and pump the next.
-void IpTunnelServer::handleTunnelAck(uint8_t* buffer, uint16_t length)
+void IpTunnelServer::handleTunnelAck(uint8_t* buffer, uint16_t length, uint32_t src_addr)
 {
     if (length < LEN_KNXIP_HEADER + LEN_CH) return;
 #ifdef OPENKNX_CON_DIAG
@@ -869,7 +869,9 @@ void IpTunnelServer::handleTunnelAck(uint8_t* buffer, uint16_t length)
     uint8_t ch = ack.connectionHeader().channelId();
     uint8_t seq = ack.connectionHeader().sequenceCounter();
     for (int i = 0; i < KNX_TUNNELING + KNX_TUNNELING_DEVMGMT; i++)
-        if (tunnels[i].ChannelId == ch && tunnels[i]._armed && tunnels[i]._seq == seq)
+        // The endpoint is compared as in every sibling handler: without it any host on the LAN could
+        // acknowledge another client's frame by guessing the channel id and the sequence number.
+        if (tunnels[i].ChannelId == ch && tunnels[i]._armed && tunnels[i]._seq == seq && fromTunnelPeer(&tunnels[i], src_addr))
         {
             if (ack.connectionHeader().status() == E_NO_ERROR)
             {
@@ -1010,14 +1012,14 @@ bool IpTunnelServer::HandleIpFrame(uint8_t* buffer, uint16_t length, uint32_t& s
 
         case DeviceConfigurationAck: {
 #ifdef KNX_TUNNEL_RESEND
-            handleTunnelAck(buffer, length); // pop the acked head on a devmgmt channel + pump the next
+            handleTunnelAck(buffer, length, src_addr); // pop the acked head on a devmgmt channel + pump the next
 #endif
             break;
         }
 
         case TunnelingAck: {
 #ifdef KNX_TUNNEL_RESEND
-            handleTunnelAck(buffer, length); // pop the acked head on a data tunnel + pump the next
+            handleTunnelAck(buffer, length, src_addr); // pop the acked head on a data tunnel + pump the next
 #endif
             break;
         }
