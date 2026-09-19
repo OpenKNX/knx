@@ -263,6 +263,8 @@ uint32_t Platform::readNonVolatileMemory(uint32_t relativeAddress, uint8_t* buff
 
     if(_memoryType == Flash)
     {
+        // flashEraseBlockSize() counts PAGES, not octets -- every other site multiplies by flashPageSize().
+        const uint32_t eraseBlockBytes = (uint32_t)flashEraseBlockSize() * (uint32_t)flashPageSize();
         uint32_t offset = 0;
         while (size > 0)
         {
@@ -285,7 +287,10 @@ uint32_t Platform::readNonVolatileMemory(uint32_t relativeAddress, uint8_t* buff
                 // if not, read until the buffered block starts and loop through while again
                 else
                 {
-                    uint32_t sizeToRead = (eraseblockNumberEnd * flashEraseBlockSize()) - relativeAddress;
+                    // Read up to where the BUFFERED block starts, not where the requested range ends:
+                    // with a request spanning past the buffered block the old bound copied straight
+                    // through it and returned stale flash for octets the buffer holds.
+                    uint32_t sizeToRead = (_bufferedEraseblockNumber * eraseBlockBytes) - relativeAddress;
                     memcpy(buffer+offset, userFlashStart()+relativeAddress, sizeToRead);
                     relativeAddress += sizeToRead;
                     size -= sizeToRead;
@@ -299,16 +304,16 @@ uint32_t Platform::readNonVolatileMemory(uint32_t relativeAddress, uint8_t* buff
                 int32_t eraseblockNumberEnd = getEraseBlockNumberOf(relativeAddress+size-1);
                 if(_bufferedEraseblockNumber == eraseblockNumberEnd)
                 {
-                    uint8_t* start = _eraseblockBuffer + (relativeAddress - _bufferedEraseblockNumber * flashEraseBlockSize());
+                    uint8_t* start = _eraseblockBuffer + (relativeAddress - _bufferedEraseblockNumber * eraseBlockBytes);
                     memcpy(buffer+offset, start, size);
                     return relativeAddress + size;
                 }
                 // if not, read until the end of the buffered block and loop through while again
                 else
                 {
-                    uint32_t offsetInBufferedBlock = relativeAddress - _bufferedEraseblockNumber * flashEraseBlockSize();
+                    uint32_t offsetInBufferedBlock = relativeAddress - _bufferedEraseblockNumber * eraseBlockBytes;
                     uint8_t* start = _eraseblockBuffer + offsetInBufferedBlock;
-                    uint32_t sizeToRead = flashEraseBlockSize() - offsetInBufferedBlock;
+                    uint32_t sizeToRead = eraseBlockBytes - offsetInBufferedBlock;
                     memcpy(buffer+offset, start, sizeToRead);
                     relativeAddress += sizeToRead;
                     size -= sizeToRead;
