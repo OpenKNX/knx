@@ -116,6 +116,7 @@ void IpTunnelServer::copyCounters(TunnelEvent& e, const KnxIpTunnelConnection& c
     e.fromClient = c.StatFromClient;
     e.resend = c.StatResend;
     e.seqGap = c.StatSeqGap;
+    e.ackErr = c.StatAckErr;
     e.txDrop = c.StatTxDrop;
     e.grpDrop = c.StatGrpDrop;
     e.queuePeak = c.StatQueuePeak;
@@ -882,6 +883,14 @@ void IpTunnelServer::handleTunnelAck(uint8_t* buffer, uint16_t length, uint32_t 
                 tunnels[i]._txCount--;
                 tunnels[i]._armed = false;
                 pumpTunnel(&tunnels[i]); // send the next queued frame, if any
+            }
+            else
+            {
+                // 03_08_04 2.6.1 p.9: an acknowledge with an error status counts exactly like none at
+                // all. So it is counted and the frame stays armed -- the resend timer decides when to
+                // repeat and when to give up. Repeating right here spent the single retry on the first
+                // copy of a duplicated error acknowledge and disconnected on the second.
+                bumpTo(tunnels[i].StatAckErr);
             }
             break;
         }

@@ -30,6 +30,7 @@ class KnxIpTunnelConnection
     uint32_t StatFromClient = 0;
     uint16_t StatResend = 0;    // repeats of an unacked request
     uint16_t StatSeqGap = 0;    // datagrams discarded: sequence counter was not the expected one
+    uint16_t StatAckErr = 0;    // acknowledges from this client that carried an error status
     uint16_t StatTxDrop = 0;    // frames for this client that were never sent: oversize, FIFO full,
                                 // still queued at teardown, or refused with no retry behind it
     uint16_t StatGrpDrop = 0;   // group frames dropped because the FIFO was full -- best-effort by design
