@@ -466,6 +466,11 @@ void IpTunnelServer::loop()
 
 void IpTunnelServer::dataRequestToChannelId(CemiFrame& frame, uint8_t channelId)
 {
+    // A free slot carries ChannelId 0, so channel 0 used to match the first unused one and the frame was
+    // handed to a closed connection. 0 is the free-slot marker here and never names a connection.
+    if (channelId == 0)
+        return;
+
     KnxIpTunnelConnection* tun = nullptr;
     for (int i = 0; i < KNX_TUNNELING + KNX_TUNNELING_DEVMGMT; i++)
     {
