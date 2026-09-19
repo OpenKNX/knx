@@ -602,7 +602,23 @@ void NetworkLayerCoupler::broadcastIndication(AckType ack, FrameFormat format, N
 
     // Route to other interface
     if(!(lcconfig & LCCONFIG::BROADCAST_LOCK))
-        sendMsgHopCount(ack, GroupAddress, 0, npdu, priority, Broadcast, srcIfIdx, source);
+    {
+        // 03_02_06 4.1.3 with 08_TSSK 80103/80104: towards IP a system broadcast leaves as
+        // ROUTING_SYSTEM_BROADCAST while the IP System Broadcast Routing Mode is enabled, and as an
+        // ordinary routing indication while it is off -- which is the delivery state and the behaviour
+        // this router had before. Towards TP1 nothing changes: a closed medium carries it as a plain
+        // broadcast either way (fillTelegramTP forces the flag on the wire).
+        SystemBroadcast broadcastType = Broadcast;
+        const uint8_t dstIfIdx = (srcIfIdx == kSecondaryIfIndex) ? kPrimaryIfIndex : kSecondaryIfIndex;
+
+        if (_netLayerEntities[dstIfIdx].mediumType() == DptMedium::KNX_IP
+            && isApciSystemBroadcast(npdu.tpdu().apdu())
+            && _rtObjPrimary != nullptr
+            && _rtObjPrimary->isIpSbcRoutingEnabled())
+            broadcastType = SysBroadcast;
+
+        sendMsgHopCount(ack, GroupAddress, 0, npdu, priority, broadcastType, srcIfIdx, source);
+    }
 }
 
 void NetworkLayerCoupler::broadcastConfirm(AckType ack, FrameFormat format, Priority priority, uint16_t source, NPDU& npdu, bool status, uint8_t srcIfIdx)
