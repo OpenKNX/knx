@@ -97,7 +97,12 @@ class IpTunnelServer
     /** @brief KNXnet/IP telegram counters (03_08_03); null on builds that do not keep them. */
     void setCounters(KnxIpCounters* counters) { _counters = counters; }
 
-    /** @brief Read-only i-th open data tunnel (0..tunnelCount()-1); nullptr if out of range. */
+    /**
+     * @brief Read-only i-th open data tunnel (0..tunnelCount()-1); nullptr if out of range.
+     * @details Hands out a pointer into the live array with no synchronisation, so the slot can be reaped
+     *          between the call and the read. Safe only from the same context as loop(); anything running
+     *          on a second core or task must use activeTunnels(), which snapshots under a seqlock.
+     */
     const KnxIpTunnelConnection* tunnelAt(uint8_t index) const;
 
     // Tunnel connection type + how a session ended, for the active list / history.
