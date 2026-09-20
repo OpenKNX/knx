@@ -211,6 +211,16 @@ void BauSystemB::memoryExtWriteIndication(Priority priority, HopCountType hopTyp
 
 void BauSystemB::memoryExtReadIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, uint8_t number, uint32_t memoryAddress)
 {
+    // The response carries the data at APDU offset 5, so 5 + number has to fit MAX_APDU_OCTET_COUNT. The
+    // builder clamps for memory safety, which answered a short read as Success; F4h says it does not fit.
+    if ((uint16_t)number + 5 > MAX_APDU_OCTET_COUNT)
+    {
+        applicationLayer().memoryExtReadResponse(AckRequested, priority, hopType, asap, secCtrl,
+                                                 ReturnCodes::ExceedsMaxApduLength, 0, memoryAddress, nullptr);
+        return;
+    }
+
+    flushBeforeRead();
     uint8_t* p = _memory.toAbsoluteChecked(memoryAddress, number);
     ReturnCodes code = (p != nullptr) ? ReturnCodes::Success : ReturnCodes::AddressVoid; // OOB read -> AddressVoid, no data
     if (p == nullptr) number = 0;
