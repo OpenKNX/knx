@@ -17,7 +17,16 @@ static constexpr auto kFunctionPropertyResultBufferMaxSize = 0xFF;
 // buffer+16 (<= 248). Telling a callee it may write 0xFF let it overrun the frame it is built into.
 static constexpr uint8_t kFunctionPropertyResultMax = 251;
 static constexpr uint8_t kFunctionPropertyResultMaxExt = 248;
-static constexpr auto kRestartProcessTime = 3;
+// 03_05_02 3.7.3 p.89: the client takes this as the TIME-OUT after which contact counts as failed, so
+// too small declares a booting device dead. Measured after a master reset: TP 3.5 s, IP 8.0 to 9.8 s.
+#ifdef USE_IP
+static constexpr auto kRestartProcessTime = 20;
+#else
+static constexpr auto kRestartProcessTime = 10;
+#endif
+// Time the queued A_Restart_Response gets before the device resets: one TP1 frame with three repetitions and
+// the partner's T_ACK take well under this, and it stays inside the announced process time.
+static constexpr uint32_t kSelfResetDelayMs = 1000;
 
 BauSystemB::BauSystemB(Platform& platform): _memory(platform, _deviceObj),
      _appProgram(_memory),
@@ -192,12 +201,17 @@ void BauSystemB::restartRequestIndication(Priority priority, HopCountType hopTyp
         println("Basic restart requested");
         if (_beforeRestart != 0)
             _beforeRestart();
+        // A master reset still waiting for its response to leave was already confirmed with 00h: carry it out.
+        if (_selfResetPending)
+        {
+            _selfResetPending = false;
+            doMasterReset(_selfResetErase, _selfResetChannel);
+        }
     }
     else if (restartType == RestartType::MasterReset)
     {
         uint8_t errorCode = checkmasterResetValidity(eraseCode, channel);
         // We send the restart response now before actually applying the reset values
-        // Processing time is kRestartProcessTime (example 3 seconds) that we require for the applying the master reset with restart
         applicationLayer().restartResponse(AckRequested, priority, hopType, secCtrl, errorCode, (errorCode == 0) ? kRestartProcessTime : 0, asap);
 
         // 03_05_02 Table 4 p.83: for an unsupported erase code the server shall neither execute a Basic
@@ -205,7 +219,14 @@ void BauSystemB::restartRequestIndication(Priority priority, HopCountType hopTyp
         if (errorCode != 0)
             return;
 
-        doMasterReset(eraseCode, channel);
+        // Resetting and restarting here dropped the response still queued for the medium. The reset runs from
+        // nextRestartState() once the response had time to go out; until then the device state is unchanged,
+        // so the response also leaves with the address it was requested on.
+        _selfResetErase = eraseCode;
+        _selfResetChannel = channel;
+        _selfResetAt = millis();
+        _selfResetPending = true;
+        return;
     }
     else
     {
@@ -845,6 +866,15 @@ void BauSystemB::connectConfirm(uint16_t tsap)
 
 void BauSystemB::nextRestartState()
 {
+    if (_selfResetPending && millis() - _selfResetAt >= kSelfResetDelayMs)
+    {
+        _selfResetPending = false;
+        doMasterReset(_selfResetErase, _selfResetChannel);
+        _memory.writeMemory();
+        _platform.restart();
+        return;
+    }
+
     switch (_restartState)
     {
         case Idle:

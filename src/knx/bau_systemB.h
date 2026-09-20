@@ -191,6 +191,11 @@ class BauSystemB : protected BusAccessUnit
     ApplicationProgramObject _appProgram;
     Platform& _platform;
     RestartState _restartState = Idle;
+    // Own master reset, carried out once its A_Restart_Response had time to leave (restartRequestIndication).
+    bool _selfResetPending = false;
+    uint32_t _selfResetAt = 0;
+    EraseCode _selfResetErase = EraseCode::Void;
+    uint8_t _selfResetChannel = 0;
 #ifdef OPENKNX_FTC_CLIENT
     void (*_ftcResponseCb)(uint16_t pa, uint8_t objectIndex, uint8_t propertyId, uint8_t* data, uint8_t length) = nullptr;
     void (*_ftcDdCb)(uint16_t pa, uint8_t descriptorType, const uint8_t* data) = nullptr;
