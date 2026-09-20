@@ -45,6 +45,20 @@ void BauSystemB::writeMemory()
     _memory.writeMemory();
 }
 
+
+/**
+ * @brief Write back a pending NVM sector before a management read.
+ *
+ * On flash-backed platforms a read goes through the flash mapping while a write sits in the driver's sector
+ * buffer until commit, so a read right after a write returned the old content. An unchanged sector is not
+ * rewritten; Eeprom-backed platforms read their RAM copy and need nothing.
+ */
+void BauSystemB::flushBeforeRead()
+{
+    if (_platform.NonVolatileMemoryType() != Eeprom)
+        _platform.commitNonVolatileMemory();
+}
+
 Platform& BauSystemB::platform()
 {
     return _platform;
@@ -175,6 +189,7 @@ void BauSystemB::memoryReadIndication(Priority priority, HopCountType hopType, u
 void BauSystemB::memoryReadIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, uint8_t number,
     uint16_t memoryAddress)
 {
+    flushBeforeRead();
     uint8_t* p = _memory.toAbsoluteChecked(memoryAddress, number);
     if (p == nullptr) number = 0; // OOB read guard: keep the response within NVM
     applicationLayer().memoryReadResponse(AckRequested, priority, hopType, asap, secCtrl, number, memoryAddress, p);
@@ -261,6 +276,7 @@ void BauSystemB::authorizeIndication(Priority priority, HopCountType hopType, ui
 
 void BauSystemB::userMemoryReadIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, uint8_t number, uint32_t memoryAddress)
 {
+    flushBeforeRead();
     uint8_t* p = _memory.toAbsoluteChecked(memoryAddress, number);
     if (p == nullptr) number = 0; // OOB read guard: keep the response within NVM
     applicationLayer().userMemoryReadResponse(AckRequested, priority, hopType, asap, secCtrl, number, memoryAddress, p);

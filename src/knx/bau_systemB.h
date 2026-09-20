@@ -176,6 +176,7 @@ class BauSystemB : protected BusAccessUnit
     void connectConfirm(uint16_t tsap) override;
 
     void nextRestartState();
+    void flushBeforeRead(); // write back a pending NVM sector so a management read sees what was written
     virtual void doMasterReset(EraseCode eraseCode, uint8_t channel);
 
     enum RestartState
