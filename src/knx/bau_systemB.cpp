@@ -114,11 +114,12 @@ void BauSystemB::memoryRouterWriteIndication(Priority priority, HopCountType hop
     print(number);
     print(" data: ");
     printHex("=>", data, number);
+    const bool stored = _memory.toAbsoluteChecked(memoryAddress, number) != nullptr;
     _memory.writeMemory(memoryAddress, number, data);
     if (_deviceObj.verifyMode())
     {
         print("Sending Read indication");
-        memoryRouterReadIndication(priority, hopType, asap, secCtrl, number, memoryAddress, data);
+        memoryRouterReadIndication(priority, hopType, asap, secCtrl, stored ? number : 0, memoryAddress, stored ? data : nullptr);
     }
 }
 
@@ -147,20 +148,22 @@ void BauSystemB::memoryRoutingTableWriteIndication(Priority priority, HopCountTy
     print(number);
     print(" data: ");
     printHex("=>", data, number);
+    const bool stored = _memory.toAbsoluteChecked(memoryAddress, number) != nullptr;
     _memory.writeMemory(memoryAddress, number, data);
-    // Verify mode must answer with what is stored, not echo the request: writeMemory() drops an
-    // out-of-range write silently.
+    // Verify mode answers with the stored data, as memoryWriteIndication() does.
     if (_deviceObj.verifyMode())
-        memoryRoutingTableReadIndication(priority, hopType, asap, secCtrl, number, memoryAddress);
+        memoryRoutingTableReadIndication(priority, hopType, asap, secCtrl, stored ? number : 0, memoryAddress, stored ? data : nullptr);
 }
 
 void BauSystemB::memoryWriteIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, uint8_t number,
     uint16_t memoryAddress, uint8_t * data)
 {
+    // Verify mode answers with the accepted data, not a read-back: on flash the block is still in the sector
+    // buffer and the flash mapping holds the old content. writeMemory() drops a write outside the NVM: no data.
+    const bool stored = _memory.toAbsoluteChecked(memoryAddress, number) != nullptr;
     _memory.writeMemory(memoryAddress, number, data);
-    // As above: read back rather than echo.
     if (_deviceObj.verifyMode())
-        memoryReadIndication(priority, hopType, asap, secCtrl, number, memoryAddress);
+        memoryReadIndication(priority, hopType, asap, secCtrl, stored ? number : 0, memoryAddress, stored ? data : nullptr);
 }
 
 void BauSystemB::memoryReadIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, uint8_t number,
@@ -265,10 +268,12 @@ void BauSystemB::userMemoryReadIndication(Priority priority, HopCountType hopTyp
 
 void BauSystemB::userMemoryWriteIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, uint8_t number, uint32_t memoryAddress, uint8_t* data)
 {
+    // Verify mode answers with the stored data, as memoryWriteIndication() does.
+    const bool stored = _memory.toAbsoluteChecked(memoryAddress, number) != nullptr;
     _memory.writeMemory(memoryAddress, number, data);
 
     if (_deviceObj.verifyMode())
-        userMemoryReadIndication(priority, hopType, asap, secCtrl, number, memoryAddress);
+        applicationLayer().userMemoryReadResponse(AckRequested, priority, hopType, asap, secCtrl, stored ? number : 0, memoryAddress, stored ? data : nullptr);
 }
 
 void BauSystemB::propertyDescriptionReadIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, uint8_t objectIndex,
