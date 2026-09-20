@@ -62,9 +62,13 @@ DeviceObject& BauSystemB::deviceObject()
 
 uint8_t BauSystemB::checkmasterResetValidity(EraseCode eraseCode, uint8_t channel)
 {
-    static constexpr uint8_t successCode = 0x00; // Where does this come from? It is the code for "success".
-    static constexpr uint8_t invalidEraseCode = 0x02; // Where does this come from? It is the error code for "unspported erase code".
+    static constexpr uint8_t successCode = 0x00;
+    static constexpr uint8_t invalidEraseCode = 0x02;      // unsupported erase code
+    static constexpr uint8_t invalidChannelNumber = 0x03;  // 03_05_02 p.84
 
+    // The erase code is validated FIRST: 03_05_02 Table 4 p.83 gives a reserved erase code the note
+    // "Channel Number: not defined" and answers 02h, so the channel (03h) is only meaningful once the
+    // code is known. The other order would answer 03h for a reserved code carrying a non-zero channel.
     switch (eraseCode)
     {
         // All standard erase codes are supported; the reset itself runs per object in doMasterReset().
@@ -75,7 +79,7 @@ uint8_t BauSystemB::checkmasterResetValidity(EraseCode eraseCode, uint8_t channe
         case EraseCode::ResetParam:
         case EraseCode::FactoryReset:
         case EraseCode::FactoryResetWithoutIA:
-            return successCode;
+            break;
         default:
         {
             print("Unhandled erase code: ");
@@ -83,6 +87,13 @@ uint8_t BauSystemB::checkmasterResetValidity(EraseCode eraseCode, uint8_t channe
             return invalidEraseCode;
         }
     }
+
+    // 03_05_02 p.84: 03h when a channel other than 00h is requested but the server has none. Every
+    // masterReset() implementation here discards the channel, so this stack has no channels.
+    if (channel != 0)
+        return invalidChannelNumber;
+
+    return successCode;
 }
 
 void BauSystemB::deviceDescriptorReadIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, uint8_t descriptorType)
