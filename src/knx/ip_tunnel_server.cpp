@@ -2086,8 +2086,12 @@ void IpTunnelServer::HandleBusMonitorConnect(KnxIpConnectRequest& connRequest, u
     _busMonTunnel[bmSlot].PortCtrl = connRequest.hpaiCtrl().ipPortNumber() ? connRequest.hpaiCtrl().ipPortNumber() : srcPort;
     _busMonTunnel[bmSlot].SequenceCounter_S = 0;
     if (firstBusMon)
+    {
         _busMonSeq = 0; // the L_Busmon.ind status-octet sequence describes the CAPTURE and is shared by all
                         // clients -- restarting it for a late joiner would tear the running client's numbering
+        _busMonLostPending = false; // a new capture starts clean; a leftover from the previous one would
+                                    // mark the first indication of this client as following a loss
+    }
     _busMonTunnel[bmSlot].lastHeartbeat = millis();
     _busMonTunnel[bmSlot].connectStart = millis();
     _busMonTunnel[bmSlot].ConnectUptimeS = _uptimeS;
@@ -2172,10 +2176,13 @@ void IpTunnelServer::busMonitorFrame(uint8_t* lpdu, uint16_t len, uint8_t status
     constexpr uint16_t HDR = 11; // MC(1) + AddIL(1) + status AI(3) + extended-timestamp AI(6)
     if (len > MAX_LPDU)
     {
-        // The one mode where a silent drop must never look like a clean capture -- count it on every client.
+        // The one mode where a silent drop must never look like a clean capture -- count it on every client
+        // and raise the Lost bit, which 03_06_03 EMI 3.3.3.2 defines as the way the NEXT indication tells
+        // the client that something between them went missing.
         for (uint8_t bm = 0; bm < KNX_BUSMON_CONNECTIONS; bm++)
             if (_busMonTunnel[bm].ChannelId != 0)
                 bumpTo(_busMonTunnel[bm].StatTxDrop);
+        _busMonLostPending = true;
         return;
     }
 
@@ -2194,6 +2201,11 @@ void IpTunnelServer::busMonitorFrame(uint8_t* lpdu, uint16_t len, uint8_t status
     buf[3] = 0x01;         // AI value length
     // KNX 03_06_03 EMI §3.3.3.2: status octet F B P x L sss -- bits 0-2 = seq (mod 8), bit 3 = lost,
     // bit 5 = parity error, bit 6 = bit error, bit 7 = frame error. seq is ours; error/lost bits from caller.
+    if (_busMonLostPending)
+    {
+        status |= 0x08; // Lost: a frame between this one and the last did not reach the client
+        _busMonLostPending = false;
+    }
     buf[4] = (uint8_t)((_busMonSeq++ & 0x07) | (status & 0xF8));
     buf[5] = 0x06;                 // AI type: extended relative timestamp
     buf[6] = 0x04;                 // AI value length (4 octets)
@@ -2220,7 +2232,12 @@ void IpTunnelServer::busMonitorFrame(uint8_t* lpdu, uint16_t len, uint8_t status
         if (sendCounted(_busMonTunnel[bm].IpAddress, _busMonTunnel[bm].PortData, req.data(), req.totalLength()))
             bumpTo(_busMonTunnel[bm].StatToClient);
         else
+        {
+            // Counted, not flagged: 03_06_03 4.1.5.8.1 p.97 sets the Lost bit only for a frame the DATA
+            // LINK LAYER lost in busmonitor mode. A datagram this server could not put on the IP side is
+            // not that, and claiming it would tell the client the bus was incomplete when it was not.
             bumpTo(_busMonTunnel[bm].StatTxDrop);
+        }
     }
 }
 #endif

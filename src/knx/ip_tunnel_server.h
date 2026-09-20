@@ -311,6 +311,7 @@ class IpTunnelServer
     KnxIpTunnelConnection _busMonTunnel[KNX_BUSMON_CONNECTIONS]; // kept out of the L_Data fan-out
     IHwBusMonitorDll* _hwBusMon = nullptr;    // TP chip bridge (null on non-router BAUs)
     uint8_t _busMonSeq = 0;                   // rolling status/sequence nibble for L_Busmon.ind
+    bool _busMonLostPending = false; // a capture was dropped; the next indication carries the Lost bit
     bool _busMonExitPending = false;          // exit-recovery poll running (non-blocking)
     uint32_t _busMonExitStart = 0;
     uint32_t _busMonExitResetInd = 0;         // U_Reset.ind count when the poll was armed
