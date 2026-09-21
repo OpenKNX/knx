@@ -475,7 +475,7 @@ void BauSystemB::propertyValueReadIndication(Priority priority, HopCountType hop
     else
         elementCount = 0;
 
-    uint8_t data[size];
+    uint8_t data[size > 0 ? size : 1]; // a zero-length array is undefined
     if(obj)
         obj->readProperty((PropertyID)propertyId, startIndex, elementCount, data);
 
@@ -512,7 +512,7 @@ void BauSystemB::propertyValueExtReadIndication(Priority priority, HopCountType 
     else
         elementCount = 0;
 
-    uint8_t data[size];
+    uint8_t data[size > 0 ? size : 1]; // a zero-length array is undefined
     if(obj)
         obj->readProperty((PropertyID)propertyId, startIndex, elementCount, data);
 
