@@ -387,8 +387,14 @@ void BauSystemB::propertyValueWriteIndication(Priority priority, HopCountType ho
         }
     }
     // 03_03_07 3.4.4.2 p.66: on a problem, missing access rights included, nr_of_elem shall be zero with
-    // no data. Count 0 makes the read below emit that.
-    propertyValueReadIndication(priority, hopType, asap, secCtrl, objectIndex, propertyId, written ? numberOfElements : 0, startIndex);
+    // no data. Answered directly: the read path answers index 0 with the element count, count 1.
+    if (!written)
+    {
+        applicationLayer().propertyValueReadResponse(AckRequested, priority, hopType, asap, secCtrl, objectIndex, propertyId, 0,
+                                                     startIndex, nullptr, 0);
+        return;
+    }
+    propertyValueReadIndication(priority, hopType, asap, secCtrl, objectIndex, propertyId, numberOfElements, startIndex);
 }
 
 void BauSystemB::propertyValueExtWriteIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, ObjectType objectType, uint8_t objectInstance,
@@ -413,7 +419,13 @@ void BauSystemB::propertyValueExtWriteIndication(Priority priority, HopCountType
         else if (prop != nullptr && !prop->WriteEnable())  // see propertyValueWriteIndication
             returnCode = ReturnCodes::AccessReadOnly;
         else
+        {
+            // writeProperty() reports what the property accepted in numberOfElements; without this the
+            // response claimed Success for a write the property had refused (03_03_07 3.4.4.2 p.66).
             obj->writeProperty((PropertyID)propertyId, startIndex, data, numberOfElements);
+            if (numberOfElements == 0)
+                returnCode = ReturnCodes::GenericError;
+        }
     }
     else
         returnCode = ReturnCodes::AddressVoid;
