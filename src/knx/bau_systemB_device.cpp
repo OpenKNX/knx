@@ -203,10 +203,16 @@ void BauSystemBDevice::groupValueReadLocalConfirm(AckType ack, uint16_t asap, Pr
 
 void BauSystemBDevice::groupValueReadIndication(uint16_t asap, Priority priority, HopCountType hopType, const SecurityControl &secCtrl)
 {
+
+    if (asap == 0 || asap > _groupObjTable.entryCount()) return;
+
 #ifdef USE_DATASECURE
     DataSecurity requiredGoSecurity;
 
-    // Get security flags from Security Interface Object for this group object
+    // Below the bounds check, on purpose: getGroupObjectSecurity() reads PID_GO_SECURITY_FLAGS into a VLA
+    // sized by its element size, which is 1 for PDT_GENERIC_01. At index 0 a property read answers with
+    // the element COUNT and pushWord() writes two octets, one past that buffer. asap 0 is the only input
+    // that reaches it, and the bounds check above is what keeps it out.
     requiredGoSecurity = _secIfObj.getGroupObjectSecurity(asap);
 
     if (secCtrl.dataSecurity != requiredGoSecurity)
@@ -215,8 +221,6 @@ void BauSystemBDevice::groupValueReadIndication(uint16_t asap, Priority priority
         return;
     }
 #endif
-
-    if (asap == 0 || asap > _groupObjTable.entryCount()) return;
     GroupObject& go = _groupObjTable.get(asap);
 
     if (!go.communicationEnable() || !go.readEnable())
@@ -240,10 +244,15 @@ void BauSystemBDevice::groupValueReadAppLayerConfirm(uint16_t asap, Priority pri
 
 void BauSystemBDevice::groupValueWriteIndication(uint16_t asap, Priority priority, HopCountType hopType, const SecurityControl &secCtrl, uint8_t * data, uint8_t dataLength)
 {
+    if (asap == 0 || asap > _groupObjTable.entryCount()) return;
+
 #ifdef USE_DATASECURE
     DataSecurity requiredGoSecurity;
 
-    // Get security flags from Security Interface Object for this group object
+    // Below the bounds check, on purpose: getGroupObjectSecurity() reads PID_GO_SECURITY_FLAGS into a VLA
+    // sized by its element size, which is 1 for PDT_GENERIC_01. At index 0 a property read answers with
+    // the element COUNT and pushWord() writes two octets, one past that buffer. asap 0 is the only input
+    // that reaches it, and the bounds check above is what keeps it out.
     requiredGoSecurity = _secIfObj.getGroupObjectSecurity(asap);
 
     if (secCtrl.dataSecurity != requiredGoSecurity)
@@ -252,7 +261,6 @@ void BauSystemBDevice::groupValueWriteIndication(uint16_t asap, Priority priorit
         return;
     }
 #endif
-    if (asap == 0 || asap > _groupObjTable.entryCount()) return;
     GroupObject& go = _groupObjTable.get(asap);
 
     if (!go.communicationEnable() || !go.writeEnable())
