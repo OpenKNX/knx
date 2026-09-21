@@ -146,8 +146,8 @@ InterfaceObject* Bau07B0IP::getInterfaceObject(ObjectType objectType, uint16_t o
 
 void Bau07B0IP::doMasterReset(EraseCode eraseCode, uint8_t channel)
 {
-    // Common SystemB objects
-    BauSystemB::doMasterReset(eraseCode, channel);
+    // Device objects plus the address, association and group object tables
+    BauSystemBDevice::doMasterReset(eraseCode, channel);
 
     _ipParameters.masterReset(eraseCode, channel);
 }
