@@ -16,6 +16,20 @@ static constexpr auto kFunctionPropertyResultBufferMaxSize = 0xFF;
 // is buffer+10, so the plain response writes from buffer+13 (<= 251 octets) and the extended one from
 // buffer+16 (<= 248). Telling a callee it may write 0xFF let it overrun the frame it is built into.
 static constexpr uint8_t kFunctionPropertyResultMax = 251;
+
+// Index 0 addresses the element count, not an array element: DataProperty::write() tests data[0] and
+// data[1] there and clears the property on two zero octets. 03_03_07 3.4.4.1 p.64 defines index 0 for the
+// READ only; the write is the de-facto counterpart this stack implements. Two octets are needed whatever
+// ElementSize reports, and on TP the frame buffer ends right behind the declared payload.
+// `length` is uint32_t: the cEMI feeder passes a uint16_t-derived size, which a uint8_t would truncate.
+static inline bool propertyPayloadFits(const Property* prop, uint16_t startIndex, uint8_t count, uint32_t length)
+{
+    if (startIndex == 0)
+        return length >= 2;
+
+    return (uint32_t)count * prop->ElementSize() <= length;
+}
+
 static constexpr uint8_t kFunctionPropertyResultMaxExt = 248;
 // 03_05_02 3.7.3 p.89: the client takes this as the TIME-OUT after which contact counts as failed, so
 // too small declares a booting device dead. Measured after a master reset: TP 3.5 s, IP 8.0 to 9.8 s.
@@ -363,7 +377,7 @@ void BauSystemB::propertyValueWriteIndication(Priority priority, HopCountType ho
                               && data[0] == LE_ADDITIONAL_LOAD_CONTROLS && length < 8);
         // Enforce the write-enable flag reported in A_PropertyDescription_Response. Not inside
         // InterfaceObject::writeProperty: two BAUs initialise read-only PID_COMM_MODES_SUPPORTED through it.
-        if (!loadCtrlShort && (prop == nullptr || (prop->WriteEnable() && (uint32_t)numberOfElements * prop->ElementSize() <= length)))
+        if (!loadCtrlShort && (prop == nullptr || (prop->WriteEnable() && propertyPayloadFits(prop, startIndex, numberOfElements, length))))
         {
             // `numberOfElements` is an in/out parameter: writeProperty() sets it to what the property
             // actually accepted (0 on refusal), so this reports a refusal the property itself made -- not
@@ -394,7 +408,7 @@ void BauSystemB::propertyValueExtWriteIndication(Priority priority, HopCountType
         // ElementSize reports 1 and does not bound it) -> reject a short/corrupt load-control write.
         bool loadCtrlShort = (propertyId == PID_LOAD_STATE_CONTROL && length >= 1
                               && data[0] == LE_ADDITIONAL_LOAD_CONTROLS && length < 8);
-        if (loadCtrlShort || (prop != nullptr && (uint32_t)numberOfElements * prop->ElementSize() > length))
+        if (loadCtrlShort || (prop != nullptr && !propertyPayloadFits(prop, startIndex, numberOfElements, length)))
             returnCode = ReturnCodes::DataOverflow;
         else if (prop != nullptr && !prop->WriteEnable())  // see propertyValueWriteIndication
             returnCode = ReturnCodes::AccessReadOnly;
@@ -1030,7 +1044,7 @@ void BauSystemB::propertyValueWrite(ObjectType objectType, uint8_t objectInstanc
         // OFM-Network writes the read-only PID_CURRENT_IP_ASSIGNMENT_METHOD through it. Both remote paths
         // check the flag at their own layer, where the origin is known. The length bound stays -- that is
         // memory-safety and applies to every caller.
-        if (loadCtrlShort || (prop != nullptr && (uint32_t)numberOfElements * prop->ElementSize() > length))
+        if (loadCtrlShort || (prop != nullptr && !propertyPayloadFits(prop, startIndex, numberOfElements, length)))
             numberOfElements = 0;
         else
             obj->writeProperty((PropertyID)propertyId, startIndex, data, numberOfElements);
