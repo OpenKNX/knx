@@ -526,7 +526,7 @@ void BauSystemB::propertyValueExtReadIndication(Priority priority, HopCountType 
 void BauSystemB::functionPropertyCommandIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, uint8_t objectIndex,
                                                    uint8_t propertyId, uint8_t* data, uint8_t length)
 {
-    uint8_t resultData[kFunctionPropertyResultBufferMaxSize];
+    uint8_t resultData[kFunctionPropertyResultBufferMaxSize] = {0};
     uint8_t resultLength = kFunctionPropertyResultMax; // tell the callee what the response can carry
 
     bool handled = false;
@@ -560,6 +560,11 @@ void BauSystemB::functionPropertyCommandIndication(Priority priority, HopCountTy
                 handled = true;
     }
 
+    // The callee owns resultLength on the way back; bound it to what was granted, so a callee that
+    // reports more than the response frame carries cannot build an oversized answer.
+    if (resultLength > kFunctionPropertyResultMax)
+        resultLength = kFunctionPropertyResultMax;
+
     //only return a value it was handled by a property or function
     if(handled)
         applicationLayer().functionPropertyStateResponse(AckRequested, priority, hopType, asap, secCtrl, objectIndex, propertyId, resultData, resultLength);
@@ -568,7 +573,7 @@ void BauSystemB::functionPropertyCommandIndication(Priority priority, HopCountTy
 void BauSystemB::functionPropertyStateIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, uint8_t objectIndex,
                                                  uint8_t propertyId, uint8_t* data, uint8_t length)
 {
-    uint8_t resultData[kFunctionPropertyResultBufferMaxSize];
+    uint8_t resultData[kFunctionPropertyResultBufferMaxSize] = {0};
     uint8_t resultLength = kFunctionPropertyResultMax; // tell the callee what the response can carry
 
     // Was initialised to true, so the "only answer if handled" check below never suppressed anything and
@@ -604,6 +609,11 @@ void BauSystemB::functionPropertyStateIndication(Priority priority, HopCountType
                 handled = true;
     }
 
+    // The callee owns resultLength on the way back; bound it to what was granted, so a callee that
+    // reports more than the response frame carries cannot build an oversized answer.
+    if (resultLength > kFunctionPropertyResultMax)
+        resultLength = kFunctionPropertyResultMax;
+
     //only return a value it was handled by a property or function
     if(handled)
         applicationLayer().functionPropertyStateResponse(AckRequested, priority, hopType, asap, secCtrl, objectIndex, propertyId, resultData, resultLength);
@@ -613,7 +623,7 @@ void BauSystemB::functionPropertyExtCommandIndication(Priority priority, HopCoun
                                                       uint8_t propertyId, uint8_t* data, uint8_t length)
 {
     if (length == 0) return; // the reserved input octet data[0] must be present; drop a truncated ext function-property command
-    uint8_t resultData[kFunctionPropertyResultBufferMaxSize];
+    uint8_t resultData[kFunctionPropertyResultBufferMaxSize] = {0};
     uint8_t resultLength = 1; // we always have to include the return code at least
 
     InterfaceObject* obj = getInterfaceObject(objectType, objectInstance);
@@ -667,6 +677,10 @@ void BauSystemB::functionPropertyExtCommandIndication(Priority priority, HopCoun
         resultData[0] = ReturnCodes::GenericError;
     }
 
+    // The callee owns resultLength on the way back; bound it to what the extended response frame carries.
+    if (resultLength > kFunctionPropertyResultMaxExt)
+        resultLength = kFunctionPropertyResultMaxExt;
+
     applicationLayer().functionPropertyExtStateResponse(AckRequested, priority, hopType, asap, secCtrl, objectType, objectInstance, propertyId, resultData, resultLength);
 }
 
@@ -674,7 +688,7 @@ void BauSystemB::functionPropertyExtStateIndication(Priority priority, HopCountT
                                                     uint8_t propertyId, uint8_t* data, uint8_t length)
 {
     if (length == 0) return; // the reserved input octet data[0] must be present; drop a truncated ext function-property state read
-    uint8_t resultData[kFunctionPropertyResultBufferMaxSize];
+    uint8_t resultData[kFunctionPropertyResultBufferMaxSize] = {0};
     // Like the ExtCommand twin: start at the return code alone. The error paths below set only
     // resultData[0] and never touch resultLength, and 03_03_07 3.4.8.3 p.93 says such a response carries
     // no data field -- announcing the full buffer here would put uninitialised stack on the bus.
@@ -720,6 +734,10 @@ void BauSystemB::functionPropertyExtStateIndication(Priority priority, HopCountT
     {
         resultData[0] = ReturnCodes::GenericError;
     }
+
+    // The callee owns resultLength on the way back; bound it to what the extended response frame carries.
+    if (resultLength > kFunctionPropertyResultMaxExt)
+        resultLength = kFunctionPropertyResultMaxExt;
 
     applicationLayer().functionPropertyExtStateResponse(AckRequested, priority, hopType, asap, secCtrl, objectType, objectInstance, propertyId, resultData, resultLength);
 }
