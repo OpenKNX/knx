@@ -1125,6 +1125,20 @@ int valueToBusValueTime(const KNXValue& value, uint8_t* payload, size_t payload_
         case 1:
         {
             struct tm tmp = value;
+            // The field masks silently folded an out-of-range value into the field: hour 99 went out as 3.
+            // busValueToTime() rejects the same ranges on the way in (03_07_02 3.11 p.41).
+            if (tmp.tm_hour < 0 || tmp.tm_hour > 23 || tmp.tm_min < 0 || tmp.tm_min > 59
+                || tmp.tm_sec < 0 || tmp.tm_sec > 59)
+                return false;
+
+            ENSURE_PAYLOAD(3);
+            // The weekday shares octet 0 with the hour and busValueToTime() reads it back, so writing only
+            // the hour dropped it on every round trip. Out of range it becomes 0 = "no day" rather than a
+            // rejection: the day is optional in this DPT, and refusing the whole value over it would drop
+            // a valid time. Note the KNX numbering (0 = no day, 1 = Monday ... 7 = Sunday, 03_07_02 3.11
+            // p.41) is NOT the POSIX tm_wday numbering -- busValueToTime() stores the raw KNX field here.
+            const uint8_t weekday = (tmp.tm_wday >= 0 && tmp.tm_wday <= 7) ? (uint8_t)tmp.tm_wday : 0;
+            unsigned8ToPayload(payload, payload_length, 0, (uint8_t)(weekday << 5), 0xE0);
             unsigned8ToPayload(payload, payload_length, 0, tmp.tm_hour, 0x1F);
             unsigned8ToPayload(payload, payload_length, 1, tmp.tm_min, 0x3F);
             unsigned8ToPayload(payload, payload_length, 2, tmp.tm_sec, 0x3F);
