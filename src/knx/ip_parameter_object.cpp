@@ -295,15 +295,15 @@ static void clearProperty(Property* p)
 
 void IpParameterObject::writeProperty(PropertyID id, uint16_t start, uint8_t* data, uint8_t& count)
 {
-#ifdef KNX_TUNNELING
+#if defined(KNX_TUNNELING) && defined(KNX_LOG_TUNNELING)
     // The base call overwrites count with what the property ACCEPTED (0 on a rejected write), so the
     // requested figure has to be kept here -- a rejected write is the one this log exists for.
     const uint8_t requested = count;
 #endif
     InterfaceObject::writeProperty(id, start, data, count);
-#ifdef KNX_TUNNELING
+#if defined(KNX_TUNNELING) && defined(KNX_LOG_TUNNELING)
     // One line per write of the tunnelling identities: index, requested and accepted count, and the
-    // values as they arrived.
+    // values as they arrived. cemi_server logs the request itself; the accepted count is what this adds.
     if (id == PID_ADDITIONAL_INDIVIDUAL_ADDRESSES && data != nullptr)
     {
         print("AddIA write: start=");
