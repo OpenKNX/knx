@@ -631,7 +631,9 @@ int busValueToDateTime(const uint8_t* payload, size_t payload_length, const Dpt&
         {
             case 0:
             {
-                if (bitFromPayload(payload, 51) || bitFromPayload(payload, 52))
+                // 03_07_02 3.20 p.50: octet 1 of the B16 field is F, WD, NWD, NY, ND, NDoW, NT, SUTI.
+                // NY and ND invalidate the date, NT the time; all three feed this combined value.
+                if (bitFromPayload(payload, 51) || bitFromPayload(payload, 52) || bitFromPayload(payload, 54))
                     return false;
 
                 unsigned short year = unsigned8FromPayload(payload, 0) + 1900;
@@ -644,6 +646,10 @@ int busValueToDateTime(const uint8_t* payload, size_t payload_length, const Dpt&
                 if ((month < 1 || month > 12 || day < 1))
                     return false;
                 if ((hours > 24 || minutes > 59 || seconds > 59))
+                    return false;
+                // 03_07_02 3.20 p.51: with the hour at 24 the minutes and seconds have to be zero, and a
+                // message carrying anything else has to be ignored.
+                if (hours == 24 && (minutes != 0 || seconds != 0))
                     return false;
 
                 struct tm tmp = {0};
