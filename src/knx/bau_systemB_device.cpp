@@ -234,6 +234,19 @@ void BauSystemBDevice::groupValueReadAppLayerConfirm(uint16_t asap, Priority pri
     uint8_t dataLength)
 {
     if (asap == 0 || asap > _groupObjTable.entryCount()) return;
+
+#ifdef USE_DATASECURE
+    // A received A_GroupValue_Response updates the object exactly as a write does, so it has to meet the
+    // same requirement. Only the read and the write path checked it, so an UNSECURED response was taken
+    // into an object configured for secured group communication - the one shape of this service that
+    // carries a value into the device without being a write.
+    if (secCtrl.dataSecurity != _secIfObj.getGroupObjectSecurity(asap))
+    {
+        println("GroupValueResponse: access denied due to wrong security flags");
+        return;
+    }
+#endif
+
     GroupObject& go = _groupObjTable.get(asap);
 
     if (!go.communicationEnable() || !go.responseUpdateEnable())
