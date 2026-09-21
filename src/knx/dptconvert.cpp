@@ -540,6 +540,10 @@ int busValueToString(const uint8_t* payload, size_t payload_length, const Dpt& d
         if (!datatype.subGroup && (value & 0x80))
             return false;
     }
+    // ALIASING: the value points INTO the caller's payload and copies nothing. It stays usable only as
+    // long as that buffer does, and valueToBusValueString() dereferences it. A caller that lets the
+    // payload die first gets a use-after-free -- ASAN caught exactly that in a test that decoded from a
+    // temporary. In the stack the payload is the group object's own storage, which outlives the value.
     value = (const char*) payload;
     return true;
 }
