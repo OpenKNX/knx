@@ -329,15 +329,32 @@ void IpParameterObject::masterReset(EraseCode eraseCode, uint8_t channel)
     if (eraseCode != EraseCode::FactoryReset && eraseCode != EraseCode::FactoryResetWithoutIA)
         return;
 
-    // Clear the tunnelling identities and the downloaded IP address config back to unassigned. Assignment
-    // method, capabilities, multicast and TTL keep their defaults (some reject a 0 write), and the IP stack
-    // re-resolves; ETS re-writes everything on the next download. Zeroing unused NV memory
-    // (03_05_02 3.7.1.2.3.2.2) belongs to the Data Security track -- no keys are stored while it is off.
+    // Clear the tunnelling identities and the downloaded IP address config back to unassigned, and put the
+    // properties that have a declared default BACK to that default -- zeroing them would not be a reset.
+    // Capabilities and the assignment method have no default and are re-resolved by the IP stack; ETS
+    // re-writes everything on the next download. Zeroing unused NV memory (03_05_02 3.7.1.2.3.2.2) belongs
+    // to the Data Security track -- no keys are stored while it is off.
     clearProperty(property(PID_PROJECT_INSTALLATION_ID));
     clearProperty(property(PID_IP_ADDRESS));
     clearProperty(property(PID_SUBNET_MASK));
     clearProperty(property(PID_DEFAULT_GATEWAY));
     clearProperty(property(PID_FRIENDLY_NAME));
+
+    Property* ttl = property(PID_TTL);
+    if (ttl != nullptr)
+    {
+        uint8_t v = 16; // the declared default
+        ttl->write((uint16_t)1, (uint8_t)1, &v);
+    }
+#ifdef KNX_IS_ROUTER
+    Property* mcast = property(PID_ROUTING_MULTICAST_ADDRESS);
+    if (mcast != nullptr)
+    {
+        uint8_t v[4];
+        pushInt(DEFAULT_MULTICAST_ADDR, v);
+        mcast->write((uint16_t)1, (uint8_t)1, v);
+    }
+#endif
 #ifdef KNX_TUNNELING
     clearProperty(property(PID_ADDITIONAL_INDIVIDUAL_ADDRESSES));
     clearProperty(property(PID_CUSTOM_RESERVED_TUNNELS_CTRL));
