@@ -1338,10 +1338,18 @@ int valueToBusValueDateTime(const KNXValue& value, uint8_t* payload, size_t payl
                 return false;
             if (chk.tm_mon < 1 || chk.tm_mon > 12 || chk.tm_mday < 1 || chk.tm_mday > 31)
                 return false;
-            if (chk.tm_hour > 24 || chk.tm_min > 59 || chk.tm_sec > 59)
+            if (chk.tm_hour < 0 || chk.tm_hour > 24 || chk.tm_min < 0 || chk.tm_min > 59 || chk.tm_sec < 0 || chk.tm_sec > 59)
+                return false;
+            // 03_07_02 3.20 p.51: hour 24 requires zero minutes and seconds; the same rule the decode
+            // side enforces. Without it the encoder emitted an out-of-range time, and a negative field
+            // slipped past the upper bound and the mask folded it into range.
+            if (chk.tm_hour == 24 && (chk.tm_min != 0 || chk.tm_sec != 0))
                 return false;
 
             struct tm tmp = value;
+            // The value carries no working-day information: NWD=1, otherwise WD=0 reads as "bank day" (3.20 p.50).
+            // Index 2 sets WD and clears NWD when a caller has that information.
+            bitToPayload(payload, payload_length, 50, true);
             bitToPayload(payload, payload_length, 51, false);
             bitToPayload(payload, payload_length, 52, false);
             unsigned8ToPayload(payload, payload_length, 0, tmp.tm_year - 1900, 0xFF);
