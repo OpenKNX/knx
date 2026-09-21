@@ -192,13 +192,13 @@ void CemiServer::frameReceived(CemiFrame& frame, uint8_t channelId)
 
         case M_FuncPropCommand_req:
         {
-            println("M_FuncPropCommand_req not implemented");  
+            handleMFuncProp(frame, channelId, true);
             break;
         }
 
         case M_FuncPropStateRead_req:
         {
-            println("M_FuncPropStateRead_req not implemented");  
+            handleMFuncProp(frame, channelId, false);
             break;
         }
 
@@ -328,6 +328,62 @@ void CemiServer::propertyInfoIndication(uint16_t objectType, uint8_t objectInsta
     _ipTunnelServer.dataRequestToAllDevMgmt(infoFrame);
 }
 #endif
+
+// 03_06_03 4.1.7.4: MC | object type (2) | object instance | PID | data. The .con repeats those five
+// octets and appends the return code and the data the function produced -- which is exactly what a
+// function property writes into its result buffer, return code first.
+// Without this a KNXnet/IP client could not reach a single function property: the filter table services
+// and the IP system broadcast mode were only reachable over the bus.
+void CemiServer::handleMFuncProp(CemiFrame& frame, uint8_t channelId, bool isCommand)
+{
+    // The five header octets must be there before data()[1..4] is read.
+    if (frame.dataLength() < 5) return;
+
+    uint16_t objectType;
+    popWord(objectType, &frame.data()[1]);
+    uint8_t objectInstance = frame.data()[3];
+    uint8_t propertyId = frame.data()[4];
+
+    // What the response can carry: the .con is built on a stack buffer of the same size, five octets of
+    // which are the header repeated from the request.
+    static constexpr uint8_t kResultMax = 250;
+    uint8_t resultData[kResultMax] = {0};
+    uint8_t resultLength = kResultMax;
+
+    const bool served = _bau.functionPropertyLocal(isCommand, (ObjectType)objectType, objectInstance, propertyId,
+                                                   &frame.data()[5], (uint8_t)(frame.dataLength() - 5),
+                                                   resultData, resultLength);
+
+    if (!served || resultLength == 0)
+    {
+        // 4.1.7.4.5: not a function property -- answer without return code and without data.
+        uint8_t responseData[5];
+        memcpy(responseData, frame.data(), sizeof(responseData));
+        CemiFrame responseFrame(responseData, sizeof(responseData));
+        responseFrame.messageCode(M_FuncPropCommand_con);
+#ifdef USE_USB
+        _usbTunnelInterface.sendCemiFrame(responseFrame);
+#elif defined(KNX_TUNNELING)
+        _ipTunnelServer.dataRequestToChannelId(responseFrame, channelId);
+#endif
+        return;
+    }
+
+    if (resultLength > kResultMax)
+        resultLength = kResultMax;
+
+    uint8_t responseData[5 + resultLength];
+    memcpy(responseData, frame.data(), 5);
+    memcpy(&responseData[5], resultData, resultLength);
+
+    CemiFrame responseFrame(responseData, sizeof(responseData));
+    responseFrame.messageCode(M_FuncPropCommand_con);
+#ifdef USE_USB
+    _usbTunnelInterface.sendCemiFrame(responseFrame);
+#elif defined(KNX_TUNNELING)
+    _ipTunnelServer.dataRequestToChannelId(responseFrame, channelId);
+#endif
+}
 
 void CemiServer::handleMPropRead(CemiFrame& frame, uint8_t channelId)
 {

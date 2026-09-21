@@ -523,6 +523,29 @@ void BauSystemB::propertyValueExtReadIndication(Priority priority, HopCountType 
                                            startIndex, data, size);
 }
 
+bool BauSystemB::functionPropertyLocal(bool isCommand, ObjectType objectType, uint8_t objectInstance, uint8_t propertyId,
+                                       uint8_t* data, uint8_t length, uint8_t* resultData, uint8_t& resultLength)
+{
+    InterfaceObject* obj = getInterfaceObject(objectType, objectInstance);
+
+    if (obj == nullptr)
+        return false;
+
+    Property* prop = obj->property((PropertyID)propertyId);
+
+    // property() returns nullptr for an unknown PID, and a non-function property has to be refused the
+    // same way: 03_06_03 4.1.7.4.5 answers both without a return code.
+    if (prop == nullptr || prop->Type() != PDT_FUNCTION)
+        return false;
+
+    if (isCommand)
+        obj->command((PropertyID)propertyId, data, length, resultData, resultLength);
+    else
+        obj->state((PropertyID)propertyId, data, length, resultData, resultLength);
+
+    return true;
+}
+
 void BauSystemB::functionPropertyCommandIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, uint8_t objectIndex,
                                                    uint8_t propertyId, uint8_t* data, uint8_t length)
 {

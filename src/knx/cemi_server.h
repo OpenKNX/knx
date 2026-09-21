@@ -75,6 +75,7 @@ class CemiServer
     uint8_t _frameNumber = 0;
 
     void handleLData(CemiFrame& frame);
+    void handleMFuncProp(CemiFrame& frame, uint8_t channelId, bool isCommand);
     void handleMPropRead(CemiFrame& frame, uint8_t channelId);
     void handleMPropWrite(CemiFrame& frame, uint8_t channelId);
     void handleMReset(CemiFrame& frame, uint8_t channelId);

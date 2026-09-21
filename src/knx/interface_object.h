@@ -123,7 +123,7 @@ class InterfaceObject : public SaveRestore
      *
      * @param[in] data The argument data for the function
      *
-     * @param[out] resultLength The size of the result data buffer
+     * @param[in,out] resultLength In: what the response can carry. Out: what the callee wrote.
      *
      * @param[out] resultData The result data for the function
      */
@@ -137,7 +137,7 @@ class InterfaceObject : public SaveRestore
      *
      * @param[in] data The argument data for the function
      *
-     * @param[out] resultLength The size of the result data buffer
+     * @param[in,out] resultLength In: what the response can carry. Out: what the callee wrote.
      *
      * @param[out] resultData The result data for the function
      */

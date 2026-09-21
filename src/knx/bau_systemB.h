@@ -100,6 +100,13 @@ class BauSystemB : protected BusAccessUnit
     void functionPropertyStateCallback(FunctionPropertyCallback func);
     FunctionPropertyCallback functionPropertyStateCallback();
 
+    // cEMI local device management addresses a function property by object type and instance, not by the
+    // object index the bus services use (03_06_03 4.1.7.4). false means the object or the property is
+    // missing, or the property is not a function -- the caller answers without a return code, as
+    // 03_06_03 4.1.7.4.5 demands.
+    bool functionPropertyLocal(bool isCommand, ObjectType objectType, uint8_t objectInstance, uint8_t propertyId,
+                               uint8_t* data, uint8_t length, uint8_t* resultData, uint8_t& resultLength);
+
   protected:
     virtual ApplicationLayer& applicationLayer() = 0;
     virtual InterfaceObject* getInterfaceObject(uint8_t idx) = 0;
