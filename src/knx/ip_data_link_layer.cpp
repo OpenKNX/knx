@@ -239,7 +239,7 @@ void IpDataLinkLayer::loopHandleSearchRequestExtended(uint8_t* buffer, uint16_t 
         }
 
         if(searchRequest.requestedDIB(TUNNELING_INFO))
-            searchResponse.setTunnelingInfo(_ipParameters, _deviceObject, tunnels);
+            _ipTunnelServer.setTunnelingInfo(searchResponse);
     }
 
     if(searchResponse.totalLength() > 500)
