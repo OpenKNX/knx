@@ -625,8 +625,12 @@ void NetworkLayerCoupler::broadcastConfirm(AckType ack, FrameFormat format, Prio
 {
     HopCountType hopType = npdu.hopCount() == 7 ? UnlimitedRouting : NetworkLayerParameter;
 
-    // Check if received frame is an echo from our sent frame, we are a normal device in this case
-    if (source == _deviceObj.individualAddress())
+    // Check if received frame is an echo from our sent frame, we are a normal device in this case.
+    // From the primary interface only. 03_03_03 2.2.3 p.9 maps one L_Data.con to one N_Data_Broadcast.con,
+    // while dataBroadcastRequest() sends on BOTH and both data link layers confirm. 2.4.2.4.1 d p.13 settles
+    // which one counts: an entity handling an NPDU provided by ANOTHER layer 3 entity shall not pass it to
+    // the transport layer. The primary is sent the caller's own NPDU, the secondary a copy -- the routed one.
+    if (source == _deviceObj.individualAddress() && srcIfIdx == kPrimaryIfIndex)
     {
          _transportLayer.dataBroadcastConfirm(ack, hopType, priority, npdu.tpdu(), status);
     }
@@ -657,8 +661,9 @@ void NetworkLayerCoupler::systemBroadcastIndication(AckType ack, FrameFormat for
 
 void NetworkLayerCoupler::systemBroadcastConfirm(AckType ack, FrameFormat format, Priority priority, uint16_t source, NPDU& npdu, bool status, uint8_t srcIfIdx)
 {
-    // Check if received frame is an echo from our sent frame, we are a normal device in this case
-    if (source == _deviceObj.individualAddress())
+    // Same duplication and the same rule as broadcastConfirm(): dataSystemBroadcastRequest() also hands the
+    // caller's NPDU to the primary and a copy to the secondary, so the primary is the requesting entity.
+    if (source == _deviceObj.individualAddress() && srcIfIdx == kPrimaryIfIndex)
     {
         HopCountType hopType = npdu.hopCount() == 7 ? UnlimitedRouting : NetworkLayerParameter;
         _transportLayer.dataSystemBroadcastConfirm(ack, hopType, npdu.tpdu(), priority, status);
