@@ -9,6 +9,9 @@
 #include "knx_ip_counters.h"
 #include "service_families.h"
 #include "ip_tunnel_server.h"
+#ifdef USE_CEMI_SERVER
+    #include "cemi_server_object.h"
+#endif
 
 class IpDataLinkLayer : public DataLinkLayer
 {
@@ -17,6 +20,11 @@ class IpDataLinkLayer : public DataLinkLayer
   public:
     /** @brief KNXnet/IP telegram counters (03_08_03); null on builds that do not keep them. */
     void setCounters(KnxIpCounters* counters) { _counters = counters; }
+
+    /** @brief Source of the extended DIBs' APDU lengths (PID 68/69). Unset = encoder default. */
+#ifdef USE_CEMI_SERVER
+    void cemiServerObject(CemiServerObject& obj) { _cemiServerObject = &obj; }
+#endif
     IpDataLinkLayer(DeviceObject& devObj, IpParameterObject& ipParam,
                     NetworkLayerEntity& netLayerEntity,
                     Platform& platform, BusAccessUnit& busAccessUnit,
@@ -69,5 +77,8 @@ class IpDataLinkLayer : public DataLinkLayer
 
     IpParameterObject& _ipParameters;
     DataLinkLayerCallbacks* _dllcb;
+#ifdef USE_CEMI_SERVER
+    CemiServerObject* _cemiServerObject = nullptr;
+#endif
 };
 #endif

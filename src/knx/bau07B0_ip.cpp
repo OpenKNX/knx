@@ -23,6 +23,9 @@ Bau07B0IP::Bau07B0IP(Platform& platform)
 {
     // Same counters as the router keeps; the interface uses them for the console/display only.
     _ipLayer.setCounters(&_counters);
+#ifdef USE_CEMI_SERVER
+    _ipLayer.cemiServerObject(_cemiServerObject);
+#endif
     _tpLayer.setCounters(&_counters);
     _ipTunnelServer.setCounters(&_counters);
 
@@ -36,6 +39,7 @@ Bau07B0IP::Bau07B0IP(Platform& platform)
     _tpLayer.forwardToTunnel(true);
 
     _cemiServerObject.setMediumTypeAsSupported(DptMedium::KNX_TP1);
+    _cemiServerObject.maxApduLength(_deviceObj.maxApduLength());
     _cemiServer.dataLinkLayer(_tpLayer);          // tunnelled L_Data is put onto the TP bus
     _cemiServer.dataLinkLayerPrimary(_ipLayer);
 #ifdef KNX_CEMI_TRANSPORT_LAYER

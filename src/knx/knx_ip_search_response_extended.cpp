@@ -137,13 +137,14 @@ void KnxIpSearchResponseExtended::setKnxAddresses(IpParameterObject& parameters,
     currentPos += _knxAddresses.length();
 }
 
-void KnxIpSearchResponseExtended::setTunnelingInfo(IpParameterObject& parameters, DeviceObject& deviceObject, KnxIpTunnelConnection tunnels[])
+void KnxIpSearchResponseExtended::setTunnelingInfo(IpParameterObject& parameters, DeviceObject& deviceObject, KnxIpTunnelConnection tunnels[], uint16_t busApduLength)
 {
     //println("setTunnelingInfo");
     KnxIpTunnelingInfoDIB _tunnelInfo(_data + currentPos);
     _tunnelInfo.length(4); //minlength
     _tunnelInfo.code(TUNNELING_INFO);
-    _tunnelInfo.apduLength(254); //FIXME where to get from
+    // 03_08_02 7.5.4.8 p.29: shall equal PID_MAX_INTERFACE_APDU_LENGTH.
+    _tunnelInfo.apduLength(busApduLength);
 
     uint16_t length = 0;
     parameters.readPropertyLength(PID_ADDITIONAL_INDIVIDUAL_ADDRESSES, length);
@@ -197,14 +198,15 @@ void KnxIpSearchResponseExtended::setTunnelingInfo(IpParameterObject& parameters
     currentPos += _tunnelInfo.length();
 }
 
-void KnxIpSearchResponseExtended::setExtendedDeviceInfo()
+void KnxIpSearchResponseExtended::setExtendedDeviceInfo(uint16_t localApduLength)
 {
     //println("setExtendedDeviceInfo");
     KnxIpExtendedDeviceInformationDIB _extended(_data + currentPos);
     _extended.length(LEN_EXTENDED_DEVICE_INFORMATION_DIB);
     _extended.code(EXTENDED_DEVICE_INFO);
     _extended.status(0x00); // interim: 0x01 permanently advertised TP1 as COMMUNICATION_IMPOSSIBLE; emit healthy until wired to live PID_MEDIUM_STATUS (dormant, Core v1)
-    _extended.localMaxApdu(254); //FIXME is this correct?
+    // 03_08_02 7.5.4.9 p.31: shall be identical to PID_MAX_LOCAL_APDU_LENGTH.
+    _extended.localMaxApdu(localApduLength);
     _extended.deviceDescriptor(MASK_VERSION);
 
     currentPos += LEN_EXTENDED_DEVICE_INFORMATION_DIB;

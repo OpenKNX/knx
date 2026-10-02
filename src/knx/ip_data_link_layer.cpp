@@ -298,7 +298,21 @@ void IpDataLinkLayer::loopHandleSearchRequestExtended(uint8_t* buffer, uint16_t 
 
     searchResponse.setDeviceInfo(_ipParameters, _deviceObject); //DescriptionTypeCode::DeviceInfo 1
     searchResponse.setSupportedServices(); //DescriptionTypeCode::SUPP_SVC_FAMILIES 2
-    searchResponse.setExtendedDeviceInfo(); //DescriptionTypeCode::EXTENDED_DEVICE_INFO 8
+    // DIB APDU limits from PID 68/69; an unwired server keeps the encoder default.
+    uint16_t busApduLength = MAX_APDU_OCTET_COUNT;
+    uint16_t localApduLength = MAX_APDU_OCTET_COUNT;
+#ifdef USE_CEMI_SERVER
+    if (_cemiServerObject != nullptr)
+    {
+        // property() answers nullptr for a PID the object does not carry - fall back, do not crash.
+        Property* busProp = _cemiServerObject->property(PID_MAX_INTERFACE_APDU_LENGTH);
+        Property* localProp = _cemiServerObject->property(PID_MAX_LOCAL_APDU_LENGTH);
+        if (busProp != nullptr) busProp->read(busApduLength);
+        if (localProp != nullptr) localProp->read(localApduLength);
+    }
+#endif
+
+    searchResponse.setExtendedDeviceInfo(localApduLength); //DescriptionTypeCode::EXTENDED_DEVICE_INFO 8
 
     if(searchRequest.srpRequestDIBs)
     {
@@ -317,7 +331,7 @@ void IpDataLinkLayer::loopHandleSearchRequestExtended(uint8_t* buffer, uint16_t 
         }
 
         if(searchRequest.requestedDIB(TUNNELING_INFO))
-            searchResponse.setTunnelingInfo(_ipParameters, _deviceObject, tunnels);
+            searchResponse.setTunnelingInfo(_ipParameters, _deviceObject, tunnels, busApduLength);
     }
 
     if(searchResponse.totalLength() > 500)

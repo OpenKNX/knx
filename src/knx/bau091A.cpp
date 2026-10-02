@@ -45,6 +45,9 @@ Bau091A::Bau091A(Platform& platform)
     // One counter object behind every point that puts a telegram on IP or TP.
     _netLayer.setCounters(&_counters);
     _dlLayerPrimary.setCounters(&_counters);
+#ifdef USE_CEMI_SERVER
+    _dlLayerPrimary.cemiServerObject(_cemiServerObject);
+#endif
     _dlLayerSecondary.setCounters(&_counters);
 #ifdef KNX_TUNNELING
     _ipTunnelServer.setCounters(&_counters);
@@ -56,6 +59,7 @@ Bau091A::Bau091A(Platform& platform)
 #ifdef USE_CEMI_SERVER
     _cemiServerObject.setMediumTypeAsSupported(DptMedium::KNX_IP);
     _cemiServerObject.setMediumTypeAsSupported(DptMedium::KNX_TP1);
+    _cemiServerObject.maxApduLength(_deviceObj.maxApduLength());
     _cemiServer.dataLinkLayerPrimary(_dlLayerPrimary);
     _cemiServer.dataLinkLayer(_dlLayerSecondary); // Secondary I/F is the important one!
 #ifdef KNX_CEMI_TRANSPORT_LAYER
