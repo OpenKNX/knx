@@ -175,6 +175,11 @@ IpParameterObject::IpParameterObject(DeviceObject& deviceObject, Platform& platf
                 pushInt(io->_counters ? io->_counters->transmitToKnx() : 0, data);
                 return 1;
             }),
+        // 03_08_03 2.5.21 p.14, routers only. Bit 0 earned; bit 1 withheld because PID 75 counts
+        // queue-accepts, not confirmed sends (tpuart_data_link_layer.cpp). Bits 2-4 not implemented.
+        new DataProperty(PID_KNXNETIP_ROUTING_CAPABILITIES, false, PDT_UNSIGNED_CHAR, 1, ReadLv3 | WriteLv0, (uint8_t)0x01),
+        // 03_08_03 2.5.28 p.16, default 100 ms. A parameter, not a claim - ROUTING_BUSY is not sent.
+        new DataProperty(PID_ROUTING_BUSY_WAIT_TIME, false, PDT_UNSIGNED_INT, 1, ReadLv3 | WriteLv0, (uint16_t)100),
 #endif
         new DataProperty(PID_TTL, true, PDT_UNSIGNED_CHAR, 1, ReadLv3 | WriteLv3, (uint8_t)16),
         new CallbackProperty<IpParameterObject>(this, PID_KNXNETIP_DEVICE_CAPABILITIES, false, PDT_BITSET16, 1, ReadLv3 | WriteLv0,
@@ -187,7 +192,17 @@ IpParameterObject::IpParameterObject(DeviceObject& deviceObject, Platform& platf
                     return 1;
                 }
 
-                pushWord(0x1, data);
+                // 03_08_03 2.5.19 Table 2 p.13. Was hardcoded 0x0001. Same switches as the service
+                // families DIB, so property and DIB cannot disagree.
+                uint16_t caps = 0;
+#ifdef KNX_TUNNELING
+                caps |= (1 << 0);   // Device Management
+                caps |= (1 << 1);   // Tunnelling
+#endif
+#ifdef KNX_IS_ROUTER
+                caps |= (1 << 2);   // Routing
+#endif
+                pushWord(caps, data);
                 return 1;
             }),
         // 03_08_03 2.5.20 p.14: "shall be implemented by any KNXnet/IP Server". Bit 0 KNX fault, bit 1 IP

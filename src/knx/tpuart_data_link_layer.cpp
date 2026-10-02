@@ -72,7 +72,9 @@ bool TpUartDataLinkLayer::sendFrame(CemiFrame &cemiFrame)
     // TODO EC PID 75 increments here at queue-accept, but 03_08_03 2.5.26 wants "successfully transmitted".
     // The exact point is the ACK-confirmed L_Data.con below (isTransmitted -> dataConReceived, gated on
     // tpFrame.isAck()). Deviation = 0 on a healthy bus, over-counts un-ACKed frames; harmless while the
-    // statistics capability (PID 70 bit1) is not advertised. Move only with a cross-target audit.
+    // statistics capability (PID 70 bit1) is not advertised - PID 70 now exists on the router
+    // (ip_parameter_object.cpp) and bit1 is held CLEAR for exactly this reason. Moving the counter
+    // to that L_Data.con is what earns the bit. Move only with a cross-target audit.
     if (_counters != nullptr)
         _counters->incrementTransmitToKnx();
     // printHex("  CEMI>: ", cemiFrame.data(), cemiFrame.dataLength());
