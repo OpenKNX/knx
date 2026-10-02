@@ -22,6 +22,7 @@ Bau57B0::Bau57B0(Platform& platform)
 #ifdef USE_CEMI_SERVER
     _cemiServerObject.setMediumTypeAsSupported(DptMedium::KNX_IP);
     _cemiServer.dataLinkLayer(_dlLayer);
+    _cemiServerObject.maxApduLength(_deviceObj.maxApduLength());
     _dlLayer.cemiServer(_cemiServer);
     _memory.addSaveRestore(&_cemiServerObject);
 #endif

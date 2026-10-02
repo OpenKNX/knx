@@ -33,6 +33,10 @@ Bau27B0::Bau27B0(Platform& platform)
     // although long frame are also supported by the implementation.
     // Needs some experimentation.
     _deviceObj.maxApduLength(15);
+#ifdef USE_CEMI_SERVER
+    // Copies, does not track - must stay after the line above.
+    _cemiServerObject.maxApduLength(_deviceObj.maxApduLength());
+#endif
 
     // Set which interface objects are available in the device object
     // This differs from BAU to BAU with different medium types.

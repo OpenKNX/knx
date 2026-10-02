@@ -5,6 +5,7 @@
 #include "cemi_server_object.h"
 #include "bits.h"
 #include "data_property.h"
+#include "cemi_frame.h"   // MAX_APDU_OCTET_COUNT
 
 CemiServerObject::CemiServerObject()
 {
@@ -15,6 +16,10 @@ CemiServerObject::CemiServerObject()
         new DataProperty( PID_COMM_MODE, false, PDT_ENUM8, 1, ReadLv3 | WriteLv0, (uint8_t)0),
         new DataProperty( PID_COMM_MODES_SUPPORTED, false, PDT_BITSET16, 1, ReadLv3 | WriteLv0, (uint16_t)0x100),
         new DataProperty( PID_MEDIUM_AVAILABILITY, false, PDT_BITSET16, 1, ReadLv3 | WriteLv0, (uint16_t)0),
+        // 68 towards the field medium, 69 towards own management (03_05_01 4.7.16/4.7.17 p.123).
+        // Defaults; each BAU overrides via maxApduLength(). Read-only: writable would persist them.
+        new DataProperty( PID_MAX_INTERFACE_APDU_LENGTH, false, PDT_UNSIGNED_INT, 1, ReadLv3 | WriteLv0, (uint16_t)MAX_APDU_OCTET_COUNT),
+        new DataProperty( PID_MAX_LOCAL_APDU_LENGTH, false, PDT_UNSIGNED_INT, 1, ReadLv3 | WriteLv0, (uint16_t)MAX_APDU_OCTET_COUNT),
 #ifdef OPENKNX_HW_BUSMON
         // PID_ADD_INFO_TYPES (03_05_01 §4.7.4, p.112): array of the additional-info types this cEMI server
         // sends to the client. Our busmon L_Busmon.ind carries 0x03 (bus monitor status) + 0x06 (extended
@@ -36,6 +41,12 @@ CemiServerObject::CemiServerObject()
     const uint8_t supportedAiTypes[2] = {0x03, 0x06};
     property(PID_ADD_INFO_TYPES)->write((uint16_t)1, (uint8_t)2, supportedAiTypes);
 #endif
+}
+
+void CemiServerObject::maxApduLength(uint16_t value)
+{
+    property(PID_MAX_INTERFACE_APDU_LENGTH)->write(value);
+    property(PID_MAX_LOCAL_APDU_LENGTH)->write(value);
 }
 
 void CemiServerObject::setMediumTypeAsSupported(DptMedium dptMedium)

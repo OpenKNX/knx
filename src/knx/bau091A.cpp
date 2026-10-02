@@ -59,6 +59,7 @@ Bau091A::Bau091A(Platform& platform)
     _cemiServer.dataLinkLayerPrimary(_dlLayerPrimary);
     _cemiServer.dataLinkLayer(_dlLayerSecondary); // Secondary I/F is the important one!
 #ifdef KNX_CEMI_TRANSPORT_LAYER
+    _cemiServerObject.maxApduLength(_deviceObj.maxApduLength());
     // 03_08_03 2.6.1.1 p.18: a device that uses KNXnet/IP Device Management shall implement the cEMI
     // Transport Layer mode. The MODE is required at every version - only the T_Data_* services are
     // version dependent (4.2.5 p.23 marks them X at v1). Without this the layer is never told about an
