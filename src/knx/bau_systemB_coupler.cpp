@@ -16,6 +16,11 @@ BauSystemBCoupler::BauSystemBCoupler(Platform& platform) :
 {
     _appLayer.transportLayer(_transLayer);
     _transLayer.networkLayer(_netLayer);
+
+    // A coupler has no group objects, so the coupling is its executable part (03_05_01 4.24.1 p.298).
+    _netLayer.applicationProgramObject(_appProgram);
+    _appProgram.runControlWritable(true);
+
     _memory.addSaveRestore(&_deviceObj);
 #ifdef USE_DATASECURE
     _memory.addSaveRestore(&_secIfObj);

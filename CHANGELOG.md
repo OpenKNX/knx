@@ -10,6 +10,51 @@ parse bound, because a well-formed but wrong answer is the class that survives a
 Built on OAM-IP-Interface and OAM-IP-Router (RP2040 + ESP32); the TP-only paths additionally run under a
 host harness with AddressSanitizer, 77 cases, red-before/green-after per fix.
 
+### Run State Machine (new)
+
+* New: `PID_RUN_STATE_CONTROL` (PID 6) on the application program object, readable and writable. It did
+  not exist before - the identifier was in `property.h` but no object ever instantiated it, so the whole
+  of 08_TSSI had nothing to address. TSS I is mandatory for a device with a non-certified stack
+  (08_01 clause 3.3 Fig. 5 p.10).
+* Reading answers Table 95 (03_05_01 p.299): `0` Halted when the application object is not loaded, `1`
+  Running, `3` Terminated after a Stop event.
+* Writing takes Table 96 (p.299): `0` NOP, `1` Restart, `2` Stop. Any other value is ignored rather than
+  guessed at. The state lives in RAM, as clause 4.24.2.2 p.298 requires, so a device reset clears it -
+  which is also the recovery Table 95 names for Terminated.
+* On a DEVICE, Stop holds **group communication**: `sendNextGroupTelegram()` emits nothing and the group
+  value read, write and response indications are dropped, so the application is neither called nor heard.
+* On a COUPLER, Stop holds **the coupling** - a frame carried from one interface to the other. A coupler
+  has no group objects, so that is its executable part. Local delivery, the coupler's own frames and the
+  KNXnet/IP tunnelling path keep running: tunnelling is a KNXnet/IP service (03_08_04), not the executable
+  part clause 4.24.1 p.298 governs, and holding it would cost the ETS access to the sub line that makes a
+  diagnostic halt useful. A halted coupler is therefore NOT silent on the sub line. What the standard does
+  not say is what a coupler's executable part is - 03_03_03 clause 2.4.2.4.1 p.12 leaves the case open
+  ("The use case where the Coupler has itself an Application Program is not considered"), so this is a
+  product decision, taken so that the reported state matches what actually stops.
+* Management - properties, memory, restart, programming mode, address services - stays reachable in both
+  cases. That is the purpose the clause states on p.299: "It shall be possible to start ... and stop the
+  executable part **for diagnostic purposes**". Note the difference to `BauSystemB::enabled(false)`, which
+  switches the data link layer and takes the device off the bus.
+* Layer 2 keeps acknowledging what a halted coupler no longer carries. 03_03_03 clause 2.4.2.4.5.1 p.15
+  defines that as IGNORE_ACKED and requires the layer-2 behaviour to be "independent of the Routing
+  conclusion", so it matches an ordinary filter-table drop.
+* An unload event clears the state even when the object is already unloaded, because Table 97 p.301 has
+  the Unload row leave Terminated for Halted unconditionally and no load state changes in that case.
+* No behaviour change unless someone writes a Stop event: the flag starts `false` and every path is
+  byte-identical to before while it is.
+* A Stop event can be written by anyone who reaches management - no authentication, and the access levels
+  on the property (`ReadLv3 | WriteLv3`) are decorative: `Property::Access()` is evaluated in exactly one
+  place, `InterfaceObject::readPropertyDescription()`, and never on a read or a write. That is a property
+  of this stack, not of this change, and the same connection already reaches `PID_LOAD_STATE_CONTROL`
+  (unload), master reset and restart - all of which are more damaging than a Stop, which is volatile and
+  ends at the next reset.
+* While stopped, a device application that keeps writing group objects leaves them flagged; the flag is
+  per object, so a Restart emits at most one telegram per group object, one per `loop()` pass - not a
+  backlog proportional to how long the device was stopped.
+* The new property shifts the **property indexes** of the application program object by one from
+  PID_LOAD_STATE_CONTROL onwards. 03_03_07 p.55 defines the index as a sequential number and promises no
+  stability across versions - address properties by `property_id`, not by a remembered index.
+
 ### Network layer (routing counter)
 
 * Fix: an answer no longer echoes a received routing counter of 7. A device that received a request with

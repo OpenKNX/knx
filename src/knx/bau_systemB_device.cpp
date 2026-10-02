@@ -22,6 +22,9 @@ BauSystemBDevice::BauSystemBDevice(Platform& platform) :
     _transLayer.networkLayer(_netLayer);
     _transLayer.groupAddressTable(_addrTable);
 
+    // This BAU holds group communication when stopped, so it may accept the Restart/Stop events.
+    _appProgram.runControlWritable(true);
+
     _memory.addSaveRestore(&_deviceObj);
     _memory.addSaveRestore(&_groupObjTable); // changed order for better memory management
     _memory.addSaveRestore(&_addrTable);
@@ -55,6 +58,10 @@ void BauSystemBDevice::loop()
 void BauSystemBDevice::sendNextGroupTelegram()
 {
     if(!configured())
+        return;
+
+    // Run state Terminated holds group communication only; management keeps its own paths (4.24 p.299).
+    if (_appProgram.applicationStopped())
         return;
     
     static uint16_t startIdx = 1;
@@ -203,6 +210,7 @@ void BauSystemBDevice::groupValueReadLocalConfirm(AckType ack, uint16_t asap, Pr
 
 void BauSystemBDevice::groupValueReadIndication(uint16_t asap, Priority priority, HopCountType hopType, const SecurityControl &secCtrl)
 {
+    if (_appProgram.applicationStopped()) return;
 
     if (asap == 0 || asap > _groupObjTable.entryCount()) return;
 
@@ -233,6 +241,9 @@ void BauSystemBDevice::groupValueReadIndication(uint16_t asap, Priority priority
 void BauSystemBDevice::groupValueReadAppLayerConfirm(uint16_t asap, Priority priority, HopCountType hopType, const SecurityControl &secCtrl, uint8_t* data,
     uint8_t dataLength)
 {
+    // A received response reaches the application handler just as a write does, so it is held too.
+    if (_appProgram.applicationStopped()) return;
+
     if (asap == 0 || asap > _groupObjTable.entryCount()) return;
 
 #ifdef USE_DATASECURE
@@ -257,6 +268,8 @@ void BauSystemBDevice::groupValueReadAppLayerConfirm(uint16_t asap, Priority pri
 
 void BauSystemBDevice::groupValueWriteIndication(uint16_t asap, Priority priority, HopCountType hopType, const SecurityControl &secCtrl, uint8_t * data, uint8_t dataLength)
 {
+    if (_appProgram.applicationStopped()) return;
+
     if (asap == 0 || asap > _groupObjTable.entryCount()) return;
 
 #ifdef USE_DATASECURE

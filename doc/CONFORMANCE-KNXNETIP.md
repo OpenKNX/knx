@@ -101,6 +101,61 @@ unterscheidet, ist das vermerkt (siehe „Produkt-Unterschiede").
 - **KNXnet/IP-Telegrammzähler PID 72-75** (QUEUE_OVERFLOW / MSG_TRANSMIT to IP/KNX) als read-only
   CallbackProperties unter `#ifdef KNX_IS_ROUTER` (`ip_parameter_object.cpp:139-169`).
 
+## 🆕 Run State Machine (08_TSSI) — neu implementiert
+
+`PID_RUN_STATE_CONTROL` (PID 6) am Applikationsprogramm-Objekt (Objekttyp 3; Objektindex 4 bei den
+Geraete-Masken, 2 beim Koppler 091A - der Index ist geraetespezifisch, ueber PID 1 aufloesen). Vorher existierte nur
+der Bezeichner in `property.h`; kein Objekt legte die Eigenschaft an, damit war **08_TSSI gar nicht
+prüfbar** — und TSS I ist für ein Gerät mit nicht zertifiziertem Stack pflichtig (*08_01 Kl. 3.3 Fig. 5
+S. 10*).
+
+**Lesen** (*03_05_01 Tabelle 95, S. 299*): `3` Terminated nach einem Stop-Ereignis, sonst `0` Halted wenn
+das Applikationsobjekt nicht geladen ist und `1` Running. Terminated wird **zuerst** geprüft und gilt auch
+im entladenen Zustand — *Tabelle 97, S. 301* führt Stop auch aus Halted nach Terminated, und *08_TSSI
+Kl. 2.2.4 S. 7* entlädt die Anwendung und verlangt danach auf Stop die Antwort `03`. Die Zwischenzustände
+Ready, Starting und Shutting down erscheinen nie; *08_TSSI Kl. 2.4.1 S. 17* lässt das ausdrücklich zu,
+wenn die Anwendung sofort startet.
+
+**Schreiben** (*Tabelle 96, S. 299*): `0` NOP, `1` Restart, `2` Stop. Andere Werte werden ignoriert.
+Der Zustand liegt im RAM, wie *Kl. 4.24.2.2 S. 298* verlangt — ein Reset stellt Running wieder her. Ein
+Unload-Ereignis löscht ihn ebenfalls, auch wenn das Objekt bereits entladen war (*Tabelle 97, S. 301*).
+
+**Wirkung von Stop, Gerät:** die **Gruppenkommunikation** ruht. `sendNextGroupTelegram()` sendet nicht
+mehr, die Group-Value-Indications — Read, Write und Response — werden verworfen, die Anwendung wird also
+weder gerufen noch gehört.
+
+**Wirkung von Stop, Koppler:** die **Kopplung** ruht, also jedes Telegramm, das von einer Schnittstelle auf
+die andere getragen würde. Ein Koppler hat keine Gruppenobjekte; die Kopplung *ist* sein ausführbarer
+Teil. Nicht angehalten werden die lokale Zustellung, die eigenen Telegramme des Kopplers und der
+**Tunnel-Pfad**: Tunnelling ist ein KNXnet/IP-Dienst (*03_08_04*), nicht der ausführbare Teil, den
+*Kl. 4.24.1 S. 298* meint — und ohne ihn verlöre ein angehaltenes Gerät den ETS-Zugang zur Unterlinie,
+der eine Diagnose-Abschaltung erst brauchbar macht. Ein angehaltener Koppler ist also **nicht** still auf
+der Unterlinie. Was die Norm dazu sagt: nichts — *03_03_03 Kl. 2.4.2.4.1 S. 12* lässt den Fall offen
+(„The use case where the Coupler has itself an Application Program is not considered"). Die Auslegung ist
+eine Produktentscheidung, getroffen damit der gemeldete Zustand dem entspricht, was wirklich stillsteht.
+
+Layer 2 quittiert weiterhin, was ein angehaltener Koppler nicht mehr trägt. *03_03_03 Kl. 2.4.2.4.5.1
+S. 15* definiert das als IGNORE_ACKED und verlangt, dass die Layer-2-Entscheidung „independent of the
+Routing conclusion" ist — es verhält sich also wie ein gewöhnlicher Filtertabellen-Verwurf.
+
+In beiden Fällen bleiben Properties, Speicher, Restart, Programmiermodus und Adressdienste erreichbar —
+das ist der Zweck, den die Norm nennt (*S. 299*: „for diagnostic purposes"). Nicht zu verwechseln mit
+`BauSystemB::enabled(false)`, das den Data Link Layer abschaltet und das Gerät **komplett** vom Bus nimmt.
+
+**So spricht man sie an** (Management-Client, verbindungsorientiert auf das Gerät):
+
+| | Objektindex | PID | Count | Start | Daten |
+|---|---|---|---|---|---|
+| `A_PropertyValue_Read` | 4 | 6 | 1 | 1 | — |
+| `A_PropertyValue_Write` | 4 | 6 | 1 | 1 | 1 Oktett: 0/1/2 |
+
+Geprüft von `D-26.1` … `D-26.3` der Gerätesuite. **Kein Werkzeug der eigenen Kette kann das heute
+bedienen**: `ftc prop` adressiert lokale Objekte der Schnittstelle über IOT+Instanz, nicht den
+Objektindex eines entfernten Geräts. Wer das Feature betrieblich nutzen will, braucht einen Client, der
+`A_PropertyValue_Write` auf das Applikationsprogramm-Objekt / PID 6 schickt — ETS oder ein eigenes Werkzeug.
+
+---
+
 ## ⏳ Noch offen (Backlog: Zert / v2 / Kosmetik)
 - **`E_VERSION_NOT_SUPPORTED`** wird bei nicht unterstützter KNXnet/IP-Version nicht gesendet (stilles
   Verwerfen `ip_data_link_layer.cpp:89-91`). Kein Einzeiler — eine korrekte Antwort braucht Service-Typ +

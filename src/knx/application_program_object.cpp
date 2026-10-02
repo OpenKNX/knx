@@ -36,6 +36,45 @@ ApplicationProgramObject::ApplicationProgramObject(Memory& memory)
 
                 data[0] = 0;
                 return 1;
+            }),
+        // Run state machine, 03_05_01 4.24 p.298. Writable rather than the read-only minimum, so a
+        // device can be silenced "for diagnostic purposes" (p.299) without unloading its configuration.
+        new CallbackProperty<ApplicationProgramObject>(this, PID_RUN_STATE_CONTROL, true, PDT_CONTROL, 1, ReadLv3 | WriteLv3,
+            [](ApplicationProgramObject* io, uint16_t start, uint8_t count, uint8_t* data) -> uint8_t {
+                if (start == 0)
+                {
+                    uint16_t currentNoOfElements = 1;
+                    pushWord(currentNoOfElements, data);
+                    return 1;
+                }
+
+                // Table 95 p.299. Terminated first and independent of the load state: Table 97 p.301
+                // has Stop reach it from Halted, and 08_TSSI 2.2.4 p.7 requires 03 on an unloaded object.
+                if (io->applicationStopped()) { data[0] = 3; return 1; }
+                if (io->loadState() != LS_LOADED) { data[0] = 0; return 1; }
+                data[0] = 1;
+                return 1;
+            },
+            [](ApplicationProgramObject* io, uint16_t start, uint8_t count, const uint8_t* data) -> uint8_t {
+                // Redundant with CallbackProperty::write; kept because data[0] is read below.
+                if (start == 0 || count == 0)
+                    return 0;
+
+                // Table 96 p.299. Only the state-changing events are gated: 08_TSSI 2.2.1 p.5 sends FFh
+                // and still requires nr_of_elem 1 with the current state.
+                switch (data[0])
+                {
+                    case 1: // Restart
+                        if (!io->runControlWritable()) return 0;
+                        io->applicationStopped(false);
+                        return 1;
+                    case 2: // Stop
+                        if (!io->runControlWritable()) return 0;
+                        io->applicationStopped(true);
+                        return 1;
+                    case 0: return 1;                                  // NOP
+                    default: return 1;                                 // ignored, state unchanged
+                }
             })
     };
 
@@ -83,6 +122,26 @@ uint16_t ApplicationProgramObject::getWord(uint32_t addr)
 uint32_t ApplicationProgramObject::getInt(uint32_t addr)
 {
     return ::getInt(TableObject::data() + addr);
+}
+
+// Table 97 p.301: Unload leaves Terminated for Halted. On an already unloaded object no load state
+// changes, so beforeStateChange() alone would let Terminated stand.
+void ApplicationProgramObject::loadEvent(const uint8_t* data)
+{
+    if (data[0] == LE_UNLOAD)
+        _applicationStopped = false;
+
+    TableObject::loadEvent(data);
+}
+
+// 08_TSSI 2.5.5 p.26: Terminated plus an unload reads back as Halted. Without this the state would
+// survive a download and hold group communication for good.
+void ApplicationProgramObject::beforeStateChange(LoadState& newState)
+{
+    TableObject::beforeStateChange(newState);
+
+    if (newState != LS_LOADED)
+        _applicationStopped = false;
 }
 
 double ApplicationProgramObject::getFloat(uint32_t addr, ParameterFloatEncodings encoding)

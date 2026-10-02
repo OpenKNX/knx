@@ -1,4 +1,5 @@
 #include "network_layer_coupler.h"
+#include "application_program_object.h"
 #include "data_link_layer.h"
 #include "device_object.h"
 #include "router_object.h"
@@ -22,6 +23,11 @@ NetworkLayerEntity& NetworkLayerCoupler::getPrimaryInterface()
 NetworkLayerEntity& NetworkLayerCoupler::getSecondaryInterface()
 {
     return _netLayerEntities[1];
+}
+
+bool NetworkLayerCoupler::routingHalted() const
+{
+    return _appProgram != nullptr && _appProgram->applicationStopped();
 }
 
 void NetworkLayerCoupler::rtObj(RouterObject& rtObj)
@@ -460,6 +466,10 @@ void NetworkLayerCoupler::routeDataIndividual(AckType ack, uint16_t destination,
         return;
     }
 
+    // Past this point the frame is someone else's; ours and our own returned above.
+    if (routingHalted())
+        return;
+
     uint8_t lcconfig = LCCONFIG::PHYS_FRAME_ROUT | LCCONFIG::PHYS_REPEAT | LCCONFIG::BROADCAST_REPEAT | LCCONFIG::GROUP_IACK_ROUT | LCCONFIG::PHYS_IACK_NORMAL; // default value from spec. in case prop is not availible.
     Property* prop_lcconfig;
     if(srcIfIndex == kPrimaryIfIndex) // direction Prim -> Sec ( e.g. IP -> TP)
@@ -543,6 +553,9 @@ void NetworkLayerCoupler::dataIndication(AckType ack, AddressType addrType, uint
     // what made the Security Proxy(AN192) useless; now, hc 7 Telegrams are filtered as any other and the value is decremented.
 
     // ROUTE_XXX
+    if (routingHalted())
+        return;
+
     sendMsgHopCount(ack, addrType, destination, npdu, priority, Broadcast, srcIfIdx, source);
     return;
 }
@@ -601,7 +614,7 @@ void NetworkLayerCoupler::broadcastIndication(AckType ack, FrameFormat format, N
         prop_lcconfig->read(lcconfig);
 
     // Route to other interface
-    if(!(lcconfig & LCCONFIG::BROADCAST_LOCK))
+    if(!(lcconfig & LCCONFIG::BROADCAST_LOCK) && !routingHalted())
     {
         // 03_02_06 4.1.3 with 08_TSSK 80103/80104: towards IP a system broadcast leaves as
         // ROUTING_SYSTEM_BROADCAST while the IP System Broadcast Routing Mode is enabled, and as an
@@ -655,7 +668,7 @@ void NetworkLayerCoupler::systemBroadcastIndication(AckType ack, FrameFormat for
         prop_lcconfig->read(lcconfig);
 
     // Route to other interface
-    if(!(lcconfig & LCCONFIG::BROADCAST_LOCK))
+    if(!(lcconfig & LCCONFIG::BROADCAST_LOCK) && !routingHalted())
         sendMsgHopCount(ack, GroupAddress, 0, npdu, priority, SysBroadcast, srcIfIdx, source);
 }
 

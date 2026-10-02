@@ -11,6 +11,7 @@
 
 class DeviceObject;
 class RouterObject;
+class ApplicationProgramObject;
 
 class NetworkLayerCoupler : public NetworkLayer
 {
@@ -36,6 +37,9 @@ class NetworkLayerCoupler : public NetworkLayer
     void dataBroadcastRequest(AckType ack, HopCountType hopType, Priority priority, TPDU& tpdu) override;
     void dataSystemBroadcastRequest(AckType ack, HopCountType hopType, Priority priority, TPDU& tpdu) override;
 
+    /** @brief The run state machine that may halt coupling; null leaves the coupler always routing. */
+    void applicationProgramObject(ApplicationProgramObject& obj) { _appProgram = &obj; }
+
     /** @brief Routing-decision counters (ours, not spec); null on builds that do not keep them. */
     void setCounters(KnxIpCounters* counters) { _counters = counters; }
 #ifdef OPENKNX_ROUTE_TRACE
@@ -44,6 +48,12 @@ class NetworkLayerCoupler : public NetworkLayer
 #endif
 
   private:
+    /** @brief Whether Stop holds the coupling, i.e. a frame carried from one interface to the other.
+     *  @details Local delivery, own frames and the tunnelling path are never held, so the coupler stays
+     *           reachable and is not silent on the sub line. */
+    bool routingHalted() const;
+
+    ApplicationProgramObject* _appProgram = nullptr;
     KnxIpCounters* _counters = nullptr;
 #ifdef OPENKNX_ROUTE_TRACE
     RouteTrace _trace;

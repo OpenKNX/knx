@@ -15,4 +15,21 @@ class ApplicationProgramObject : public TableObject
     uint16_t getWord(uint32_t addr);
     uint32_t getInt(uint32_t addr);
     double getFloat(uint32_t addr, ParameterFloatEncodings encoding);
+    void beforeStateChange(LoadState& newState) override;
+    void loadEvent(const uint8_t* data) override;
+
+    /** @brief Run state Terminated, i.e. the executable part is stopped (03_05_01 4.24 p.298). */
+    bool applicationStopped() const { return _applicationStopped; }
+    void applicationStopped(bool value) { _applicationStopped = value; }
+
+    /** @brief Set by a BAU that really holds its executable part; others refuse Restart and Stop.
+     *  @details Table 96 p.299 makes the events optional, so a BAU without a gate must not report a
+     *           state it never enters. */
+    bool runControlWritable() const { return _runControlWritable; }
+    void runControlWritable(bool value) { _runControlWritable = value; }
+
+  private:
+    // Written from the main loop, read from the receive context; byte-atomic, so volatile is enough.
+    volatile bool _applicationStopped = false;
+    bool _runControlWritable = false;
 };

@@ -64,6 +64,9 @@ class TableObject: public InterfaceObject
 
     void initializeProperties(size_t propertiesSize, Property** properties) override;
 
+    /** @brief A load event from PID_LOAD_STATE_CONTROL, before it is dispatched on the current state. */
+    virtual void loadEvent(const uint8_t* data);
+
     static BeforeTablesUnloadCallback _beforeTablesUnload;
 
     Memory& _memory;
@@ -73,7 +76,6 @@ class TableObject: public InterfaceObject
     bool allocTable(uint32_t size, bool doFill, uint8_t fillByte);
     void allocTableStatic();
     void initializeDynTableProperties(size_t propertiesSize, Property** properties);
-    void loadEvent(const uint8_t* data);
     void loadEventUnloaded(const uint8_t* data);
     void loadEventLoading(const uint8_t* data);
     void loadEventLoaded(const uint8_t* data);
