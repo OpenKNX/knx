@@ -74,7 +74,7 @@ void NetworkLayerDevice::dataSystemBroadcastRequest(AckType ack, HopCountType ho
 
 void NetworkLayerDevice::dataIndication(AckType ack, AddressType addrType, uint16_t destination, FrameFormat format, NPDU& npdu, Priority priority, uint16_t source, uint8_t srcIfIdx)
 {
-    HopCountType hopType = npdu.hopCount() == 7 ? UnlimitedRouting : NetworkLayerParameter;
+    HopCountType hopType = KNX_ANSWER_HOPTYPE(npdu);
 
     if (addrType == IndividualAddress)
     {
@@ -95,7 +95,7 @@ void NetworkLayerDevice::dataIndication(AckType ack, AddressType addrType, uint1
 
 void NetworkLayerDevice::dataConfirm(AckType ack, AddressType addressType, uint16_t destination, FrameFormat format, Priority priority, uint16_t source, NPDU& npdu, bool status, uint8_t srcIfIdx)
 {
-    HopCountType hopType = npdu.hopCount() == 7 ? UnlimitedRouting : NetworkLayerParameter;
+    HopCountType hopType = KNX_ANSWER_HOPTYPE(npdu);
     if (addressType == IndividualAddress)
     {
         _transportLayer.dataIndividualConfirm(ack, destination, hopType, priority, npdu.tpdu(), status);
@@ -111,7 +111,7 @@ void NetworkLayerDevice::dataConfirm(AckType ack, AddressType addressType, uint1
 
 void NetworkLayerDevice::broadcastIndication(AckType ack, FrameFormat format, NPDU& npdu, Priority priority, uint16_t source, uint8_t srcIfIdx)
 {
-    HopCountType hopType = npdu.hopCount() == 7 ? UnlimitedRouting : NetworkLayerParameter;
+    HopCountType hopType = KNX_ANSWER_HOPTYPE(npdu);
     DptMedium mediumType = _netLayerEntities[srcIfIdx].mediumType();
 
     // for closed media like TP1 and IP there is no system broadcast
@@ -131,18 +131,18 @@ void NetworkLayerDevice::broadcastIndication(AckType ack, FrameFormat format, NP
 
 void NetworkLayerDevice::broadcastConfirm(AckType ack, FrameFormat format, Priority priority, uint16_t source, NPDU& npdu, bool status, uint8_t srcIfIdx)
 {
-    HopCountType hopType = npdu.hopCount() == 7 ? UnlimitedRouting : NetworkLayerParameter;
+    HopCountType hopType = KNX_ANSWER_HOPTYPE(npdu);
     _transportLayer.dataBroadcastConfirm(ack, hopType, priority, npdu.tpdu(), status);
 }
 
 void NetworkLayerDevice::systemBroadcastIndication(AckType ack, FrameFormat format, NPDU& npdu, Priority priority, uint16_t source, uint8_t srcIfIdx)
 {
-    HopCountType hopType = npdu.hopCount() == 7 ? UnlimitedRouting : NetworkLayerParameter;
+    HopCountType hopType = KNX_ANSWER_HOPTYPE(npdu);
     _transportLayer.dataSystemBroadcastIndication(hopType, priority, source, npdu.tpdu());
 }
 
 void NetworkLayerDevice::systemBroadcastConfirm(AckType ack, FrameFormat format, Priority priority, uint16_t source, NPDU& npdu, bool status, uint8_t srcIfIdx)
 {
-    HopCountType hopType = npdu.hopCount() == 7 ? UnlimitedRouting : NetworkLayerParameter;
+    HopCountType hopType = KNX_ANSWER_HOPTYPE(npdu);
     _transportLayer.dataSystemBroadcastConfirm(ack, hopType, npdu.tpdu(), priority, status);
 }

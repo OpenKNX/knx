@@ -9,6 +9,15 @@
 class DeviceObject;
 class APDU;
 
+// Hop count of an ANSWER: the sender's own parameter, never the received 7 (03_03_03 2.4.1 p.11;
+// 2.4.2.4.2 p.13 for a coupler answering for itself; tested by 08_03_03 3.1-3.4 pp.5-9). Receive side
+// only - the coupler's forwarding path still decrements. KNX_ECHO_UNLIMITED_ROUTING restores the echo.
+#ifdef KNX_ECHO_UNLIMITED_ROUTING
+    #define KNX_ANSWER_HOPTYPE(npdu) ((npdu).hopCount() == 7 ? UnlimitedRouting : NetworkLayerParameter)
+#else
+    #define KNX_ANSWER_HOPTYPE(npdu) (NetworkLayerParameter)
+#endif
+
 class NetworkLayer
 {
     friend class NetworkLayerEntity;

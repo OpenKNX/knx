@@ -10,6 +10,21 @@ parse bound, because a well-formed but wrong answer is the class that survives a
 Built on OAM-IP-Interface and OAM-IP-Router (RP2040 + ESP32); the TP-only paths additionally run under a
 host harness with AddressSanitizer, 77 cases, red-before/green-after per fix.
 
+### Network layer (routing counter)
+
+* Fix: an answer no longer echoes a received routing counter of 7. A device that received a request with
+  hop count 7 derived `UnlimitedRouting` from it, handed that up to the BAU and back down into the
+  response, and emitted an answer that never expires. 08_03_03 clause 3.3 p.7-8 and clause 3.4 p.8
+  require the answer to carry routing counter 6 whatever came in, and 03_03_03 clause 2.4.1 p.11 has the
+  sending network layer take the hop count from its own parameter. Measured on three OpenKNX devices
+  (all answered 7) against a certified MDT SCN-IP000.03 on the same line, which answered 6.
+* This applies to a coupler too: 03_03_03 clause 2.4.2.4.2 p.13 sends it down the device path for a frame
+  addressed to its own individual address, so the same six receive sites changed in
+  `network_layer_coupler.cpp`. Its FORWARDING path is untouched and keeps decrementing a hop count of 7
+  to 6 - that clause has no exception for 7, and the term "unlimited routing" no longer appears anywhere
+  in 03_03_03.
+* The old echo is available again with `-D KNX_ECHO_UNLIMITED_ROUTING`, off by default.
+
 ### Datapoint types
 * Fix: the encode path has a real buffer-size guard. `ENSURE_PAYLOAD` expanded to nothing, so a group object written with a DPT larger than its configured data length overran the output buffer
 * Fix: DPT 27.001 decodes unsigned. It is B32 with 16 output-state and 16 validity bits (03_07_02 3.26.1 p.62), and decoding it signed made every status with bit 31 set unwritable by the unsigned encoder
