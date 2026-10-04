@@ -52,6 +52,9 @@ TpduType TPDU::type() const
         }
         else if (numbered())
             return DataConnected;
+        // 03_03_04 Figure 3: an unnumbered data PDU on an individual address is 000000b; anything else is undefined.
+        else if ((_data[0] & 0xFC) != 0x00)
+            return InvalidTpdu;
         else
             return DataInduvidual;
     }
