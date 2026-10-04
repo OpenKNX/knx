@@ -21,6 +21,10 @@ uint8_t NetworkLayer::hopCount() const
 
 bool NetworkLayer::isApciSystemBroadcast(APDU& apdu)
 {
+    // A frame without an APCI octet is no system broadcast, and apdu.type() would read past its end.
+    if (apdu.length() == 0)
+        return false;
+
     switch (apdu.type())
     {
         // Application Layer Services on System Broadcast communication mode
