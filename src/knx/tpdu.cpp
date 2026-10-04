@@ -40,6 +40,11 @@ TpduType TPDU::type() const
 
         if (_frame.addressType() == GroupAddress)
         {
+            // 03_03_04 Figure 3: on a group address only 000000b in bits 7..2 is T_Data_Group/T_Data_Broadcast;
+            // 000001b (T_Data_Tag_Group) is not implemented here and every other data encoding is undefined.
+            if ((_data[0] & 0xFC) != 0x00)
+                return InvalidTpdu;
+
             if (_frame.destinationAddress() == 0)
                 return DataBroadcast;
             else

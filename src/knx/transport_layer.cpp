@@ -388,7 +388,11 @@ void TransportLayer::dataGroupIndication(uint16_t destination, HopCountType hopT
     uint16_t tsap = _groupAddressTable->getTsap(destination);
     if (tsap == 0)
         return;
-    
+
+    // Invalid PDUs are ignored (03_03_04 clause 5); 08_03_04 2.1 b) expects no reaction to them.
+    if (tpdu.type() != DataGroup)
+        return;
+
     _applicationLayer.dataGroupIndication(hopType, priority, tsap, tpdu.apdu());
 }
 
@@ -404,6 +408,10 @@ void TransportLayer::dataGroupConfirm(AckType ack, uint16_t source, uint16_t des
 
 void TransportLayer::dataBroadcastIndication(HopCountType hopType, Priority priority, uint16_t source, TPDU& tpdu)
 {
+    // Invalid PDUs are ignored (03_03_04 clause 5); 08_03_04 2.2 b) expects no reaction to them.
+    if (tpdu.type() != DataBroadcast)
+        return;
+
     _applicationLayer.dataBroadcastIndication(hopType, priority, source, tpdu.apdu());
 }
 
@@ -414,6 +422,10 @@ void TransportLayer::dataBroadcastConfirm(AckType ack, HopCountType hopType, Pri
 
 void TransportLayer::dataSystemBroadcastIndication(HopCountType hopType, Priority priority, uint16_t source, TPDU& tpdu)
 {
+    // A system broadcast has no TPDU type of its own; it is a broadcast with the system-broadcast flag.
+    if (tpdu.type() != DataBroadcast)
+        return;
+
     _applicationLayer.dataSystemBroadcastIndication(hopType, priority, source, tpdu.apdu());
 }
 
