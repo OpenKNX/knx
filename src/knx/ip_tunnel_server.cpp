@@ -666,7 +666,7 @@ void IpTunnelServer::sendFrameToTunnel(KnxIpTunnelConnection* tunnel, CemiFrame&
 #endif
 }
 
-// DISCONNECT_REQUEST to the client's CONTROL endpoint. 03_08_02 Core lists this service in the
+// DISCONNECT_REQUEST to the client's control port at the stored IP (the data endpoint; the control IP is not stored). 03_08_02 Core lists this service in the
 // server->client direction as mandatory (§9.2 certification table), so ending a channel from the device
 // side is not an extension. Returns what the send returned: false means the datagram never left, so the
 // client keeps the channel until its own heartbeat timeout. A true only means it went out -- UDP, so
@@ -1795,7 +1795,7 @@ void IpTunnelServer::HandleDisconnectRequest(uint8_t* buffer, uint16_t length, u
         // Busmon tunnel closed by ETS -> this slot ends; monitor mode is left when the LAST one goes.
         KnxIpDisconnectResponse discRes(_busMonTunnel[bmDisc].ChannelId, E_NO_ERROR);
         // Route-back (03_08_02 Core §5.2): a route-back client's control HPAI is 0.0.0.0:0 -> reply to the
-        // stored busmon control endpoint (mirrors the data/config disconnect path below).
+        // stored IP (data endpoint) and control port; the control IP is not stored (as the data/config path below).
         uint32_t rIp = discReq.hpaiCtrl().ipAddress() ? discReq.hpaiCtrl().ipAddress() : _busMonTunnel[bmDisc].IpAddress;
         uint16_t rPort = discReq.hpaiCtrl().ipPortNumber() ? discReq.hpaiCtrl().ipPortNumber() : _busMonTunnel[bmDisc].PortCtrl;
         sendCounted(rIp, rPort, discRes.data(), discRes.totalLength());
@@ -1828,7 +1828,7 @@ void IpTunnelServer::HandleDisconnectRequest(uint8_t* buffer, uint16_t length, u
     }
 
     KnxIpDisconnectResponse discRes(tun->ChannelId, E_NO_ERROR);
-    // Route-back (03_08_02 Core §5.2): reply to the stored control endpoint when the request HPAI is 0.0.0.0:0.
+    // Route-back (03_08_02 Core §5.2): reply to the stored IP (data endpoint) and control port when the request HPAI is 0.0.0.0:0.
     uint32_t rIp = discReq.hpaiCtrl().ipAddress() ? discReq.hpaiCtrl().ipAddress() : tun->IpAddress;
     uint16_t rPort = discReq.hpaiCtrl().ipPortNumber() ? discReq.hpaiCtrl().ipPortNumber() : tun->PortCtrl;
     sendCounted(rIp, rPort, discRes.data(), discRes.totalLength());
@@ -2089,8 +2089,9 @@ void IpTunnelServer::HandleBusMonitorConnect(KnxIpConnectRequest& connRequest, u
 
     _busMonTunnel[bmSlot].IsConfig = false;
     _busMonTunnel[bmSlot].IndividualAddress = 0;
-    _busMonTunnel[bmSlot].IpAddress = srcIP;
-    _busMonTunnel[bmSlot].PortData = connRequest.hpaiData().ipPortNumber() ? connRequest.hpaiData().ipPortNumber() : srcPort;
+    // Indications travel on the data endpoint, per field with route-back, as for the data tunnels above.
+    _busMonTunnel[bmSlot].IpAddress = connRequest.hpaiData().ipAddress() ? connRequest.hpaiData().ipAddress() : src_addr;
+    _busMonTunnel[bmSlot].PortData = connRequest.hpaiData().ipPortNumber() ? connRequest.hpaiData().ipPortNumber() : src_port;
     _busMonTunnel[bmSlot].PortCtrl = connRequest.hpaiCtrl().ipPortNumber() ? connRequest.hpaiCtrl().ipPortNumber() : srcPort;
     _busMonTunnel[bmSlot].SequenceCounter_S = 0;
     if (firstBusMon)
@@ -2117,7 +2118,8 @@ void IpTunnelServer::HandleBusMonitorConnect(KnxIpConnectRequest& connRequest, u
         connRes.controlEndpoint().ipAddress(0);
         connRes.controlEndpoint().ipPortNumber(0);
     }
-    sendCounted(_busMonTunnel[bmSlot].IpAddress, _busMonTunnel[bmSlot].PortCtrl, connRes.data(), connRes.totalLength());
+    // 03_08_02 7.8.2 p.38: to the client's control endpoint, not the data address stored above.
+    sendCounted(srcIP, srcPort, connRes.data(), connRes.totalLength());
 }
 
 int IpTunnelServer::busMonSlotByChannel(uint8_t channelId)
