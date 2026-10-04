@@ -1257,6 +1257,13 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
     uint32_t srcIP = connRequest.hpaiCtrl().ipAddress() ? connRequest.hpaiCtrl().ipAddress() : src_addr;
     uint16_t srcPort = connRequest.hpaiCtrl().ipPortNumber() ? connRequest.hpaiCtrl().ipPortNumber() : src_port;
 
+    // Reserved slots match the UDP source, not the client-declared HPAI, and only if both HPAIs point there (or are 0):
+    // a declared IP can no longer claim a slot and steer its data elsewhere; a spoofed source still matches, blind.
+    const uint32_t ctrlHpaiIp = connRequest.hpaiCtrl().ipAddress();
+    const uint32_t dataHpaiIp = connRequest.hpaiData().ipAddress();
+    const bool hpaiAtSource = (ctrlHpaiIp == 0 || ctrlHpaiIp == src_addr) && (dataHpaiIp == 0 || dataHpaiIp == src_addr);
+    const uint32_t resMatchIp = hpaiAtSource ? src_addr : 0;
+
     // read current elements in PID_ADDITIONAL_INDIVIDUAL_ADDRESSES
     uint16_t propCount = 0;
     _ipParameters.readPropertyLength(PID_ADDITIONAL_INDIVIDUAL_ADDRESSES, propCount);
@@ -1392,7 +1399,7 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
 
                 uint32_t rIP = 0;
                 popInt(rIP, tunCtrlIp + 4 * i);
-                if (srcIP == rIP)
+                if (resMatchIp != 0 && resMatchIp == rIP)
                 {
                     // reserved tunnel for this ip found
                     if (tunnels[i].ChannelId == 0) // check if it is free
