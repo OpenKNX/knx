@@ -19,8 +19,8 @@ class KnxIpTunnelConnection
     uint32_t ConnectUptimeS = 0;    // uptime seconds at connect; the duration is derived from this
     bool IsConfig = false;
     // Which slot the reservation table held for this client at connect time, 0xFF for none. Recorded
-    // here because only the connect knows it: the reservation is matched against the CONTROL HPAI,
-    // while IpAddress above is the DATA HPAI, and the two need not carry the same address.
+    // here because only the connect knows it: the reservation is matched against the UDP source, and only
+    // when both HPAIs point at that source or are 0.
     uint8_t ReservedSlot = 0xFF;
 
     // Per-session counters for the diagnostics UI. Kept for the whole session and copied into the

@@ -1342,9 +1342,10 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
         if (foreignPeer)
         {
             // The peer is this client's own if it is the individual address of a tunnel this very IP holds.
+            // Matched on the UDP source like the reserved slots: a declared HPAI could name the peer's host.
             const uint16_t peer = _cemiServer.transportPeer();
             for (int i = 0; i < KNX_TUNNELING; i++)
-                if (tunnels[i].ChannelId != 0 && tunnels[i].IndividualAddress == peer && tunnels[i].IpAddress == srcIP)
+                if (tunnels[i].ChannelId != 0 && tunnels[i].IndividualAddress == peer && resMatchIp != 0 && tunnels[i].IpAddress == resMatchIp)
                 {
                     foreignPeer = false;
                     break;
