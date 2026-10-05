@@ -671,8 +671,9 @@ bool IpTunnelServer::sendDisconnectRequest(KnxIpTunnelConnection* t)
     discReq.channelId(t->ChannelId);
     discReq.hpaiCtrl().length(LEN_IPHPAI);
     discReq.hpaiCtrl().code(IPV4_UDP);
-    discReq.hpaiCtrl().ipAddress(t->IpCtrl);
-    discReq.hpaiCtrl().ipPortNumber(t->PortCtrl);
+    // The server's own control endpoint (08_TSSH 3.5.3 p.21: IP_BDUT, CPORT_BDUT), same values as CONNECT_RESPONSE uses.
+    discReq.hpaiCtrl().ipAddress(_ipParameters.propertyValue<uint32_t>(PID_CURRENT_IP_ADDRESS));
+    discReq.hpaiCtrl().ipPortNumber(KNXIP_MULTICAST_PORT);
     return sendCounted(t->IpCtrl, t->PortCtrl, discReq.data(), discReq.totalLength());
 }
 
