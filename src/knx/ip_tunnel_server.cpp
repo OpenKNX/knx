@@ -342,13 +342,7 @@ void IpTunnelServer::loop()
                 print(tunnels[i].ChannelId, 16);
                 println(" due to no heartbeat in 2 minutes");
 #endif
-                KnxIpDisconnectRequest discReq;
-                discReq.channelId(tunnels[i].ChannelId);
-                discReq.hpaiCtrl().length(LEN_IPHPAI);
-                discReq.hpaiCtrl().code(IPV4_UDP);
-                discReq.hpaiCtrl().ipAddress(tunnels[i].IpAddress);
-                discReq.hpaiCtrl().ipPortNumber(tunnels[i].PortCtrl);
-                sendCounted(tunnels[i].IpAddress, tunnels[i].PortCtrl, discReq.data(), discReq.totalLength());
+                sendDisconnectRequest(&tunnels[i]);
                 recordTunnelSession(tunnels[i].IpAddress, tunnels[i].IndividualAddress, tunnels[i].IsConfig ? TUN_CONFIG : TUN_DATA, tunnels[i].connectStart, END_TIMEOUT, 0, &tunnels[i]);
                 tunnels[i].Reset();
             }
@@ -666,7 +660,7 @@ void IpTunnelServer::sendFrameToTunnel(KnxIpTunnelConnection* tunnel, CemiFrame&
 #endif
 }
 
-// DISCONNECT_REQUEST to the client's control port at the stored IP (the data endpoint; the control IP is not stored). 03_08_02 Core lists this service in the
+// DISCONNECT_REQUEST to the client's control endpoint (03_08_02 5.4 p.14). 03_08_02 Core lists this service in the
 // server->client direction as mandatory (§9.2 certification table), so ending a channel from the device
 // side is not an extension. Returns what the send returned: false means the datagram never left, so the
 // client keeps the channel until its own heartbeat timeout. A true only means it went out -- UDP, so
@@ -677,9 +671,9 @@ bool IpTunnelServer::sendDisconnectRequest(KnxIpTunnelConnection* t)
     discReq.channelId(t->ChannelId);
     discReq.hpaiCtrl().length(LEN_IPHPAI);
     discReq.hpaiCtrl().code(IPV4_UDP);
-    discReq.hpaiCtrl().ipAddress(t->IpAddress);
+    discReq.hpaiCtrl().ipAddress(t->IpCtrl);
     discReq.hpaiCtrl().ipPortNumber(t->PortCtrl);
-    return sendCounted(t->IpAddress, t->PortCtrl, discReq.data(), discReq.totalLength());
+    return sendCounted(t->IpCtrl, t->PortCtrl, discReq.data(), discReq.totalLength());
 }
 
 // Close one open channel on the device's own initiative (web button, console, before a restart).
@@ -1446,13 +1440,7 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
                 }
                 else if (tunnelResOptions[firstResAndOccTunnel] == 2) // close current tunnel connection on this tunnel and assign to this request
                 {
-                    KnxIpDisconnectRequest discReq;
-                    discReq.channelId(tunnels[firstResAndOccTunnel].ChannelId);
-                    discReq.hpaiCtrl().length(LEN_IPHPAI);
-                    discReq.hpaiCtrl().code(IPV4_UDP);
-                    discReq.hpaiCtrl().ipAddress(tunnels[firstResAndOccTunnel].IpAddress);
-                    discReq.hpaiCtrl().ipPortNumber(tunnels[firstResAndOccTunnel].PortCtrl);
-                    sendCounted(tunnels[firstResAndOccTunnel].IpAddress, tunnels[firstResAndOccTunnel].PortCtrl, discReq.data(), discReq.totalLength());
+                    sendDisconnectRequest(&tunnels[firstResAndOccTunnel]);
                     // Audit-trail parity with every other teardown path: log the evicted session before Reset().
                     recordTunnelSession(tunnels[firstResAndOccTunnel].IpAddress, tunnels[firstResAndOccTunnel].IndividualAddress,
                                         tunnels[firstResAndOccTunnel].IsConfig ? TUN_CONFIG : TUN_DATA, tunnels[firstResAndOccTunnel].connectStart, END_EVICTED,
@@ -1638,6 +1626,7 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
     tun->IpAddress = connRequest.hpaiData().ipAddress() ? connRequest.hpaiData().ipAddress() : src_addr;
     tun->PortData = connRequest.hpaiData().ipPortNumber() ? connRequest.hpaiData().ipPortNumber() : src_port;
     tun->PortCtrl = connRequest.hpaiCtrl().ipPortNumber() ? connRequest.hpaiCtrl().ipPortNumber() : srcPort;
+    tun->IpCtrl = srcIP; // the CONNECT_RESPONSE target below
 
     tun->connectStart = millis(); // start of this session (for the wall-clock stamp and the row key)
     tun->ConnectUptimeS = _uptimeS; // wrap-safe base for the duration
@@ -1761,10 +1750,9 @@ void IpTunnelServer::HandleConnectionStateRequest(uint8_t* buffer, uint16_t leng
 
     tun->lastHeartbeat = millis();
     KnxIpStateResponse stateRes(tun->ChannelId, knxState);
-    // Route-back (03_08_02 Core §5.2): a heartbeat may carry HPAI 0.0.0.0:0 -> reply to the stored control
-    // endpoint (resolved from the packet source at CONNECT), else the response is lost and the client reaps.
-    uint32_t rIp = stateRequest.hpaiCtrl().ipAddress() ? stateRequest.hpaiCtrl().ipAddress() : tun->IpAddress;
-    uint16_t rPort = stateRequest.hpaiCtrl().ipPortNumber() ? stateRequest.hpaiCtrl().ipPortNumber() : tun->PortCtrl;
+    // Route-back (03_08_02 8.6.2.2 p.49): HPAI 0.0.0.0:0 -> reply to the IP and port of the received packet.
+    uint32_t rIp = stateRequest.hpaiCtrl().ipAddress() ? stateRequest.hpaiCtrl().ipAddress() : src_addr;
+    uint16_t rPort = stateRequest.hpaiCtrl().ipPortNumber() ? stateRequest.hpaiCtrl().ipPortNumber() : src_port;
     sendCounted(rIp, rPort, stateRes.data(), stateRes.totalLength());
 }
 
@@ -1794,10 +1782,9 @@ void IpTunnelServer::HandleDisconnectRequest(uint8_t* buffer, uint16_t length, u
     {
         // Busmon tunnel closed by ETS -> this slot ends; monitor mode is left when the LAST one goes.
         KnxIpDisconnectResponse discRes(_busMonTunnel[bmDisc].ChannelId, E_NO_ERROR);
-        // Route-back (03_08_02 Core §5.2): a route-back client's control HPAI is 0.0.0.0:0 -> reply to the
-        // stored IP (data endpoint) and control port; the control IP is not stored (as the data/config path below).
-        uint32_t rIp = discReq.hpaiCtrl().ipAddress() ? discReq.hpaiCtrl().ipAddress() : _busMonTunnel[bmDisc].IpAddress;
-        uint16_t rPort = discReq.hpaiCtrl().ipPortNumber() ? discReq.hpaiCtrl().ipPortNumber() : _busMonTunnel[bmDisc].PortCtrl;
+        // Route-back (03_08_02 8.6.2.2 p.49): HPAI 0.0.0.0:0 -> reply to the IP and port of the received packet.
+        uint32_t rIp = discReq.hpaiCtrl().ipAddress() ? discReq.hpaiCtrl().ipAddress() : src_addr;
+        uint16_t rPort = discReq.hpaiCtrl().ipPortNumber() ? discReq.hpaiCtrl().ipPortNumber() : src_port;
         sendCounted(rIp, rPort, discRes.data(), discRes.totalLength());
         busMonitorTeardown((uint8_t)bmDisc, END_CLOSED);
         return;
@@ -1828,9 +1815,9 @@ void IpTunnelServer::HandleDisconnectRequest(uint8_t* buffer, uint16_t length, u
     }
 
     KnxIpDisconnectResponse discRes(tun->ChannelId, E_NO_ERROR);
-    // Route-back (03_08_02 Core §5.2): reply to the stored IP (data endpoint) and control port when the request HPAI is 0.0.0.0:0.
-    uint32_t rIp = discReq.hpaiCtrl().ipAddress() ? discReq.hpaiCtrl().ipAddress() : tun->IpAddress;
-    uint16_t rPort = discReq.hpaiCtrl().ipPortNumber() ? discReq.hpaiCtrl().ipPortNumber() : tun->PortCtrl;
+    // Route-back (03_08_02 8.6.2.2 p.49): HPAI 0.0.0.0:0 -> reply to the IP and port of the received packet.
+    uint32_t rIp = discReq.hpaiCtrl().ipAddress() ? discReq.hpaiCtrl().ipAddress() : src_addr;
+    uint16_t rPort = discReq.hpaiCtrl().ipPortNumber() ? discReq.hpaiCtrl().ipPortNumber() : src_port;
     sendCounted(rIp, rPort, discRes.data(), discRes.totalLength());
     recordTunnelSession(tun->IpAddress, tun->IndividualAddress, tun->IsConfig ? TUN_CONFIG : TUN_DATA, tun->connectStart, END_CLOSED, 0, tun);
     tun->Reset();
@@ -2093,6 +2080,7 @@ void IpTunnelServer::HandleBusMonitorConnect(KnxIpConnectRequest& connRequest, u
     _busMonTunnel[bmSlot].IpAddress = connRequest.hpaiData().ipAddress() ? connRequest.hpaiData().ipAddress() : src_addr;
     _busMonTunnel[bmSlot].PortData = connRequest.hpaiData().ipPortNumber() ? connRequest.hpaiData().ipPortNumber() : src_port;
     _busMonTunnel[bmSlot].PortCtrl = connRequest.hpaiCtrl().ipPortNumber() ? connRequest.hpaiCtrl().ipPortNumber() : srcPort;
+    _busMonTunnel[bmSlot].IpCtrl = srcIP; // the CONNECT_RESPONSE target below
     _busMonTunnel[bmSlot].SequenceCounter_S = 0;
     if (firstBusMon)
     {
