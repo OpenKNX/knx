@@ -63,6 +63,9 @@ bool IpDataLinkLayer::sendFrame(CemiFrame& frame)
         return false;
     }
     bool success = sendBytes(packet.data(), packet.totalLength());
+#ifdef KNX_IS_ROUTER
+    _routingSentAt = millis(); // 5 ms pause before a ROUTING_LOST_MESSAGE (03_02_06 2.1)
+#endif
 #ifdef KNX_ACTIVITYCALLBACK
     if(_dllcb)
         _dllcb->activity((_netIndex << KNX_ACTIVITYCALLBACK_NET) | (KNX_ACTIVITYCALLBACK_DIR_SEND << KNX_ACTIVITYCALLBACK_DIR));
@@ -182,11 +185,14 @@ void IpDataLinkLayer::loop()
         }
         // Both consumed without a log line per datagram.
         case RoutingLostMessage:
+        {
             // 03_08_05 5.3 p.16: struct length, DeviceState, NumberOfLostMessages (2 octets).
-            // A truncated frame is ignored (03_08_02 6.2).
-            if (_counters != nullptr && len >= KNXIP_HEADER_LEN + 4)
+            // A truncated frame is ignored (03_08_02 6.2); our own report, if looped back, is not counted.
+            const uint32_t ownAddr = _platform.currentIpAddress();
+            if (_counters != nullptr && len >= KNXIP_HEADER_LEN + 4 && remoteAddr != htonl(ownAddr))
                 _counters->incrementLostMessageRx(getWord(buffer + KNXIP_HEADER_LEN + 2));
             break;
+        }
         case RoutingBusy:
             // 03_08_05 5.4 Figure 8 p.17: header + 6 (03_02_06 Figure 4 shows + 4, its own fields add to 6); a
             // shorter frame is ignored. The ROUTING_BUSY receive pause (03_08_05 2.3.5) goes here.
@@ -567,6 +573,39 @@ bool IpDataLinkLayer::sendBytes(uint8_t* bytes, uint16_t length)
     }
     return sent;
 }
+
+#ifdef KNX_IS_ROUTER
+// 03_08_05 5.3 Figure 7 p.16. The first loss after a quiet second is reported at once, later ones are summed
+// (08_TSSH 6.2.2 p.112: about one second apart). Not subject to the 50/s ROUTING_INDICATION limit.
+void IpDataLinkLayer::loopLostMessage()
+{
+    if (_counters == nullptr || !_enabled)
+        return;
+
+    const uint32_t pending = _counters->lostToKnx() - _lostReported; // modulo 2^32, exact across the wrap
+    if (pending == 0)
+        return;
+
+    const uint32_t now = millis();
+    if (now - _lostSentAt < 1000)
+        return;
+    if (now - _routingSentAt < 6) // 03_02_06 2.1 p.6: >= 5 ms after a ROUTING_INDICATION; 6 covers the ms granularity
+        return;
+
+    const uint8_t deviceState = _ipParameters.deviceState();
+    if (deviceState & IpParameterObject::DeviceStateIpFault)
+        return; // keep the count until the LAN is back
+
+    const uint16_t count = pending > 0xFFFF ? 0xFFFF : (uint16_t)pending;
+    uint8_t frame[KNXIP_HEADER_LEN + 4] = {KNXIP_HEADER_LEN, KNXIP_PROTOCOL_VERSION,
+                                           (uint8_t)(RoutingLostMessage >> 8), (uint8_t)RoutingLostMessage,
+                                           0x00, KNXIP_HEADER_LEN + 4,
+                                           0x04, deviceState, (uint8_t)(count >> 8), (uint8_t)count};
+    _lostSentAt = now;
+    if (sendBytes(frame, sizeof(frame)))
+        _lostReported += count;
+}
+#endif
 
 bool IpDataLinkLayer::isSendLimitReached()
 {

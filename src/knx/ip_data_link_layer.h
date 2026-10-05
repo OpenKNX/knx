@@ -51,6 +51,11 @@ class IpDataLinkLayer : public DataLinkLayer
     // only while that mode is on.
     void enableSystemBroadcast(bool value);
 
+#ifdef KNX_IS_ROUTER
+    /** @brief Report LAN->KNX losses with ROUTING_LOST_MESSAGE (03_08_05 2.3.4), about once per second (08_TSSH 6.2.2). */
+    void loopLostMessage();
+#endif
+
   private:
     bool joinMultiCast();        // join _joinedGroup
     uint32_t multiCastAddress(); // property source; read once at enable, then latched
@@ -66,6 +71,11 @@ class IpDataLinkLayer : public DataLinkLayer
     uint8_t _frameCount[10] = {0,0,0,0,0,0,0,0,0,0};
     uint8_t _frameCountBase = 0;
     uint32_t _frameCountTimeBase = 0;
+#ifdef KNX_IS_ROUTER
+    uint32_t _lostReported = 0; // KnxIpCounters::lostToKnx() covered by sent reports
+    uint32_t _lostSentAt = 0;   // millis() of the last report attempt
+    uint32_t _routingSentAt = 0; // millis() of the last ROUTING_INDICATION sent
+#endif
     bool sendFrame(CemiFrame& frame);
 
 

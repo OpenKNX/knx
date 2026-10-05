@@ -210,6 +210,7 @@ void Bau091A::loop()
     _ipTunnelServer.loop();
 #endif
     updateDeviceState();
+    _dlLayerPrimary.loopLostMessage(); // after updateDeviceState(): the report carries the current PID 69
 }
 
 // PID_KNXNETIP_DEVICE_STATE (03_08_03 2.5.20): KNX fault = the TP secondary side. Non-blocking: on an edge one

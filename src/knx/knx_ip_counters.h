@@ -18,6 +18,7 @@
  * routing decision per direction, for the console and the display.
  * lostMessageRx/lostReportedRx/busyRx are ours too: ROUTING_LOST_MESSAGE and ROUTING_BUSY received
  * from other devices, and the sum of their NumberOfLostMessages fields (03_08_05 5.3/5.4 p.16-17).
+ * lostToKnx is the wrapping twin of PID 73; ROUTING_LOST_MESSAGE reports its delta (03_08_05 2.3.4 p.10).
  */
 class KnxIpCounters
 {
@@ -25,7 +26,7 @@ class KnxIpCounters
     void incrementTransmitToIp() { inc32(_transmitToIp); }
     void incrementTransmitToKnx() { inc32(_transmitToKnx); }
     void incrementOverflowToIp() { inc16(_overflowToIp); }
-    void incrementOverflowToKnx() { inc16(_overflowToKnx); }
+    void incrementOverflowToKnx() { inc16(_overflowToKnx); _lostToKnx = _lostToKnx + 1; }
     void incrementRoutedToIp() { inc32(_routedToIp); }
     void incrementRoutedToKnx() { inc32(_routedToKnx); }
     void incrementFilteredToIp() { inc32(_filteredToIp); }
@@ -41,6 +42,7 @@ class KnxIpCounters
     uint32_t transmitToKnx() const { return _transmitToKnx; }
     uint16_t overflowToIp() const { return (uint16_t)_overflowToIp; }
     uint16_t overflowToKnx() const { return (uint16_t)_overflowToKnx; }
+    uint32_t lostToKnx() const { return _lostToKnx; }
     uint32_t routedToIp() const { return _routedToIp; }
     uint32_t routedToKnx() const { return _routedToKnx; }
     uint32_t filteredToIp() const { return _filteredToIp; }
@@ -61,6 +63,7 @@ class KnxIpCounters
     volatile uint32_t _transmitToKnx = 0;
     volatile uint32_t _overflowToIp = 0;
     volatile uint32_t _overflowToKnx = 0;
+    volatile uint32_t _lostToKnx = 0; // wraps on purpose: only differences are read
     volatile uint32_t _routedToIp = 0;
     volatile uint32_t _routedToKnx = 0;
     volatile uint32_t _filteredToIp = 0;
