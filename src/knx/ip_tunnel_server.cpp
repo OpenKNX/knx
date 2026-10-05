@@ -1230,10 +1230,9 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
         println("Only LinkLayer ist supported!");
 #endif
         recordRejectedConnect(rIp, TUN_DATA, END_REJ_LAYER, connRequest.cri().layer());
-        // Defined layer this server lacks (raw 04h, busmonitor 80h): E_TUNNELLING_LAYER per 03_08_04 Table 11 p.26 and
-        // 4.a p.28 (Figure 6 p.27 and 08_TSSH 5.1.3/5.1.4 say E_CONNECTION_OPTION); undefined code: E_CONNECTION_OPTION.
-        const uint8_t layer = connRequest.cri().layer();
-        KnxIpConnectResponse connRes(0x00, (layer == 0x04 || layer == 0x80) ? E_TUNNELING_LAYER : E_CONNECTION_OPTION);
+        // E_CONNECTION_OPTION for every unsupported layer: 03_08_04 Figure 6 p.27, 4.b with NOTE 21 p.28 and
+        // 08_TSSH 5.1.3-5.1.5 p.64-67; the text of 4.a p.28 and Table 11 p.26 name E_TUNNELLING_LAYER instead.
+        KnxIpConnectResponse connRes(0x00, E_CONNECTION_OPTION);
         sendCounted(rIp, rPort, connRes.data(), connRes.totalLength());
         return;
     }
@@ -2053,7 +2052,7 @@ void IpTunnelServer::HandleBusMonitorConnect(KnxIpConnectRequest& connRequest, u
     const int bmSlot = (_hwBusMon == nullptr) ? -1 : busMonFreeSlot();
     if (bmSlot < 0)
     {
-        KnxIpConnectResponse connRes(0x00, _hwBusMon == nullptr ? E_TUNNELING_LAYER : E_NO_MORE_CONNECTIONS);
+        KnxIpConnectResponse connRes(0x00, _hwBusMon == nullptr ? E_CONNECTION_OPTION : E_NO_MORE_CONNECTIONS); // as HandleConnectRequest
         sendCounted(srcIP, srcPort, connRes.data(), connRes.totalLength()); // route-back (srcIP/srcPort resolved at fn top)
         return;
     }
