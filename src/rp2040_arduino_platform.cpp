@@ -345,7 +345,7 @@ bool RP2040ArduinoPlatform::sendBytesMultiCast(uint8_t* buffer, uint16_t len)
     // printHex("<- ",buffer, len);
 
     // ToDo: check if Ethernet is able to receive, return false if not
-    _udp.beginPacket(mcastaddr, _port);
+    _udp.beginPacketMulticast(mcastaddr, _port, IP_ADDR_ANY, _mcastTtl);
     _udp.write(buffer, len);
     _udp.endPacket();
     return true;
@@ -396,7 +396,11 @@ bool RP2040ArduinoPlatform::sendBytesUniCast(uint32_t addr, uint16_t port, uint8
         _unicast_socket_setup = UDP_UNICAST.begin(3671);
 #endif
 
-    if (UDP_UNICAST.beginPacket(ucastaddr, port) == 1)
+    // A multicast destination (IP system broadcast) gets PID 67 as well; same work as beginPacket().
+    const int begun = ((addr & 0xF0000000) == 0xE0000000)
+        ? UDP_UNICAST.beginPacketMulticast(ucastaddr, port, IP_ADDR_ANY, _mcastTtl)
+        : UDP_UNICAST.beginPacket(ucastaddr, port);
+    if (begun == 1)
     {
         UDP_UNICAST.write(buffer, len);
         if (UDP_UNICAST.endPacket() == 0)

@@ -99,6 +99,7 @@ public:
     void closeMultiCast() override;
     bool sendBytesMultiCast(uint8_t* buffer, uint16_t len) override;
     int readBytesMultiCast(uint8_t* buffer, uint16_t maxLen, uint32_t& src_addr, uint16_t& src_port) override;
+    void multicastTtl(uint8_t ttl) override { _mcastTtl = ttl; }
 
     // second multicast socket: system setup group, for IP system broadcast
     bool setupMultiCastSecondary(uint32_t addr, uint16_t port) override;
@@ -112,6 +113,7 @@ public:
     protected: WiFiUDP _udp;
     protected: IPAddress mcastaddr;
     protected: uint16_t _port;
+    protected: uint8_t _mcastTtl = 16; // PID 67 default; applied per send, beginPacket() would force 255
     protected: WiFiUDP _udpSbc;
     protected: IPAddress mcastaddrSbc;
     #endif

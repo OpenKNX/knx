@@ -109,6 +109,11 @@ bool Platform::setupMultiCast(uint32_t addr, uint16_t port)
 void Platform::closeMultiCast()
 {}
 
+void Platform::multicastTtl(uint8_t ttl)
+{
+    (void)ttl;
+}
+
 bool Platform::sendBytesMultiCast(uint8_t *buffer, uint16_t len)
 {
     return false;

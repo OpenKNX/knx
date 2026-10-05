@@ -57,6 +57,9 @@ class Platform
     virtual bool sendBytesMultiCast(uint8_t* buffer, uint16_t len);
     virtual int readBytesMultiCast(uint8_t* buffer, uint16_t maxLen);
     virtual int readBytesMultiCast(uint8_t* buffer, uint16_t maxLen, uint32_t& src_addr, uint16_t& src_port);
+    // TTL of outgoing multicast datagrams (PID 67, 03_08_03 2.5.18). Kept by the platform across re-joins;
+    // set it before setupMultiCast(). Default: no-op.
+    virtual void multicastTtl(uint8_t ttl);
 
     // Second multicast socket, for KNXnet/IP system broadcast on the system setup group (03_02_06 4.1.3).
     // A platform that does not implement it keeps the default below, and the feature stays off there.

@@ -28,6 +28,7 @@ public:
     void closeMultiCast() override;
     bool sendBytesMultiCast(uint8_t* buffer, uint16_t len) override;
     int readBytesMultiCast(uint8_t* buffer, uint16_t maxLen, uint32_t& src_addr, uint16_t& src_port) override;
+    void multicastTtl(uint8_t ttl) override { _mcastTtl = ttl; }
 
     //second multicast socket: system setup group, for IP system broadcast
     bool setupMultiCastSecondary(uint32_t addr, uint16_t port) override;
@@ -47,6 +48,7 @@ public:
 private:
     WiFiUDP _udp;
     WiFiUDP _udpSbc;
+    uint8_t _mcastTtl = 16; // PID 67 default; set on the socket after every join
     // int8_t _rxPin = -1; 
     // int8_t _txPin = -1;
 };

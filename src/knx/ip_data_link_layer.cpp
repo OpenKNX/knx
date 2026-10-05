@@ -497,6 +497,14 @@ void IpDataLinkLayer::enabled(bool value)
             if (firstOctet < 224 || firstOctet > 239 || linkLocal)
                 _joinedGroup = 0xE000170C; // 224.0.23.12, 03_08_02 8.5.2.1
         }
+        // 03_08_03 2.5.18: PID 67 is the TTL of every multicast send; read per enable, kept across re-joins.
+        uint8_t ttl = 16; // stays the default if the property holds no element
+        const Property* ttlProp = _ipParameters.property(PID_TTL);
+        if (ttlProp != nullptr)
+            ttlProp->read(ttl);
+        if (ttl == 0)
+            println("PID_TTL is 0: multicast datagrams are sent with TTL 0");
+        _platform.multicastTtl(ttl);
         _enabled = joinMultiCast();        // no endpoint, no enabled(): enabled() must not report a lie
         return;
     }

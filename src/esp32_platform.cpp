@@ -5,6 +5,7 @@
 #include <EEPROM.h>
 
 #include "knx/bits.h"
+#include <lwip/sockets.h>
 
 // #ifndef KNX_SERIAL
 //     #define KNX_SERIAL Serial1
@@ -61,6 +62,32 @@ void Esp32Platform::restart()
     ESP.restart();
 }
 
+// NetworkUDP keeps its socket private: set IP_MULTICAST_TTL on every UDP socket bound to the port.
+// Called right after the join; the system broadcast socket is closed then, so only _udp matches.
+static uint8_t setMulticastTtlOnPort(uint16_t port, uint8_t ttl)
+{
+    uint8_t applied = 0;
+    for (int fd = LWIP_SOCKET_OFFSET; fd < LWIP_SOCKET_OFFSET + CONFIG_LWIP_MAX_SOCKETS; fd++)
+    {
+        struct sockaddr_storage local = {};
+        socklen_t len = sizeof(local);
+        if (getsockname(fd, (struct sockaddr*)&local, &len) != 0)
+            continue; // not an open socket
+        uint16_t localPort = 0;
+        if (local.ss_family == AF_INET)
+            localPort = ntohs(((struct sockaddr_in*)&local)->sin_port);
+#if LWIP_IPV6
+        else if (local.ss_family == AF_INET6)
+            localPort = ntohs(((struct sockaddr_in6*)&local)->sin6_port);
+#endif
+        if (localPort != port)
+            continue;
+        if (setsockopt(fd, IPPROTO_IP, IP_MULTICAST_TTL, &ttl, sizeof(ttl)) == 0)
+            applied++; // fails with ENOPROTOOPT on a TCP socket of the same port
+    }
+    return applied;
+}
+
 bool Esp32Platform::setupMultiCast(uint32_t addr, uint16_t port)
 {
 #ifdef KNX_IP_LAN
@@ -81,8 +108,19 @@ bool Esp32Platform::setupMultiCast(uint32_t addr, uint16_t port)
     print(":");
     println(port);
     const bool joined = (_udp.beginMulticast(mcastaddr, port) != 0);
-    if (!joined) println("  KNX multicast join FAILED");
-    return joined;
+    if (!joined)
+    {
+        println("  KNX multicast join FAILED");
+        return false;
+    }
+
+    // A re-join creates a new socket with the lwIP default TTL, so PID 67 is applied after every join.
+    const uint8_t applied = setMulticastTtlOnPort(port, _mcastTtl);
+    print("  Multicast TTL ");
+    print(_mcastTtl);
+    print(" on sockets: ");
+    println(applied);
+    return true;
 }
 
 void Esp32Platform::closeMultiCast()
