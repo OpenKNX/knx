@@ -561,12 +561,17 @@ bool IpDataLinkLayer::sendUniCastCounted(uint32_t addr, uint16_t port, uint8_t* 
 bool IpDataLinkLayer::sendBytes(uint8_t* bytes, uint16_t length)
 {
     if (!_enabled)
+    {
+        if (_counters != nullptr)
+            _counters->incrementOverflowToIp(); // no IP endpoint: 03_08_05 7.3.3 case 3.1
         return false;
+    }
 
     const bool sent = _platform.sendBytesMultiCast(bytes, length);
     if (_counters != nullptr)
     {
-        if (sent)
+        // The platform reports success on a dead link; while the IP fault bit (03_08_03 3.5.3) is set, count a loss.
+        if (sent && !(_ipParameters.deviceState() & IpParameterObject::DeviceStateIpFault))
             _counters->incrementTransmitToIp();
         else
             _counters->incrementOverflowToIp();
