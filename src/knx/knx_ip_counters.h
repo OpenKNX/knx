@@ -16,6 +16,8 @@
  * The spec requires the counts not to wrap; all four saturate at their property width.
  * routedToIp/ToKnx, filteredToIp/ToKnx and hopCountToIp/ToKnx are ours, not spec: the coupler's
  * routing decision per direction, for the console and the display.
+ * lostMessageRx/lostReportedRx/busyRx are ours too: ROUTING_LOST_MESSAGE and ROUTING_BUSY received
+ * from other devices, and the sum of their NumberOfLostMessages fields (03_08_05 5.3/5.4 p.16-17).
  */
 class KnxIpCounters
 {
@@ -32,6 +34,8 @@ class KnxIpCounters
     // and nothing else counts them, so a vanished telegram had no trace at all before.
     void incrementHopCountToIp() { inc32(_hopCountToIp); }
     void incrementHopCountToKnx() { inc32(_hopCountToKnx); }
+    void incrementLostMessageRx(uint16_t lost) { inc32(_lostMessageRx); add32(_lostReportedRx, lost); }
+    void incrementBusyRx() { inc32(_busyRx); }
 
     uint32_t transmitToIp() const { return _transmitToIp; }
     uint32_t transmitToKnx() const { return _transmitToKnx; }
@@ -43,11 +47,15 @@ class KnxIpCounters
     uint32_t filteredToKnx() const { return _filteredToKnx; }
     uint32_t hopCountToIp() const { return _hopCountToIp; }
     uint32_t hopCountToKnx() const { return _hopCountToKnx; }
+    uint32_t lostMessageRx() const { return _lostMessageRx; }
+    uint32_t lostReportedRx() const { return _lostReportedRx; }
+    uint32_t busyRx() const { return _busyRx; }
 
   private:
     // 03_08_03: "The count does not wrap around when the maximum is reached."
     static void inc32(volatile uint32_t& v) { const uint32_t c = v; if (c < 0xFFFFFFFF) v = c + 1; }
     static void inc16(volatile uint32_t& v) { const uint32_t c = v; if (c < 0xFFFF) v = c + 1; }
+    static void add32(volatile uint32_t& v, uint16_t n) { const uint32_t c = v; v = (c > 0xFFFFFFFF - n) ? 0xFFFFFFFF : c + n; }
 
     volatile uint32_t _transmitToIp = 0;
     volatile uint32_t _transmitToKnx = 0;
@@ -59,4 +67,7 @@ class KnxIpCounters
     volatile uint32_t _filteredToKnx = 0;
     volatile uint32_t _hopCountToIp = 0;
     volatile uint32_t _hopCountToKnx = 0;
+    volatile uint32_t _lostMessageRx = 0;
+    volatile uint32_t _lostReportedRx = 0;
+    volatile uint32_t _busyRx = 0;
 };

@@ -180,9 +180,18 @@ void IpDataLinkLayer::loop()
             #endif
             break;
         }
+        // Both consumed without a log line per datagram.
         case RoutingLostMessage:
+            // 03_08_05 5.3 p.16: struct length, DeviceState, NumberOfLostMessages (2 octets).
+            // A truncated frame is ignored (03_08_02 6.2).
+            if (_counters != nullptr && len >= KNXIP_HEADER_LEN + 4)
+                _counters->incrementLostMessageRx(getWord(buffer + KNXIP_HEADER_LEN + 2));
+            break;
         case RoutingBusy:
-            // Consumed without a log line per datagram. The ROUTING_BUSY receive pause (03_08_05 2.3.5) goes here.
+            // 03_08_05 5.4 Figure 8 p.17: header + 6 (03_02_06 Figure 4 shows + 4, its own fields add to 6); a
+            // shorter frame is ignored. The ROUTING_BUSY receive pause (03_08_05 2.3.5) goes here.
+            if (_counters != nullptr && len >= KNXIP_HEADER_LEN + 6)
+                _counters->incrementBusyRx();
             break;
         default:
         {
