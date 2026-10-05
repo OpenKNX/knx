@@ -947,6 +947,13 @@ bool IpTunnelServer::fromTunnelPeer(const KnxIpTunnelConnection* tun, uint32_t s
     return tun->IpAddress == src_addr;
 }
 
+// Control requests come from the client: its declared control IP or the CONNECT_REQUEST's UDP source.
+// IP only: the client may change its control port between requests (03_08_02 8.6.3.3 p.51).
+static bool fromCtrlPeer(const KnxIpTunnelConnection* tun, uint32_t src_addr)
+{
+    return tun != nullptr && (tun->IpCtrl == src_addr || tun->IpConnSrc == src_addr);
+}
+
 // 03_08_02 6.2 p.15: a protocol version change on an established connection shuts it down. Only a
 // datagram naming a channel, and only from the endpoint owning it - otherwise eight forged octets from any
 // host would end an ETS session. No reply is sent: 08_TSSH 3.2.2 p.16 requires the frame to be ignored.
@@ -959,6 +966,7 @@ bool IpTunnelServer::shutdownOnProtocolVersionChange(uint8_t* buffer, uint16_t l
     popWord(code, buffer + 2);
 
     uint8_t channelId = 0;
+    bool ctrlService = false; // control request: owned by the control endpoint, not the data endpoint
 
     switch ((KnxIpServiceType)code)
     {
@@ -978,6 +986,7 @@ bool IpTunnelServer::shutdownOnProtocolVersionChange(uint8_t* buffer, uint16_t l
             if (length < LEN_KNXIP_HEADER + 1)
                 return false;
             channelId = buffer[LEN_KNXIP_HEADER];
+            ctrlService = true;
             break;
 
         default:
@@ -994,7 +1003,7 @@ bool IpTunnelServer::shutdownOnProtocolVersionChange(uint8_t* buffer, uint16_t l
         if (tunnels[i].ChannelId != channelId)
             continue;
 
-        if (!fromTunnelPeer(&tunnels[i], src_addr))
+        if (!(ctrlService ? fromCtrlPeer(&tunnels[i], src_addr) : fromTunnelPeer(&tunnels[i], src_addr)))
             return false;
 
         return closeTunnel(channelId, END_VERSION);
@@ -1004,7 +1013,7 @@ bool IpTunnelServer::shutdownOnProtocolVersionChange(uint8_t* buffer, uint16_t l
     const int bmIdx = busMonSlotByChannel(channelId);
     if (bmIdx >= 0)
     {
-        if (!fromTunnelPeer(&_busMonTunnel[bmIdx], src_addr))
+        if (!(ctrlService ? fromCtrlPeer(&_busMonTunnel[bmIdx], src_addr) : fromTunnelPeer(&_busMonTunnel[bmIdx], src_addr)))
             return false;
 
         return closeTunnel(channelId, END_VERSION);
@@ -1339,7 +1348,7 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
             // Matched on the UDP source like the reserved slots: a declared HPAI could name the peer's host.
             const uint16_t peer = _cemiServer.transportPeer();
             for (int i = 0; i < KNX_TUNNELING; i++)
-                if (tunnels[i].ChannelId != 0 && tunnels[i].IndividualAddress == peer && resMatchIp != 0 && tunnels[i].IpAddress == resMatchIp)
+                if (tunnels[i].ChannelId != 0 && tunnels[i].IndividualAddress == peer && resMatchIp != 0 && tunnels[i].IpConnSrc == resMatchIp)
                 {
                     foreignPeer = false;
                     break;
@@ -1627,6 +1636,7 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
     tun->PortData = connRequest.hpaiData().ipPortNumber() ? connRequest.hpaiData().ipPortNumber() : src_port;
     tun->PortCtrl = connRequest.hpaiCtrl().ipPortNumber() ? connRequest.hpaiCtrl().ipPortNumber() : srcPort;
     tun->IpCtrl = srcIP; // the CONNECT_RESPONSE target below
+    tun->IpConnSrc = src_addr;
 
     tun->connectStart = millis(); // start of this session (for the wall-clock stamp and the row key)
     tun->ConnectUptimeS = _uptimeS; // wrap-safe base for the duration
@@ -1716,6 +1726,15 @@ void IpTunnelServer::HandleConnectionStateRequest(uint8_t* buffer, uint16_t leng
     }
 #endif
 
+    // Foreign source IP: E_CONNECTION_ID as for an unknown channel, but to the UDP source, never to the
+    // request HPAI (else any host could send the owner a channel error), and without a heartbeat refresh.
+    if (tun != nullptr && !fromCtrlPeer(tun, src_addr))
+    {
+        KnxIpStateResponse stateRes(stateRequest.channelId(), E_CONNECTION_ID);
+        sendCounted(src_addr, src_port, stateRes.data(), stateRes.totalLength());
+        return;
+    }
+
     if (tun == nullptr)
     {
 #ifdef KNX_LOG_TUNNELING
@@ -1780,6 +1799,14 @@ void IpTunnelServer::HandleDisconnectRequest(uint8_t* buffer, uint16_t length, u
     const int bmDisc = (tun == nullptr) ? busMonSlotByChannel(discReq.channelId()) : -1;
     if (bmDisc >= 0)
     {
+        // Foreign source IP: answered like an unknown channel, to the UDP source; the session stays.
+        if (!fromCtrlPeer(&_busMonTunnel[bmDisc], src_addr))
+        {
+            println("disconnect request from a foreign source address -> answered as unknown channel");
+            KnxIpDisconnectResponse discRes(discReq.channelId(), E_CONNECTION_ID);
+            sendCounted(src_addr, src_port, discRes.data(), discRes.totalLength());
+            return;
+        }
         // Busmon tunnel closed by ETS -> this slot ends; monitor mode is left when the LAST one goes.
         KnxIpDisconnectResponse discRes(_busMonTunnel[bmDisc].ChannelId, E_NO_ERROR);
         // Route-back (03_08_02 8.6.2.2 p.49): HPAI 0.0.0.0:0 -> reply to the IP and port of the received packet.
@@ -1805,12 +1832,13 @@ void IpTunnelServer::HandleDisconnectRequest(uint8_t* buffer, uint16_t length, u
         return;
     }
 
-    // A forged DISCONNECT on a swept channel id ends someone else's session; treat it like an unknown
-    // channel. CONNECTIONSTATE stays open: a forged one only refreshes a heartbeat the real client
-    // refreshes anyway, and its reply goes to the stored endpoint.
-    if (!fromTunnelPeer(tun, src_addr))
+    // A forged DISCONNECT on a swept channel id would end someone else's session: answered like an unknown
+    // channel, to the UDP source, and the session stays. Checked against the client's control IP or connect source.
+    if (!fromCtrlPeer(tun, src_addr))
     {
-        println("disconnect request from a foreign source address -> ignored");
+        println("disconnect request from a foreign source address -> answered as unknown channel");
+        KnxIpDisconnectResponse discRes(discReq.channelId(), E_CONNECTION_ID);
+        sendCounted(src_addr, src_port, discRes.data(), discRes.totalLength());
         return;
     }
 
@@ -2081,6 +2109,7 @@ void IpTunnelServer::HandleBusMonitorConnect(KnxIpConnectRequest& connRequest, u
     _busMonTunnel[bmSlot].PortData = connRequest.hpaiData().ipPortNumber() ? connRequest.hpaiData().ipPortNumber() : src_port;
     _busMonTunnel[bmSlot].PortCtrl = connRequest.hpaiCtrl().ipPortNumber() ? connRequest.hpaiCtrl().ipPortNumber() : srcPort;
     _busMonTunnel[bmSlot].IpCtrl = srcIP; // the CONNECT_RESPONSE target below
+    _busMonTunnel[bmSlot].IpConnSrc = src_addr;
     _busMonTunnel[bmSlot].SequenceCounter_S = 0;
     if (firstBusMon)
     {

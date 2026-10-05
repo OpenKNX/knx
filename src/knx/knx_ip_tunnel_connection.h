@@ -13,6 +13,7 @@ class KnxIpTunnelConnection
     uint16_t PortData = 0;
     uint16_t PortCtrl = 0;
     uint32_t IpCtrl = 0; // control endpoint IP: where the CONNECT_RESPONSE went (control HPAI, or UDP source if 0)
+    uint32_t IpConnSrc = 0; // UDP source of the CONNECT_REQUEST; a control request from it also counts as the client's
     uint8_t SequenceCounter_S = 0;
     uint8_t SequenceCounter_R = 255;
     unsigned long lastHeartbeat = 0;
