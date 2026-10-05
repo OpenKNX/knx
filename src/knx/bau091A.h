@@ -52,6 +52,9 @@ class Bau091A : public BauSystemBCoupler, public ITpUartCallBacks, public DataLi
 
     void doMasterReset(EraseCode eraseCode, uint8_t channel) override;
   private:
+    /** @brief Track the KNX-fault bit of PID_KNXNETIP_DEVICE_STATE and emit M_PropInfo.ind on a change. */
+    void updateDeviceState();
+
     KnxIpCounters _counters; // declared first: _ipParameters takes its address
     RouterObject _routerObj;
     IpParameterObject _ipParameters;

@@ -285,6 +285,33 @@ bool IpParameterObject::takeDeviceStateChanged()
     return true;
 }
 
+// 03_08_03 3.5.2 p.20: KNX-fault bit set after 5 s without a usable bus, cleared on resume. busOperational is the
+// driver's debounced link + bus-voltage state; the IP-fault bit comes from the network module via the same flag.
+bool IpParameterObject::updateDeviceState(bool busOperational)
+{
+    const bool busDown = !busOperational;
+    const uint32_t now = millis();
+
+    if (!busDown)
+        _knxFaultSince = 0;
+    else if (_knxFaultSince == 0)
+        _knxFaultSince = now ? now : 1; // 0 marks "no fault pending", so never store it as a timestamp
+
+    const bool knxFault = (_knxFaultSince != 0) && (now - _knxFaultSince >= 5000);
+    deviceStateBit(DeviceStateKnxFault, knxFault);
+
+    if (!_deviceStateInit)
+    {
+        // Seed the state at start-up without reporting it: there is no client to inform yet, and the bus
+        // is briefly "not operational" until the driver has the chip connected.
+        _deviceStateInit = true;
+        takeDeviceStateChanged();
+        return false;
+    }
+
+    return takeDeviceStateChanged();
+}
+
 // Reset a property to "no elements" via the tested write path (ETS uses the same write to set them).
 static void clearProperty(Property* p)
 {

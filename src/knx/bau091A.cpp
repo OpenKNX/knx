@@ -209,6 +209,23 @@ void Bau091A::loop()
 #ifdef KNX_TUNNELING
     _ipTunnelServer.loop();
 #endif
+    updateDeviceState();
+}
+
+// PID_KNXNETIP_DEVICE_STATE (03_08_03 2.5.20): KNX fault = the TP secondary side. Non-blocking: on an edge one
+// queued datagram per open device management connection.
+void Bau091A::updateDeviceState()
+{
+    const bool changed = _ipParameters.updateDeviceState(_dlLayerSecondary.getTPUart().busOperational());
+#ifdef KNX_TUNNELING
+    if (changed)
+    {
+        const uint8_t state = _ipParameters.deviceState();
+        _cemiServer.propertyInfoIndication(OT_IP_PARAMETER, 1, PID_KNXNETIP_DEVICE_STATE, &state, 1);
+    }
+#else
+    (void)changed; // no device management connection to inform
+#endif
 }
 
 TPAckType Bau091A::isAckRequired(uint16_t address, bool isGrpAddr)

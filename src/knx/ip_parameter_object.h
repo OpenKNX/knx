@@ -38,12 +38,19 @@ class IpParameterObject : public InterfaceObject
     bool deviceStateBit(uint8_t mask, bool set);
     /** @brief Consume the "value changed" flag; true means an M_PropInfo.ind is due (03_08_03 2.5.20). */
     bool takeDeviceStateChanged();
+    /**
+     * @brief Qualify the KNX-fault bit (5 s, 03_08_03 3.5.2) and consume the change flag; call once per loop pass.
+     * Returns true when an M_PropInfo.ind of PID_KNXNETIP_DEVICE_STATE is due. The first call only seeds.
+     */
+    bool updateDeviceState(bool busOperational);
 
   private:
     // Written through the property write callback as well, so a module that only has the generic
     // propertyValueWrite() path (OFM-Network for the IP fault bit) can reach it.
     uint8_t _deviceState = 0;
     bool _deviceStateChanged = false;
+    uint32_t _knxFaultSince = 0;   // millis() the bus first looked unusable; 0 = it does not
+    bool _deviceStateInit = false; // first pass seeds the timer without reporting a change
 
     DeviceObject& _deviceObject;
     Platform& _platform;

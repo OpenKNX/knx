@@ -54,8 +54,6 @@ class Bau07B0IP : public BauSystemBDevice, public ITpUartCallBacks, public DataL
   private:
     /** @brief Track the KNX-fault bit of PID_KNXNETIP_DEVICE_STATE and emit M_PropInfo.ind on a change. */
     void updateDeviceState();
-    uint32_t _knxFaultSince = 0;   // millis() the bus first looked unusable; 0 = it does not
-    bool _deviceStateInit = false; // first pass seeds the timer without reporting a change
 
     // The interface DOES instantiate and increment these (wired into _tpLayer/_ipLayer/_ipTunnelServer for
     // the OAM console/display); it only does not expose them as PID 72-75. Do not assume "07B0 has null
