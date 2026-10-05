@@ -41,6 +41,10 @@ bool TpUartDataLinkLayer::sendFrame(CemiFrame &cemiFrame)
     if (!tpFrame || tpFrame->data() == nullptr)
     {
         delete tpFrame; // no-op on nullptr; the queue never took ownership
+#ifdef KNX_IS_ROUTER
+        if (_counters != nullptr)
+            _counters->incrementOverflowToKnx(); // lost before reaching the queue
+#endif
         dataConReceived(cemiFrame, false);
         return false;
     }
@@ -49,6 +53,10 @@ bool TpUartDataLinkLayer::sendFrame(CemiFrame &cemiFrame)
     if (!_tpuart.isConnected() || _tpuart.isMonitoring())
     {
         delete tpFrame; // not queued -> free (queue didn't take ownership)
+#ifdef KNX_IS_ROUTER
+        if (_counters != nullptr)
+            _counters->incrementOverflowToKnx(); // chip not connected: 03_08_05 7.3.3 case 3.2
+#endif
         dataConReceived(cemiFrame, false);
         return false;
     }
@@ -56,14 +64,23 @@ bool TpUartDataLinkLayer::sendFrame(CemiFrame &cemiFrame)
     // when frame not enqueued, discard the frame with a message
     if (!_tpuart.pushTransmitQueue(tpFrame))
     {
+#ifdef KNX_IS_ROUTER
+        // The driver refuses frames over 64 octets for a TPUART2: a frame this chip cannot send, not a queue loss.
+        const bool tooLong = _tpuart.getBcuType() == TPUart::BcuType::BCU_TPUART2 && tpFrame->size() > 64;
+#else
+        const bool tooLong = false;
+#endif
         delete tpFrame; // queue full, not taken -> free (else leak per dropped frame)
-        if (_counters != nullptr)
-            _counters->incrementOverflowToKnx();
-        // rate-limit the print (~1 in 1024): under an IP->TP flood the queue stays full and a blocking
-        // print on every drop would starve the loop() watchdog.
-        static uint16_t _qFullDrops = 0;
-        if ((_qFullDrops++ & 0x3FF) == 0)
-            printMessage("TP transmit queue full - dropping routed frame(s)", true);
+        if (!tooLong)
+        {
+            if (_counters != nullptr)
+                _counters->incrementOverflowToKnx();
+            // rate-limit the print (~1 in 1024): under an IP->TP flood the queue stays full and a blocking
+            // print on every drop would starve the loop() watchdog.
+            static uint16_t _qFullDrops = 0;
+            if ((_qFullDrops++ & 0x3FF) == 0)
+                printMessage("TP transmit queue full - dropping routed frame(s)", true);
+        }
         dataConReceived(cemiFrame, false);
         return false;
     }
@@ -201,8 +218,12 @@ void TpUartDataLinkLayer::toggleConsoleMonitor()
 
 void TpUartDataLinkLayer::processDroppedFrame(TPUart::Frame &tpFrame)
 {
-    // A frame the transmitter threw away (chip reset, watchdog, monitor entry). It never reached the bus,
+    // A frame the transmitter threw away (chip reset, watchdog, monitor exit). It got no confirmation,
     // so the layer above must be told -- otherwise it waits for a confirmation that can never come.
+#ifdef KNX_IS_ROUTER
+    if (_counters != nullptr)
+        _counters->incrementOverflowToKnx(); // dropped by the transmitter, counted as lost
+#endif
     uint8_t *cemiData = (uint8_t *)tpFrame.cemiData();
     if (cemiData == nullptr)
         return;

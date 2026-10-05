@@ -9,9 +9,9 @@
  *  - transmitToIp  (PID 74, PDT_UNSIGNED_LONG): every KNXnet/IP datagram of any kind put on the IP
  *    network -- Core, Tunnelling, Routing, Device Management, ACKs included.
  *  - transmitToKnx (PID 75, PDT_UNSIGNED_LONG): telegrams a router put on the KNX subnetwork.
- *  - overflowToIp/ToKnx (PID 72/73, PDT_UNSIGNED_INT): telegrams LOST because that side refused
- *    them (send limit reached, transmit queue full). Filtered telegrams are not losses and are
- *    counted here nowhere.
+ *  - overflowToIp/ToKnx (PID 72/73, PDT_UNSIGNED_INT): telegrams LOST on the way to that side (send
+ *    limit, queue full; on the router also IP down or IP fault, TP chip not connected, allocation
+ *    failure, queue dropped by a chip reset). Filtered telegrams are not losses and are not counted in PID 72/73.
  *
  * The spec requires the counts not to wrap; all four saturate at their property width.
  * routedToIp/ToKnx, filteredToIp/ToKnx and hopCountToIp/ToKnx are ours, not spec: the coupler's
