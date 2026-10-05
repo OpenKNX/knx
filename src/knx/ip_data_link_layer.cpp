@@ -180,6 +180,10 @@ void IpDataLinkLayer::loop()
             #endif
             break;
         }
+        case RoutingLostMessage:
+        case RoutingBusy:
+            // Consumed without a log line per datagram. The ROUTING_BUSY receive pause (03_08_05 2.3.5) goes here.
+            break;
         default:
         {
 #ifdef KNX_TUNNELING
