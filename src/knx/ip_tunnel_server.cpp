@@ -1230,7 +1230,10 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
         println("Only LinkLayer ist supported!");
 #endif
         recordRejectedConnect(rIp, TUN_DATA, END_REJ_LAYER, connRequest.cri().layer());
-        KnxIpConnectResponse connRes(0x00, E_TUNNELING_LAYER);
+        // Defined layer this server lacks (raw 04h, busmonitor 80h): E_TUNNELLING_LAYER per 03_08_04 Table 11 p.26 and
+        // 4.a p.28 (Figure 6 p.27 and 08_TSSH 5.1.3/5.1.4 say E_CONNECTION_OPTION); undefined code: E_CONNECTION_OPTION.
+        const uint8_t layer = connRequest.cri().layer();
+        KnxIpConnectResponse connRes(0x00, (layer == 0x04 || layer == 0x80) ? E_TUNNELING_LAYER : E_CONNECTION_OPTION);
         sendCounted(rIp, rPort, connRes.data(), connRes.totalLength());
         return;
     }
