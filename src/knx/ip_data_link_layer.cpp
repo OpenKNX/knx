@@ -235,23 +235,8 @@ void IpDataLinkLayer::loopHandleSearchRequestExtended(uint8_t* buffer, uint16_t 
                 return;
     }
 
-    #define LEN_SERVICE_FAMILIES 2
-    #if MASK_VERSION == 0x091A
-    #ifdef KNX_TUNNELING
-    #define LEN_SERVICE_DIB (2 + 4 * LEN_SERVICE_FAMILIES)
-    #else
-    #define LEN_SERVICE_DIB (2 + 3 * LEN_SERVICE_FAMILIES)
-    #endif
-    #else
-    #ifdef KNX_TUNNELING
-    #define LEN_SERVICE_DIB (2 + 3 * LEN_SERVICE_FAMILIES)
-    #else
-    #define LEN_SERVICE_DIB (2 + 2 * LEN_SERVICE_FAMILIES)
-    #endif
-    #endif
-
     //defaults: "Device Information DIB", "Extended Device Information DIB" and "Supported Services DIB".
-    int dibLength = LEN_DEVICE_INFORMATION_DIB + LEN_SERVICE_DIB + LEN_EXTENDED_DEVICE_INFORMATION_DIB;
+    int dibLength = LEN_DEVICE_INFORMATION_DIB + LEN_SUPP_SVC_DIB_EXT + LEN_EXTENDED_DEVICE_INFORMATION_DIB;
 
     if(searchRequest.srpByService)
     {

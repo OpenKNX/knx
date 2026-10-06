@@ -2,33 +2,16 @@
 #include "service_families.h"
 #ifdef USE_IP
 
-#define LEN_SERVICE_FAMILIES 2
-// Same rule as the SEARCH_RESPONSE, and derived ONCE so length and content cannot drift: Core always,
-// Device Management + Tunnelling only with KNX_TUNNELING (both handlers live in IpTunnelServer), Routing
-// only on a router. The length used to key Routing on MASK_VERSION while the content below keyed it on
-// KNX_IS_ROUTER -- equivalent today, but two predicates for one DIB.
-#ifdef KNX_TUNNELING
-#define KNX_SERVICE_FAMILY_COUNT_TUNNEL 2
-#else
-#define KNX_SERVICE_FAMILY_COUNT_TUNNEL 0
-#endif
-#ifdef KNX_IS_ROUTER
-#define KNX_SERVICE_FAMILY_COUNT_ROUTING 1
-#else
-#define KNX_SERVICE_FAMILY_COUNT_ROUTING 0
-#endif
-#define LEN_SERVICE_DIB (2 + (1 + KNX_SERVICE_FAMILY_COUNT_TUNNEL + KNX_SERVICE_FAMILY_COUNT_ROUTING) * LEN_SERVICE_FAMILIES)
-
 KnxIpDescriptionResponse::KnxIpDescriptionResponse(IpParameterObject& parameters, DeviceObject& deviceObject)
     // EXTENDED_DEVICE_INFO (0x08) is NOT allowed in a DESCRIPTION_RESPONSE (03_08_02 Core Table 5) -- it is only
     // permitted in SEARCH_RESPONSE_EXTENDED. Disabled here (allocation term, init and fill all commented out) so
     // the frame stays conformant; re-enable it ONLY on the extended-search path, not here (transport/TCP is irrelevant).
-    : KnxIpFrame(LEN_KNXIP_HEADER + LEN_DEVICE_INFORMATION_DIB + LEN_SERVICE_DIB
+    : KnxIpFrame(LEN_KNXIP_HEADER + LEN_DEVICE_INFORMATION_DIB + LEN_SUPP_SVC_DIB
                  + LEN_IP_CURRENT_CONFIG_DIB /* + LEN_EXTENDED_DEVICE_INFORMATION_DIB */),
       _deviceInfo(_data + LEN_KNXIP_HEADER),
       _supportedServices(_data + LEN_KNXIP_HEADER + LEN_DEVICE_INFORMATION_DIB),
-      _ipCurrentConfig(_data + LEN_KNXIP_HEADER + LEN_DEVICE_INFORMATION_DIB + LEN_SERVICE_DIB, true)
-      // _extendedDeviceInfo(_data + LEN_KNXIP_HEADER + LEN_DEVICE_INFORMATION_DIB + LEN_SERVICE_DIB + LEN_IP_CURRENT_CONFIG_DIB)
+      _ipCurrentConfig(_data + LEN_KNXIP_HEADER + LEN_DEVICE_INFORMATION_DIB + LEN_SUPP_SVC_DIB, true)
+      // _extendedDeviceInfo(_data + LEN_KNXIP_HEADER + LEN_DEVICE_INFORMATION_DIB + LEN_SUPP_SVC_DIB + LEN_IP_CURRENT_CONFIG_DIB)
 {
     serviceTypeIdentifier(DescriptionResponse);
 
@@ -59,14 +42,14 @@ KnxIpDescriptionResponse::KnxIpDescriptionResponse(IpParameterObject& parameters
     prop->read(1, LEN_FRIENDLY_NAME, friendlyName);
     _deviceInfo.friendlyName(friendlyName);
 
-    _supportedServices.length(LEN_SERVICE_DIB);
+    _supportedServices.length(LEN_SUPP_SVC_DIB);
     _supportedServices.code(SUPP_SVC_FAMILIES);
     _supportedServices.serviceVersion(Core, KNX_SERVICE_FAMILY_CORE);
 #ifdef KNX_TUNNELING
     _supportedServices.serviceVersion(DeviceManagement, KNX_SERVICE_FAMILY_DEVICE_MANAGEMENT);
     _supportedServices.serviceVersion(Tunnelling, KNX_SERVICE_FAMILY_TUNNELING);
 #endif
-#ifdef KNX_IS_ROUTER
+#if KNX_SERVICE_FAMILY_COUNT_ROUTING
     _supportedServices.serviceVersion(Routing, KNX_SERVICE_FAMILY_ROUTING);
 #endif
 
