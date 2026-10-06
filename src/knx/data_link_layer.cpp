@@ -45,7 +45,7 @@ void DataLinkLayer::dataRequestFromTunnel(CemiFrame& frame)
 {
     // The L_Data.con is emitted from dataConReceived() with the real TP ACK/NACK result, NOT here: confirming
     // up-front reports success before the frame ever hit the bus and only ever echoes the request's confirm
-    // bit = 0 = "no error". Frames handled locally below never reach TP, so they confirm immediately at return.
+    // bit = 0 = "no error". Frames handled locally below never reach TP, so they confirm before the local stack runs.
     frame.messageCode(L_data_ind);
 
     // 03_06_03 4.1.5.3.3: the system-broadcast flag applies to open media only, and a cEMI server to a
@@ -64,8 +64,6 @@ void DataLinkLayer::dataRequestFromTunnel(CemiFrame& frame)
     if (mediumType() == DptMedium::KNX_TP1 && frame.valid() && frame.npdu().octetCount() <= 15)
         frame.frameType(StandardFrame);
 
-    // Send to local stack ( => cemiServer for potential other tunnel and network layer for routing)
-    frameReceived(frame);
 
 #ifdef KNX_TUNNELING
     // TunnelOpti
@@ -75,21 +73,32 @@ void DataLinkLayer::dataRequestFromTunnel(CemiFrame& frame)
     // destionation == PA of Tunnel-Server  OR
     // destination is a routed PA (= not the TP/secondary line/segment but IP/primary) OR (configurable KNX_TUNNELING_STRICT_TOPOLOGY)
     // destination == PA of a Tunnel (configurable KNX_TUNNELING_NO_TUNNEL_PA_ON_TP)
-
+    bool localOnly = false;
     if(frame.addressType() == AddressType::IndividualAddress)
     {
-        if(frame.destinationAddress() == _deviceObject.individualAddress())
-            { frame.confirm(ConfirmNoError); _cemiServer->dataConfirmationToTunnel(frame); return; }
+        localOnly = frame.destinationAddress() == _deviceObject.individualAddress();
 #ifdef KNX_TUNNELING_STRICT_TOPOLOGY
-        if(isRoutedPA(frame.destinationAddress()))
-            { frame.confirm(ConfirmNoError); _cemiServer->dataConfirmationToTunnel(frame); return; }
+        localOnly = localOnly || isRoutedPA(frame.destinationAddress());
 #endif
 #ifdef KNX_TUNNELING_NO_TUNNEL_PA_ON_TP
-        if(isTunnelingPA(frame.destinationAddress()))
-            { frame.confirm(ConfirmNoError); _cemiServer->dataConfirmationToTunnel(frame); return; }
+        localOnly = localOnly || isTunnelingPA(frame.destinationAddress());
 #endif
     }
+    // Confirmed before the local stack runs: an answer it produces must reach the client after this L_Data.con,
+    // as from a device on the bus (clients wait for the con of a request before they accept its response).
+    if (localOnly)
+    {
+        frame.confirm(ConfirmNoError);
+        _cemiServer->dataConfirmationToTunnel(frame);
+    }
+#endif
 
+    // Send to local stack ( => cemiServer for potential other tunnel and network layer for routing)
+    frameReceived(frame);
+
+#ifdef KNX_TUNNELING
+    if (localOnly)
+        return;
 #endif
 
     // Send to KNX medium; the L_Data.con is emitted from dataConReceived() with the real TP result
