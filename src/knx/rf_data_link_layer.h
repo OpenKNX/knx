@@ -6,8 +6,6 @@
 #include <stdint.h>
 #include "data_link_layer.h"
 
-#define MAX_KNX_TELEGRAM_SIZE 263
-
 class RfMediumObject;
 
 class RfDataLinkLayer : public DataLinkLayer

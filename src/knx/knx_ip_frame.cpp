@@ -5,9 +5,6 @@
 #include <cstring>
 #include "bits.h"
 
-#define KNXIP_HEADER_LEN 0x6
-#define KNXIP_PROTOCOL_VERSION 0x10
-
 KnxIpFrame::KnxIpFrame(uint8_t* data,
                        uint16_t length)
 {
