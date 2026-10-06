@@ -155,7 +155,7 @@ SEARCH/DESCRIPTION responses (used e.g. as `serviceVersion(...)`).
 | Flag | Default | Effect |
 | --- | --- | --- |
 | `KNX_SERVICE_FAMILY_CORE` | `1` (`service_families.h:2`) | KNXnet/IP Core version. When `>= 2`, the extended search-request/response and tunneling-info DIB code is compiled (`ip_data_link_layer.cpp:127/147`, `knx_ip_search_*_extended.*`, `knx_ip_tunneling_info_dib.*`). |
-| `KNX_SERVICE_FAMILY_DEVICE_MANAGEMENT` | `1` (`service_families.h:6`) | Device-Management service-family version. |
+| `KNX_SERVICE_FAMILY_DEVICE_MANAGEMENT` | `2` with `KNX_CEMI_TRANSPORT_LAYER`, else `1` (`service_families.h:12/14`) | Device-Management service-family version; 2 announces the cEMI T_Data services (03_08_03 4.2.5). |
 | `KNX_SERVICE_FAMILY_TUNNELING` | `1` (`service_families.h:10`) | Tunneling service-family version (advertised only when `KNX_TUNNELING` is set). |
 | `KNX_SERVICE_FAMILY_ROUTING` | `1` (`service_families.h:14`) | Routing service-family version (advertised for coupler mask `0x091A`). |
 

@@ -7,7 +7,12 @@
 #endif
 
 #ifndef KNX_SERVICE_FAMILY_DEVICE_MANAGEMENT
+// 2 = cEMI T_Data_Individual/Connected on the device management connection (03_08_03 4.2.5 p.23).
+#ifdef KNX_CEMI_TRANSPORT_LAYER
+#define KNX_SERVICE_FAMILY_DEVICE_MANAGEMENT 2
+#else
 #define KNX_SERVICE_FAMILY_DEVICE_MANAGEMENT 1
+#endif
 #endif
 
 #ifndef KNX_SERVICE_FAMILY_TUNNELING
