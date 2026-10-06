@@ -76,10 +76,6 @@ bool IpDataLinkLayer::sendFrame(CemiFrame& frame)
 
 
 
-#ifdef OPENKNX_CON_DIAG
-uint16_t g_bef3Drop = 0; // KNXnet/IP header total-length mismatch drops (diag); read by ip_tunnel_server
-#endif
-
 void IpDataLinkLayer::loop()
 {
     if (!_enabled)
@@ -118,9 +114,6 @@ void IpDataLinkLayer::loop()
     popWord(declaredLen, buffer + 4);
     if (declaredLen != (uint16_t)len)
     {
-#ifdef OPENKNX_CON_DIAG
-        g_bef3Drop++;
-#endif
         return;
     }
 
