@@ -55,6 +55,7 @@ Bau07B0IP::Bau07B0IP(Platform& platform)
     uint16_t suppCommModes = 0x0100;
     _cemiServerObject.writeProperty(PID_COMM_MODES_SUPPORTED, 1, (uint8_t*)&suppCommModes, count); // Bit 0 = "LinkLayer supported"
 
+    _ipTunnelServer.setKnxBusState(&_tpLayer); // CONNECTIONSTATE reports the TP side
 #ifdef OPENKNX_HW_BUSMON
     // Let a KNX-Busmonitor tunnel put the TP chip into HW monitor mode.
     _ipTunnelServer.setHwBusMonitorDll(&_tpLayer);

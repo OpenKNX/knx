@@ -82,6 +82,9 @@ Bau091A::Bau091A(Platform& platform)
 
     _memory.addSaveRestore(&_ipParameters);
 
+#ifdef KNX_TUNNELING
+    _ipTunnelServer.setKnxBusState(&_dlLayerSecondary); // CONNECTIONSTATE reports the TP side
+#endif
 #if defined(OPENKNX_HW_BUSMON) && defined(KNX_TUNNELING)
     // Bridge so a KNX-Busmonitor tunnel can put the TP secondary chip into HW monitor mode.
     _ipTunnelServer.setHwBusMonitorDll(&_dlLayerSecondary);

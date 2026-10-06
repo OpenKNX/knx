@@ -18,6 +18,17 @@
 
 class CemiServer;
 
+/**
+ * @brief Source of the KNX-side bus state for the CONNECTIONSTATE_RESPONSE (E_KNX_CONNECTION, 03_08_02).
+ * Implemented by TpUartDataLinkLayer; registered by the BAU of every product, with or without a HW busmonitor.
+ */
+class IKnxBusState
+{
+  public:
+    virtual ~IKnxBusState() = default;
+    virtual bool knxBusOperational() = 0; // link alive, chip answering, bus voltage present; true in busmonitor
+};
+
 #ifdef OPENKNX_HW_BUSMON
 // KNX_BUSMON_CONNECTIONS is defined in config.h. Deliberately NO fallback here: the value sizes a member
 // array, so a second definition that ever diverged would change sizeof(IpTunnelServer) between translation
@@ -41,7 +52,6 @@ class IHwBusMonitorDll
     virtual uint32_t hwBusMonResetIndCount() = 0; // U_Reset.ind counter: did the chip execute the reset?
     virtual bool hwBusMonRxDesynced() = 0;        // receiver lost sync -> a missing indication proves nothing
     virtual bool hwBusMonActive() = 0;    // chip currently in monitor mode (any owner: ETS tunnel or local `bcu mon`)
-    virtual bool hwBusOperational() = 0;  // KNX bus actually usable (host<->chip link + bus voltage)?
 };
 #endif
 
@@ -206,6 +216,9 @@ class IpTunnelServer
     /** @brief Send one cEMI frame to every open device management connection (evented M_PropInfo.ind). */
     void dataRequestToAllDevMgmt(CemiFrame& frame);
 
+    /** @brief Register the KNX-side bus state answered in CONNECTIONSTATE_RESPONSE (every product). */
+    void setKnxBusState(IKnxBusState* state) { _knxBusState = state; }
+
 #ifdef OPENKNX_HW_BUSMON
     /** @brief Register the TP DLL bridge used to enter/leave HW busmonitor mode (router BAU only). */
     void setHwBusMonitorDll(IHwBusMonitorDll* dll) { _hwBusMon = dll; }
@@ -304,6 +317,7 @@ class IpTunnelServer
     KnxIpCounters* _counters = nullptr;
     Platform& _platform;
     CemiServer& _cemiServer;
+    IKnxBusState* _knxBusState = nullptr; // E_KNX_CONNECTION source; null = bus state unknown, answered as usable
 
 #ifdef OPENKNX_HW_BUSMON
     void HandleBusMonitorConnect(KnxIpConnectRequest& connRequest, uint32_t src_addr, uint16_t src_port);

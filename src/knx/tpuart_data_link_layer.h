@@ -25,6 +25,9 @@ class ITpUartCallBacks
 };
 
 class TpUartDataLinkLayer : public DataLinkLayer
+#ifdef KNX_TUNNELING
+                          , public IKnxBusState
+#endif
 #if defined(OPENKNX_HW_BUSMON) && defined(KNX_TUNNELING)
                           , public IHwBusMonitorDll
 #endif
@@ -91,7 +94,9 @@ class TpUartDataLinkLayer : public DataLinkLayer
     uint32_t hwBusMonResetIndCount() override { return _tpuart.resetIndCount(); }
     bool hwBusMonRxDesynced() override { return _tpuart.receiverDesynced(); }
     bool hwBusMonActive() override { return isMonitoring(); } // any owner (ETS tunnel or local `bcu mon`)
-    bool hwBusOperational() override { return _tpuart.busOperational(); } // link + NCN bus-voltage, for the connectionstate heartbeat
+#endif
+#ifdef KNX_TUNNELING
+    bool knxBusOperational() override { return _tpuart.busOperational(); } // link, silence and NCN bus voltage
 #endif
 
     void powerControl(bool state);

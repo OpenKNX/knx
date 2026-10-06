@@ -1696,15 +1696,10 @@ void IpTunnelServer::HandleConnectionStateRequest(uint8_t* buffer, uint16_t leng
         return;
     }
 
-    // Set knxState to E_KNX_CONNECTION while the TP bus is not usable (bus down / chip absent), so the client
-    // sees "tunnel up, bus down" instead of a false-healthy heartbeat. busOperational() covers both the
-    // host<->chip link and the NCN bus-voltage bit (an externally-powered NCN keeps the link up when the bus
-    // power drops); an active busmon counts as usable. The driver debounces all of it -> no transient false alarm.
+    // E_KNX_CONNECTION while the TP bus is not usable (link, chip or bus voltage); an active busmonitor counts as usable.
     uint8_t knxState = E_NO_ERROR;
-#ifdef OPENKNX_HW_BUSMON
-    if (_hwBusMon && !_hwBusMon->hwBusOperational())
+    if (_knxBusState != nullptr && !_knxBusState->knxBusOperational())
         knxState = E_KNX_CONNECTION;
-#endif
 
     // No E_DATA_CONNECTION: an IP data-channel fault sits on the very path this reply travels -> undeliverable by
     // construction (link down = the request never arrives and the reply never leaves); the client reaps such a
