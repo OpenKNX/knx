@@ -1458,6 +1458,14 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
                 paNotUnique = true;
             }
 
+            // 03_08_03 2.5.4 p.9: an entry equal to the own IA is not unique -> 0x25 (no data tunnel uses the own IA).
+            if (tun && tunPa == _deviceObject.individualAddress())
+            {
+                tunIdx = 0xFF;
+                tun = nullptr;
+                paNotUnique = true;
+            }
+
             // check if this PA is in use (should not happen, only when there is one pa wrongly assigned to more then one tunnel)
             for (int x = 0; x < KNX_TUNNELING; x++)
                 if (tunnels[x].IndividualAddress == tunPa)
@@ -1482,16 +1490,14 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
             tun->IsConfig = false;  // default
             uint16_t tunPa = 0;
             bool found = false;
+            const uint16_t ownIa = _deviceObject.individualAddress();
             for (int a = 0; a < KNX_TUNNELING && !found; a++)
             {
                 uint16_t cand = 0;
                 popWord(cand, addresses + a * 2);
-                // No value filter beyond an empty slot: 03_08_03 2.5.4 p.9 gives the server one rule,
-                // "use the first free Additional Individual Address ... at the lowest index". x.y.FF and
-                // FFFFh are NOT excluded -- 03_08_04 NOTE 9 p.19 calls an all-FFFFh pool the normal state
-                // of a fresh server, and 4.3 step 6b p.24 has the client WRITE FFFFh into the pool as its
-                // repair step. Filtering them would kill the very entries the procedure creates.
+                // Skips an empty slot and the own IA (03_08_04 4.2.2 prerequisite 2); FFFFh stays unless equal to the own IA (NOTE 9 p.19).
                 if (cand == 0) continue;                                             // empty entry
+                if (cand == ownIa) continue;                                         // own IA: not unique
                 if (resTunActive && tunCtrlBytes && (*(tunCtrlBytes + a) & 0x80)) continue; // don't steal a reserved slot's IA
                 bool inUse = false;
                 for (int x = 0; x < KNX_TUNNELING; x++)
