@@ -430,6 +430,8 @@ void NetworkLayerCoupler::routeDataIndividual(AckType ack, uint16_t destination,
     {
         // FORWARD_LOCALLY
         //println("NetworkLayerCoupler::routeDataIndividual locally");
+        if (srcIfIndex != kLocalIfIndex)
+            noteArrival(source, srcIfIndex);
         HopCountType hopType = KNX_ANSWER_HOPTYPE(npdu);
         _transportLayer.dataIndividualIndication(destination, hopType, priority, source, npdu.tpdu());
         return;
@@ -449,7 +451,12 @@ void NetworkLayerCoupler::routeDataIndividual(AckType ack, uint16_t destination,
 
         // if destination is not within our scope then send via primary interface, else via secondary interface
         uint8_t destIfidx = (Z != netaddr) ? kPrimaryIfIndex : kSecondaryIfIndex;
-        
+
+        // 03_03_03 2.4.2.4.1 b: a partner is answered on the interface its request arrived on, whatever its address.
+        const uint8_t arrivalIfidx = arrivalInterface(destination);
+        if (arrivalIfidx != kLocalIfIndex)
+            destIfidx = arrivalIfidx;
+
 #ifndef KNX_ROUTING_BC_DC
 #ifdef KNX_TUNNELING
         if(destIfidx == kPrimaryIfIndex)
@@ -757,6 +764,32 @@ void NetworkLayerCoupler::dataSystemBroadcastRequest(AckType ack, HopCountType h
     println(broadcastType);
 #endif
     _netLayerEntities[kSecondaryIfIndex].sendDataRequest(tmpFrame.npdu(), ack, 0, _deviceObj.individualAddress(), priority, GroupAddress, broadcastType);
+}
+
+void NetworkLayerCoupler::noteArrival(uint16_t source, uint8_t srcIfIndex)
+{
+    const uint32_t entry = ((uint32_t)source << 8) | (uint8_t)(srcIfIndex + 1);
+    for (uint8_t i = 0; i < KNX_COUPLER_ARRIVAL_SLOTS; i++)
+    {
+        if (_arrivals[i] != 0 && (_arrivals[i] >> 8) == source)
+        {
+            _arrivals[i] = entry;
+            return;
+        }
+    }
+    _arrivals[_arrivalNext] = entry;
+    _arrivalNext = (uint8_t)((_arrivalNext + 1) % KNX_COUPLER_ARRIVAL_SLOTS);
+}
+
+uint8_t NetworkLayerCoupler::arrivalInterface(uint16_t partner) const
+{
+    for (uint8_t i = 0; i < KNX_COUPLER_ARRIVAL_SLOTS; i++)
+    {
+        const uint32_t e = _arrivals[i];
+        if (e != 0 && (e >> 8) == partner)
+            return (uint8_t)(e & 0xFF) - 1;
+    }
+    return kLocalIfIndex;
 }
 
 #ifdef KNX_TUNNELING

@@ -90,6 +90,11 @@ class NetworkLayerCoupler : public NetworkLayer
     void sendMsgHopCount(AckType ack, AddressType addrType, uint16_t destination, NPDU& npdu, Priority priority,
                       SystemBroadcast broadcastType, uint8_t sourceInterfaceIndex, uint16_t source);
 
+    /** @brief Records the interface a partner's frame to this device arrived on (03_03_03 2.4.2.4.1 b). */
+    void noteArrival(uint16_t source, uint8_t srcIfIndex);
+    /** @brief Interface the partner's last frame to this device arrived on, kLocalIfIndex if not held. */
+    uint8_t arrivalInterface(uint16_t partner) const;
+
     void evaluateCouplerType();
     bool isGroupAddressInFilterTable(uint16_t groupAddress);
 #ifdef KNX_TUNNELING
@@ -107,4 +112,9 @@ class NetworkLayerCoupler : public NetworkLayer
     // coupler branch, so this initialiser is the guard for the addresses that do not.
     CouplerType _couplerType = UnknownCoupler;
     uint16_t _currentAddress = 0;
+
+    static_assert(KNX_COUPLER_ARRIVAL_SLOTS >= 1 && KNX_COUPLER_ARRIVAL_SLOTS <= 255, "KNX_COUPLER_ARRIVAL_SLOTS out of range");
+    // (IA << 8) | (interface + 1), 0 = free; FIFO replacement, a known partner is refreshed in place. Loop context only.
+    uint32_t _arrivals[KNX_COUPLER_ARRIVAL_SLOTS] = {};
+    uint8_t _arrivalNext = 0;
 };

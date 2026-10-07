@@ -182,6 +182,12 @@
 #define KNX_BUSMON_CONNECTIONS 1
 #endif
 
+// KNX_COUPLER_ARRIVAL_SLOTS - partners whose last frame to the coupler is remembered with its interface, so the answer
+// leaves on that interface (03_03_03 2.4.2.4.1 b). 4 bytes each. A partner not held falls back to topology. 1..255.
+#ifndef KNX_COUPLER_ARRIVAL_SLOTS
+#define KNX_COUPLER_ARRIVAL_SLOTS 4
+#endif
+
 // KNX_UNCONFIGURED_ADDRESS — the factory-default individual address of an unprogrammed device:
 // 15.15.0 (0xFF00) for a coupler/router, 15.15.255 (0xFFFF) for a normal device.
 // Must match DeviceObject::_ownAddress (device_object.h), which is the value actually loaded -- 0x2920 is
