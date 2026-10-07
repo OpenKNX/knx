@@ -166,7 +166,7 @@ void IpDataLinkLayer::loop()
             if(_dllcb)
                 _dllcb->activity((_netIndex << KNX_ACTIVITYCALLBACK_NET) | (KNX_ACTIVITYCALLBACK_DIR_SEND << KNX_ACTIVITYCALLBACK_DIR) | (KNX_ACTIVITYCALLBACK_IPUNICAST));
 #endif
-            sendUniCastCounted(hpai.ipAddress(), hpai.ipPortNumber(), searchResponse.data(), searchResponse.totalLength());
+            sendControlUniCast(hpai.ipAddress(), hpai.ipPortNumber(), searchResponse.data(), searchResponse.totalLength());
             break;
         }
         case SearchRequestExt:
@@ -337,7 +337,7 @@ void IpDataLinkLayer::loopHandleSearchRequestExtended(uint8_t* buffer, uint16_t 
         return;
     }
 
-    sendUniCastCounted(searchRequest.hpai().ipAddress(), searchRequest.hpai().ipPortNumber(), searchResponse.data(), searchResponse.totalLength());
+    sendControlUniCast(searchRequest.hpai().ipAddress(), searchRequest.hpai().ipPortNumber(), searchResponse.data(), searchResponse.totalLength());
 }
 #endif
 
@@ -533,6 +533,15 @@ bool IpDataLinkLayer::sendUniCastCounted(uint32_t addr, uint16_t port, uint8_t* 
         else
             _counters->incrementOverflowToIp();
     }
+    return sent;
+}
+
+// A control datagram (SEARCH responses) is no KNX message: PID 74 when it leaves, never PID 72 (03_08_05 2.3.4).
+bool IpDataLinkLayer::sendControlUniCast(uint32_t addr, uint16_t port, uint8_t* buffer, uint16_t len)
+{
+    const bool sent = _platform.sendBytesUniCast(addr, port, buffer, len);
+    if (sent && _counters != nullptr)
+        _counters->incrementTransmitToIp();
     return sent;
 }
 

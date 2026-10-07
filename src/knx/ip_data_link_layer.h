@@ -65,7 +65,8 @@ class IpDataLinkLayer : public DataLinkLayer
     bool _sbcSocketOpen = false;
     uint32_t _joinedGroup = 0; // 03_08_03 2.5.17: PID 66 becomes active on reset, not at runtime
     KnxIpCounters* _counters = nullptr;
-    bool sendUniCastCounted(uint32_t addr, uint16_t port, uint8_t* buffer, uint16_t len);
+    bool sendUniCastCounted(uint32_t addr, uint16_t port, uint8_t* buffer, uint16_t len); // a KNX message: PID 74 or 72
+    bool sendControlUniCast(uint32_t addr, uint16_t port, uint8_t* buffer, uint16_t len); // PID 74 only
     bool _enabled = false;
     bool _rxRoutingIndications = true;
     // 03_02_06 2.1 p.6: at most 50 datagrams within one second (routing indications and system broadcasts); last 50 send times.
