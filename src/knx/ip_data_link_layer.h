@@ -68,9 +68,12 @@ class IpDataLinkLayer : public DataLinkLayer
     bool sendUniCastCounted(uint32_t addr, uint16_t port, uint8_t* buffer, uint16_t len);
     bool _enabled = false;
     bool _rxRoutingIndications = true;
-    uint8_t _frameCount[10] = {0,0,0,0,0,0,0,0,0,0};
-    uint8_t _frameCountBase = 0;
-    uint32_t _frameCountTimeBase = 0;
+    // 03_02_06 2.1 p.6: at most 50 datagrams within one second (routing indications and system broadcasts); last 50 send times.
+    static constexpr uint8_t kSendLimit = 50;
+    static constexpr uint32_t kSendWindowMs = 1005; // 1 s + 5 ms for millis() steps and send-path jitter
+    uint32_t _sendTimes[kSendLimit] = {0};
+    uint8_t _sendIdx = 0;   // oldest entry once the ring is full
+    uint8_t _sendCount = 0;
 #ifdef KNX_IS_ROUTER
     uint32_t _lostReported = 0; // KnxIpCounters::lostToKnx() covered by sent reports
     uint32_t _lostSentAt = 0;   // millis() of the last report attempt
@@ -84,6 +87,8 @@ class IpDataLinkLayer : public DataLinkLayer
 #endif
     bool sendBytes(uint8_t* buffer, uint16_t length);
     bool isSendLimitReached();
+    bool sendLimitPeek(uint32_t now) const; // true while a send now would exceed 50 per second
+    void sendLimitRecord(uint32_t now);
 
     IpParameterObject& _ipParameters;
     DataLinkLayerCallbacks* _dllcb;

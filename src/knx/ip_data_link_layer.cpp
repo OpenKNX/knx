@@ -592,47 +592,27 @@ void IpDataLinkLayer::loopLostMessage()
 
 bool IpDataLinkLayer::isSendLimitReached()
 {
-    uint32_t curTime = millis() / 100;
-
-    // Forward tick versus millis overflow; the ring is ten 100 ms buckets bounding 03_02_06 2.1 (50/s).
-    if(curTime > _frameCountTimeBase)
-    {
-        uint32_t timeBaseDiff = curTime - _frameCountTimeBase;
-        if(timeBaseDiff > 10)
-            timeBaseDiff = 10;
-        for(uint32_t i = 0; i < timeBaseDiff ; i++)
-        {
-            _frameCountBase++;
-            _frameCountBase = _frameCountBase % 10;
-            _frameCount[_frameCountBase] = 0;
-        }
-        _frameCountTimeBase = curTime;
-    }
-    else if(curTime < _frameCountTimeBase) // millis overflow, reset
-    {
-        for(int i = 0; i < 10 ; i++)
-            _frameCount[i] = 0;
-        _frameCountBase = 0;
-        _frameCountTimeBase = curTime;
-    }
-
-    //check if we are over the limit
-    uint16_t sum = 0;
-    for(int i = 0; i < 10 ; i++)
-        sum += _frameCount[i];
-    if(sum > 50)
+    // The 51st datagram is refused while the oldest of the last 50 is under 1005 ms old; 5 ms for millis() steps and send-path jitter.
+    const uint32_t now = millis();
+    if (sendLimitPeek(now))
     {
         println("Dropping packet due to 50p/s limit");
         return true;   // drop packet
     }
-    else
-    {
-        _frameCount[_frameCountBase]++;
-        //print("sent packages in last 1000ms: ");
-        //print(sum);
-        //print(" curTime: ");
-        //println(curTime);
-        return false;
-    }
+    sendLimitRecord(now);
+    return false;
+}
+
+bool IpDataLinkLayer::sendLimitPeek(uint32_t now) const
+{
+    return _sendCount >= kSendLimit && (uint32_t)(now - _sendTimes[_sendIdx]) < kSendWindowMs;
+}
+
+void IpDataLinkLayer::sendLimitRecord(uint32_t now)
+{
+    _sendTimes[_sendIdx] = now;
+    _sendIdx = (_sendIdx + 1) % kSendLimit;
+    if (_sendCount < kSendLimit)
+        _sendCount++;
 }
 #endif
