@@ -545,6 +545,17 @@ bool IpDataLinkLayer::sendControlUniCast(uint32_t addr, uint16_t port, uint8_t* 
     return sent;
 }
 
+#ifdef KNX_IS_ROUTER
+// ROUTING_LOST_MESSAGE: counted as sendBytes() counts a sent datagram, never PID 72. Callers hold _enabled.
+bool IpDataLinkLayer::sendControlMultiCast(uint8_t* bytes, uint16_t length)
+{
+    const bool sent = _platform.sendBytesMultiCast(bytes, length);
+    if (sent && _counters != nullptr && !(_ipParameters.deviceState() & IpParameterObject::DeviceStateIpFault))
+        _counters->incrementTransmitToIp();
+    return sent;
+}
+#endif
+
 bool IpDataLinkLayer::sendBytes(uint8_t* bytes, uint16_t length)
 {
     if (!_enabled)
@@ -594,7 +605,7 @@ void IpDataLinkLayer::loopLostMessage()
                                            0x00, KNXIP_HEADER_LEN + 4,
                                            0x04, deviceState, (uint8_t)(count >> 8), (uint8_t)count};
     _lostSentAt = now;
-    if (sendBytes(frame, sizeof(frame)))
+    if (sendControlMultiCast(frame, sizeof(frame)))
         _lostReported += count;
 }
 #endif

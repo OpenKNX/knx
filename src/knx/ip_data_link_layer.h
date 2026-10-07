@@ -87,6 +87,9 @@ class IpDataLinkLayer : public DataLinkLayer
     void loopHandleSearchRequestExtended(uint8_t* buffer, uint16_t length);
 #endif
     bool sendBytes(uint8_t* buffer, uint16_t length);
+#ifdef KNX_IS_ROUTER
+    bool sendControlMultiCast(uint8_t* buffer, uint16_t length); // PID 74 only
+#endif
     bool isSendLimitReached();
     bool sendLimitPeek(uint32_t now) const; // true while a send now would exceed 50 per second
     void sendLimitRecord(uint32_t now);
