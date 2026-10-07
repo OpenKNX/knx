@@ -26,6 +26,7 @@
 // knx_ip_tunnel_connection.h, included above -- not relied on transitively.
 #ifdef KNX_TUNNEL_RESEND
 static const uint8_t TUNNEL_QUEUE_DEPTH = KNX_TUNNEL_RESEND_DEPTH;
+static_assert(KNX_TUNNEL_BACKPRESSURE >= 1 && KNX_TUNNEL_BACKPRESSURE <= KNX_TUNNEL_RESEND_DEPTH + 1, "KNX_TUNNEL_BACKPRESSURE must lie in 1..KNX_TUNNEL_RESEND_DEPTH + 1 (off)");
 #else
 static const uint8_t TUNNEL_QUEUE_DEPTH = 0;
 #endif
@@ -130,6 +131,7 @@ void IpTunnelServer::copyCounters(TunnelEvent& e, const KnxIpTunnelConnection& c
     e.fromClient = c.StatFromClient;
     e.resend = c.StatResend;
     e.seqGap = c.StatSeqGap;
+    e.backpressure = c.StatBackpressure;
     e.ackErr = c.StatAckErr;
     e.txDrop = c.StatTxDrop;
     e.grpDrop = c.StatGrpDrop;
@@ -1968,6 +1970,20 @@ void IpTunnelServer::HandleTunnelingRequest(uint8_t* buffer, uint16_t length, ui
         bumpTo(tun->StatSeqGap);
         return;
     }
+
+#if defined(KNX_TUNNEL_RESEND) && KNX_TUNNEL_BACKPRESSURE <= KNX_TUNNEL_RESEND_DEPTH
+    // From KNX_TUNNEL_BACKPRESSURE undroppable frames on, no TUNNELLING_ACK (deviation from 03_08_04 2.6.1 p.9): the client repeats after 1 s
+    // and disconnects if the repeat is unanswered too. Group frames do not count, except the head on the wire.
+    uint8_t held = 0;
+    for (uint8_t j = 0; j < tun->_txCount; j++)
+        held += !tun->_txIsGroup[(tun->_txHead + j) % KNX_TUNNEL_RESEND_DEPTH] || (j == 0 && tun->_armed);
+    if (held >= KNX_TUNNEL_BACKPRESSURE)
+    {
+        tun->lastHeartbeat = millis(); // received correctly: retriggers the 120 s timer (03_08_02 5.4)
+        bumpTo(tun->StatBackpressure);
+        return;
+    }
+#endif
 
     KnxIpTunnelingAck tunnAck;
     tunnAck.connectionHeader().length(4);

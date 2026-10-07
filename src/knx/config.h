@@ -167,6 +167,12 @@
 #define KNX_TUNNEL_RESEND_DEPTH 1
 #endif
 
+// KNX_TUNNEL_BACKPRESSURE - undroppable frames queued for a client at which its TUNNELLING_REQUEST gets no TUNNELLING_ACK (deviation from 03_08_04 2.6.1 p.9).
+// The client repeats after 1 s and disconnects if the repeat is unanswered too. Default leaves 3 slots (con, T_ACK, answer); below a depth of 4 off (DEPTH + 1).
+#ifndef KNX_TUNNEL_BACKPRESSURE
+#define KNX_TUNNEL_BACKPRESSURE (KNX_TUNNEL_RESEND_DEPTH >= 4 ? KNX_TUNNEL_RESEND_DEPTH - 2 : KNX_TUNNEL_RESEND_DEPTH + 1)
+#endif
+
 // KNX_BUSMON_CONNECTIONS — how many KNXnet/IP busmonitor connections the tunnel server serves at once.
 // 03_08_04 2.2.4 p.8 asks for ONE per KNX subnetwork, which is the default. The capture is a read-only
 // fan-out of one bus stream, so extra readers cost nothing on the bus -- but each slot carries a

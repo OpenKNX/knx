@@ -28,6 +28,7 @@ void KnxIpTunnelConnection::Reset()
     StatFromClient = 0;
     StatResend = 0;
     StatSeqGap = 0;
+    StatBackpressure = 0;
     StatAckErr = 0;
     StatTxDrop = 0;
     StatGrpDrop = 0;

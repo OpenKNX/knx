@@ -32,6 +32,7 @@ class KnxIpTunnelConnection
     uint32_t StatFromClient = 0;
     uint16_t StatResend = 0;    // repeats of an unacked request
     uint16_t StatSeqGap = 0;    // datagrams discarded: sequence counter was not the expected one
+    uint16_t StatBackpressure = 0; // TUNNELLING_REQUESTs left unacknowledged under backpressure, repeats included
     uint16_t StatAckErr = 0;    // acknowledges from this client that carried an error status
     uint16_t StatTxDrop = 0;    // frames for this client that were never sent: oversize, FIFO full,
                                 // still queued at teardown, or refused with no retry behind it
@@ -45,11 +46,11 @@ class KnxIpTunnelConnection
     // (same seq) after 1 s and the tunnel is disconnected on the 2nd timeout. Queueing (never dropping) is
     // required because the device's own connection-oriented responses arrive in local bursts, faster than
     // the client acks -- dropping them (the earlier single-slot design) collapsed reading/programming.
-    // BUF and DEPTH are defined in config.h. No fallback here on purpose: together they size _txBuf, so a
+    // BUF, DEPTH and BACKPRESSURE are defined in config.h. No fallback here on purpose: BUF and DEPTH size _txBuf, so a
     // second definition that ever diverged would change sizeof(KnxIpTunnelConnection) between translation
     // units -- silent memory corruption rather than a compile error.
-    #if !defined(KNX_TUNNEL_RESEND_BUF) || !defined(KNX_TUNNEL_RESEND_DEPTH)
-        #error "KNX_TUNNEL_RESEND_BUF / _DEPTH must be defined (config.h, or by a NO_KNX_CONFIG build)"
+    #if !defined(KNX_TUNNEL_RESEND_BUF) || !defined(KNX_TUNNEL_RESEND_DEPTH) || !defined(KNX_TUNNEL_BACKPRESSURE)
+        #error "KNX_TUNNEL_RESEND_BUF / _DEPTH / KNX_TUNNEL_BACKPRESSURE must be defined (config.h, or by a NO_KNX_CONFIG build)"
     #endif
     uint8_t _txBuf[KNX_TUNNEL_RESEND_DEPTH][KNX_TUNNEL_RESEND_BUF]; // full datagrams, resent verbatim
     uint16_t _txLen[KNX_TUNNEL_RESEND_DEPTH] = {0}; // used bytes per slot (<= BUF=280); MUST be 16-bit -- an

@@ -163,6 +163,7 @@ class IpTunnelServer
         uint32_t fromClient = 0;
         uint16_t resend = 0;
         uint16_t seqGap = 0;
+        uint16_t backpressure = 0;
         uint16_t ackErr = 0;
         uint16_t txDrop = 0;
         uint16_t grpDrop = 0;
