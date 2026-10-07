@@ -1224,7 +1224,7 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
         // Invented addresses, not ETS-assigned ones -- so the device's own part is skipped here rather
         // than handed out: 03_08_04 4.2.2 p.18 prereq 3 calls using the own IA "not recommended", and p.7
         // forbids it for a router. This is NOT a filter on the ETS-written list; there the spec prescribes
-        // E_NO_MORE_UNIQUE_CONNECTIONS (03_08_03 2.5.4 p.9), which this stack does not yet do.
+        // E_NO_MORE_UNIQUE_CONNECTIONS (03_08_03 2.5.4 p.9), see the scan below.
         // The branch also runs for a PARTIALLY programmed device, so the own part can be 1..KNX_TUNNELING.
         // The pool keeps KNX_TUNNELING entries -- the reserved-slot path indexes it by slot, so a shorter
         // array would read past its end. Part 0 and FFh are never produced (03_05_01 3.3 p.20 reserves
@@ -1428,7 +1428,7 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
     }
 
     KnxIpTunnelConnection* tun = nullptr;
-    bool paNotUnique = false; // -> 0x25; set by the reserved-slot path and, deliberately, by the depleted pool
+    bool paNotUnique = false; // -> 0x25; set by the reserved-slot path and by a non-unique entry in the scan
     if (tunIdx != 0xFF)
     {
         tun = &tunnels[tunIdx];
@@ -1441,7 +1441,7 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
         }
         else if (tunReservedAssign)
         {
-            // Reserved tunnel: keep the fixed slot->IA mapping (behaviour unchanged).
+            // Reserved tunnel: fixed slot->IA mapping; an empty slot gives 0x24, the own IA or a duplicate 0x25.
             tun->IsConfig = false;  // default
             uint16_t tunPa = 0;
             popWord(tunPa, addresses + (tunIdx * 2));
@@ -1453,9 +1453,9 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
 #ifdef KNX_LOG_TUNNELING
                 println("reserved tunnel slot is empty (0.0.0) -> refusing");
 #endif
+                // 0x24: no address, not a duplicate; 0x25 would send the client into 03_08_04 4.3 without end.
                 tunIdx = 0xFF;
                 tun = nullptr;
-                paNotUnique = true;
             }
 
             // 03_08_03 2.5.4 p.9: an entry equal to the own IA is not unique -> 0x25 (no data tunnel uses the own IA).
@@ -1467,7 +1467,7 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
             }
 
             // check if this PA is in use (should not happen, only when there is one pa wrongly assigned to more then one tunnel)
-            for (int x = 0; x < KNX_TUNNELING; x++)
+            for (int x = 0; tun && x < KNX_TUNNELING; x++)
                 if (tunnels[x].IndividualAddress == tunPa)
                 {
 #ifdef KNX_LOG_TUNNELING
@@ -1483,13 +1483,12 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
         }
         else
         {
-            // Non-reserved: assign the FIRST Additional IA that is unique among the OPEN connections
-            // (KNX 03_08_04 Tunnelling §2.2.2). Scan the WHOLE pool -- not just addresses[slot] -- so gaps,
-            // duplicate/unassigned entries and partial ETS assignment are handled; a free unique IA at any
-            // index is used. 0x25 (paNotUnique) only when the list is truly depleted.
+            // Non-reserved: the first IA of the whole pool that is unique among the open connections (03_08_04 2.2.2).
+            // None free: 0x25 only for an entry that duplicates an IA in use (own IA or open tunnel), else 0x24.
             tun->IsConfig = false;  // default
             uint16_t tunPa = 0;
             bool found = false;
+            bool notUnique = false; // a skipped entry equals the own IA or duplicates another entry in use -> 0x25
             const uint16_t ownIa = _deviceObject.individualAddress();
             for (int a = 0; a < KNX_TUNNELING && !found; a++)
             {
@@ -1497,7 +1496,7 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
                 popWord(cand, addresses + a * 2);
                 // Skips an empty slot and the own IA (03_08_04 4.2.2 prerequisite 2); FFFFh stays unless equal to the own IA (NOTE 9 p.19).
                 if (cand == 0) continue;                                             // empty entry
-                if (cand == ownIa) continue;                                         // own IA: not unique
+                if (cand == ownIa) { notUnique = true; continue; }                   // own IA: not unique
                 if (resTunActive && tunCtrlBytes && (*(tunCtrlBytes + a) & 0x80)) continue; // don't steal a reserved slot's IA
                 bool inUse = false;
                 for (int x = 0; x < KNX_TUNNELING; x++)
@@ -1511,6 +1510,17 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
                     tunPa = cand;
                     found = true;
                 }
+                else
+                {
+                    // In use is normal for the entry that owns the connection; another entry with that IA is a duplicate.
+                    for (int b = 0; b < KNX_TUNNELING && !notUnique; b++)
+                    {
+                        uint16_t other = 0;
+                        popWord(other, addresses + b * 2);
+                        if (b != a && other == cand)
+                            notUnique = true;
+                    }
+                }
             }
             if (!found)
             {
@@ -1519,13 +1529,9 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
 #endif
                 tunIdx = 0xFF;
                 tun = nullptr;
-                // 03_08_03 2.5.4 p.9 splits this into 0x24 (list depleted, all entries unique) and 0x25
-                // (a free entry duplicates one in use or the own IA), and reporting 0x25 for the first
-                // case makes a conformant client repeat 03_08_04 4.3 forever. Reported as 0x25 anyway:
-                // an all-zero pool is what masterReset() leaves behind, and 4.3 step 3 repairs exactly
-                // that duplicate. Splitting the codes without also excluding the own IA in the loop
-                // above turns that recovery into a permanent refusal.
-                paNotUnique = true;
+                // 03_08_03 2.5.4 p.9: 0x25 when an entry equals the own IA or duplicates one in use, else 0x24
+                // (list depleted, all entries unique). 0x25 on a depleted list makes 03_08_04 4.3 repeat forever.
+                paNotUnique = notUnique;
             }
             else
                 tun->IndividualAddress = tunPa;
@@ -1536,8 +1542,7 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
     {
         // KNX 03_08_04 Tunnelling §2.2.2 p.6-7: a device offering >1 tunnelling connection must distinguish "no free slot"
         // (E_NO_MORE_CONNECTIONS 0x24) from "slot free but the assignable tunnelling IA is not unique"
-        // (E_NO_MORE_UNIQUE_CONNECTIONS 0x25). NOT distinguished for a depleted pool -- see the comment
-        // at the depleted-pool writer above for why 0x25 is reported there and what it would take to split.
+        // (E_NO_MORE_UNIQUE_CONNECTIONS 0x25); paNotUnique carries which one applies.
         println(dmTransportBusy ? "device management rejected: a foreign transport connection is open"
                 : paNotUnique   ? "tunnel connect rejected: no unique individual address available"
                                 : "no free tunnel availible");
