@@ -26,6 +26,7 @@ class KnxIpCounters
     void incrementTransmitToIp() { inc32(_transmitToIp); }
     void incrementTransmitToKnx() { inc32(_transmitToKnx); }
     void incrementOverflowToIp() { inc16(_overflowToIp); _lostToIp = _lostToIp + 1; }
+    void addOverflowToIp(uint8_t n) { add16(_overflowToIp, n); _lostToIp = _lostToIp + n; }
     void incrementOverflowToKnx() { inc16(_overflowToKnx); _lostToKnx = _lostToKnx + 1; }
     void incrementRoutedToIp() { inc32(_routedToIp); }
     void incrementRoutedToKnx() { inc32(_routedToKnx); }
@@ -59,6 +60,7 @@ class KnxIpCounters
     static void inc32(volatile uint32_t& v) { const uint32_t c = v; if (c < 0xFFFFFFFF) v = c + 1; }
     static void inc16(volatile uint32_t& v) { const uint32_t c = v; if (c < 0xFFFF) v = c + 1; }
     static void add32(volatile uint32_t& v, uint16_t n) { const uint32_t c = v; v = (c > 0xFFFFFFFF - n) ? 0xFFFFFFFF : c + n; }
+    static void add16(volatile uint32_t& v, uint8_t n) { const uint32_t c = v + n; v = (c > 0xFFFF) ? 0xFFFF : c; }
 
     volatile uint32_t _transmitToIp = 0;
     volatile uint32_t _transmitToKnx = 0;

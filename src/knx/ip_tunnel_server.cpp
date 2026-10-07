@@ -45,17 +45,31 @@ IpTunnelServer::IpTunnelServer(DeviceObject& devObj, IpParameterObject& ipParam,
 bool IpTunnelServer::sendCounted(uint32_t addr, uint16_t port, uint8_t* buffer, uint16_t len)
 {
     const bool sent = _platform.sendBytesUniCast(addr, port, buffer, len);
-    if (_counters != nullptr)
-    {
-        if (sent)
-            _counters->incrementTransmitToIp();
-        else
-            // A false return is dominated by a full IP TX buffer (ENOBUFS / no free W5500 slot) = a real
-            // queue overflow to IP (PID 72, 03_08_03 2.5.23). A rare link-down / socket error also lands
-            // here; splitting the two would need the platform to report the failure reason -- kept as-is.
-            _counters->incrementOverflowToIp();
-    }
+    if (sent && _counters != nullptr)
+        _counters->incrementTransmitToIp();
     return sent;
+}
+
+bool IpTunnelServer::sendMessageCounted(uint32_t addr, uint16_t port, uint8_t* buffer, uint16_t len)
+{
+    const bool sent = sendCounted(addr, port, buffer, len);
+    // false: the datagram did not leave (no buffer, no route while the link is down, driver refused, or no socket).
+    if (!sent)
+        countLostToIp(1);
+    return sent;
+}
+
+void IpTunnelServer::countLostToIp(uint8_t n)
+{
+    if (_counters != nullptr)
+        _counters->addOverflowToIp(n);
+}
+
+// A device management connection carries M_Prop/cEMI services, no KNX telegrams: only its txDrop stats count.
+void IpTunnelServer::countTunnelLoss(const KnxIpTunnelConnection& t)
+{
+    if (!t.IsConfig)
+        countLostToIp(1);
 }
 
 uint8_t IpTunnelServer::tunnelCount() const
@@ -188,6 +202,9 @@ void IpTunnelServer::recordTunnelSession(uint32_t ip, uint16_t pa, uint8_t type,
         // Reset() throws the FIFO away, so what was queued behind the head is a real loss. The head
         // counts as delivered only if it reached the wire and the ending is not END_NOACK.
         const bool headOut = conn->_armed && conn->_txCount > 0 && conn->_headSent && reason != END_NOACK;
+        // PID 72: an armed head that never left counts; frames queued behind a tunnel head go to txDrop.
+        if (conn->_armed && !conn->_headSent)
+            countTunnelLoss(*conn);
         const uint8_t queued = conn->_txCount - (headOut ? 1 : 0);
         e.txDrop = (e.txDrop > (uint16_t)(0xFFFF - queued)) ? (uint16_t)0xFFFF : (uint16_t)(e.txDrop + queued);
 #endif
@@ -613,7 +630,10 @@ void IpTunnelServer::sendFrameToTunnel(KnxIpTunnelConnection* tunnel, CemiFrame&
     if (sendCounted(tunnel->IpAddress, tunnel->PortData, req.data(), req.totalLength()))
         bumpTo(tunnel->StatToClient);
     else
+    {
         bumpTo(tunnel->StatTxDrop);
+        countTunnelLoss(*tunnel);
+    }
 #endif
 }
 
@@ -751,10 +771,8 @@ void IpTunnelServer::pumpTunnel(KnxIpTunnelConnection* t)
     t->_retries = 0;
     t->_sentAt = millis();
     t->_armed = true;
-    // Counted when the datagram really leaves the device. A false return (IP TX buffer full / no socket)
-    // is neither a delivery nor a loss: the frame stays armed and the 1 s timer resends it. _headSent
-    // carries that across, so a frame that only gets out on a repeat is still counted as one delivery --
-    // otherwise a tunnel could show "->client 0" next to a resend count.
+    // Counted when the datagram leaves; a failed send stays armed for the request timer and _headSent keeps it one delivery.
+    // A head that never leaves counts in PID 72 at the teardown (recordTunnelSession()).
     t->_headSent = false;
     if (sendCounted(t->IpAddress, t->PortData, t->_txBuf[h], t->_txLen[h]))
     {
@@ -2206,7 +2224,7 @@ void IpTunnelServer::busMonitorFrame(uint8_t* lpdu, uint16_t len, uint8_t status
 
         req.connectionHeader().sequenceCounter(_busMonTunnel[bm].SequenceCounter_S++);
         req.connectionHeader().channelId(_busMonTunnel[bm].ChannelId);
-        if (sendCounted(_busMonTunnel[bm].IpAddress, _busMonTunnel[bm].PortData, req.data(), req.totalLength()))
+        if (sendMessageCounted(_busMonTunnel[bm].IpAddress, _busMonTunnel[bm].PortData, req.data(), req.totalLength()))
             bumpTo(_busMonTunnel[bm].StatToClient);
         else
         {

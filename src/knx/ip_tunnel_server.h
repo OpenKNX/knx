@@ -310,9 +310,15 @@ class IpTunnelServer
     void recordRejectedConnect(uint32_t ip, uint8_t type, uint8_t reason, uint8_t detail);
     IpParameterObject& _ipParameters;
     DeviceObject& _deviceObject;
-    // Single funnel for every datagram this server emits, so PID_MSG_TRANSMIT_TO_IP counts them all
-    // (Core, Tunnelling, Device Management, ACKs) as the spec requires.
+    // Funnel for every datagram this server emits: PID 74 (PID_MSG_TRANSMIT_TO_IP) counts each one that leaves
+    // (03_08_03 2.5.25). A failure is no PID 72 loss here: a control datagram is no KNX message, the FIFO head is resent.
     bool sendCounted(uint32_t addr, uint16_t port, uint8_t* buffer, uint16_t len);
+    // A busmonitor frame: sendCounted(), and a failure counts in PID 72.
+    bool sendMessageCounted(uint32_t addr, uint16_t port, uint8_t* buffer, uint16_t len);
+    // PID 72 and lostToIp: n KNX messages finally lost on the way to IP (03_08_03 2.5.23 p.15).
+    void countLostToIp(uint8_t n);
+    /** @brief One frame of tunnel t lost: PID 72 for a tunnelling connection, nothing for device management. */
+    void countTunnelLoss(const KnxIpTunnelConnection& t);
 
     KnxIpCounters* _counters = nullptr;
     Platform& _platform;
