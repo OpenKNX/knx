@@ -286,7 +286,7 @@ bool IpParameterObject::takeDeviceStateChanged()
 }
 
 // 03_08_03 3.5.2 p.20: KNX-fault bit set after 5 s without a usable bus, cleared on resume. busOperational is the
-// driver's debounced link + bus-voltage state; the IP-fault bit comes from the network module via the same flag.
+// driver's link, chip-silence and bus-voltage state; the IP-fault bit comes from the network module via the same flag.
 bool IpParameterObject::updateDeviceState(bool busOperational)
 {
     const bool busDown = !busOperational;
