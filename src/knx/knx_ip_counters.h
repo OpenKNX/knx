@@ -3,22 +3,9 @@
 #include <stdint.h>
 
 /**
- * @brief KNXnet/IP telegram counters of the KNXnet/IP parameter object (03_08_03 2.5.23-2.5.26).
- *
- * Spec semantics, verified against the standard and deliberately NOT "routed telegrams":
- *  - transmitToIp  (PID 74, PDT_UNSIGNED_LONG): every KNXnet/IP datagram of any kind put on the IP
- *    network -- Core, Tunnelling, Routing, Device Management, ACKs included.
- *  - transmitToKnx (PID 75, PDT_UNSIGNED_LONG): telegrams a router put on the KNX subnetwork.
- *  - overflowToIp/ToKnx (PID 72/73, PDT_UNSIGNED_INT): telegrams LOST on the way to that side (send
- *    limit, queue full; on the router also IP down or IP fault, TP chip not connected, allocation
- *    failure, queue dropped by a chip reset). Filtered telegrams are not losses and are not counted in PID 72/73.
- *
- * The spec requires the counts not to wrap; all four saturate at their property width.
- * routedToIp/ToKnx, filteredToIp/ToKnx and hopCountToIp/ToKnx are ours, not spec: the coupler's
- * routing decision per direction, for the console and the display.
- * lostMessageRx/lostReportedRx/busyRx are ours too: ROUTING_LOST_MESSAGE and ROUTING_BUSY received
- * from other devices, and the sum of their NumberOfLostMessages fields (03_08_05 5.3/5.4 p.16-17).
- * lostToKnx is the wrapping twin of PID 73; ROUTING_LOST_MESSAGE reports its delta (03_08_05 2.3.4 p.10).
+ * @brief KNXnet/IP parameter object counters (03_08_03 2.5.23-2.5.26); PID counters saturate, lostToIp/lostToKnx wrap, the others are ours, not spec.
+ * PID 72/73 (2.5.23/2.5.24): KNX telegrams finally lost: send limit, queue full, failed send, link down, oversize tunnel frame, allocation failure; to KNX also TP chip down.
+ * Not counted: control datagrams, filtered telegrams, frames queued behind a tunnel head (txDrop).
  */
 class KnxIpCounters
 {
@@ -62,11 +49,11 @@ class KnxIpCounters
     static void add32(volatile uint32_t& v, uint16_t n) { const uint32_t c = v; v = (c > 0xFFFFFFFF - n) ? 0xFFFFFFFF : c + n; }
     static void add16(volatile uint32_t& v, uint8_t n) { const uint32_t c = v + n; v = (c > 0xFFFF) ? 0xFFFF : c; }
 
-    volatile uint32_t _transmitToIp = 0;
-    volatile uint32_t _transmitToKnx = 0;
+    volatile uint32_t _transmitToIp = 0;  // PID 74: every KNXnet/IP datagram sent, ACKs included
+    volatile uint32_t _transmitToKnx = 0; // PID 75: telegrams put on the KNX subnetwork
     volatile uint32_t _overflowToIp = 0;
     volatile uint32_t _overflowToKnx = 0;
-    volatile uint32_t _lostToKnx = 0; // wraps on purpose: only differences are read
+    volatile uint32_t _lostToKnx = 0; // wraps on purpose; ROUTING_LOST_MESSAGE reports its delta (03_08_05 2.3.4)
     volatile uint32_t _lostToIp = 0;  // wraps on purpose: only differences are read
     volatile uint32_t _routedToIp = 0;
     volatile uint32_t _routedToKnx = 0;

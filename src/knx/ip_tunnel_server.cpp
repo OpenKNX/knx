@@ -573,6 +573,7 @@ void IpTunnelServer::sendFrameToTunnel(KnxIpTunnelConnection* tunnel, CemiFrame&
         println("tunnel tx: oversize frame dropped");
     #endif
         bumpTo(tunnel->StatTxDrop);
+        countTunnelLoss(*tunnel);
         return;
     }
     if (tunnel->_txCount == KNX_TUNNEL_RESEND_DEPTH)
@@ -582,6 +583,7 @@ void IpTunnelServer::sendFrameToTunnel(KnxIpTunnelConnection* tunnel, CemiFrame&
         if (isGroupTelegram)
         {
             bumpTo(tunnel->StatGrpDrop); // best-effort by design: the connection is worth more than the frame
+            countTunnelLoss(*tunnel);
             return;
         }
 
@@ -591,10 +593,12 @@ void IpTunnelServer::sendFrameToTunnel(KnxIpTunnelConnection* tunnel, CemiFrame&
         if (!evictOldestGroupFrame(tunnel))
         {
             bumpTo(tunnel->StatTxDrop); // the frame that overflowed is lost as well, not just the connection
+            countTunnelLoss(*tunnel);     // frames queued behind a tunnel head go to txDrop at the teardown
             disconnectTunnel(tunnel, END_OVERFLOW);
             return;
         }
         bumpTo(tunnel->StatGrpDrop); // counted where every other group drop is counted
+        countTunnelLoss(*tunnel);    // the evicted frame
     }
     // Build the datagram DIRECTLY into the FIFO slot -> no per-frame new[] and no intermediate copy (was:
     // KnxIpTunnelingRequest new[] then memcpy into the slot). Fixed KNXnet/IP layout: 6-byte header + 4-byte
