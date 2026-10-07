@@ -25,7 +25,7 @@ class KnxIpCounters
   public:
     void incrementTransmitToIp() { inc32(_transmitToIp); }
     void incrementTransmitToKnx() { inc32(_transmitToKnx); }
-    void incrementOverflowToIp() { inc16(_overflowToIp); }
+    void incrementOverflowToIp() { inc16(_overflowToIp); _lostToIp = _lostToIp + 1; }
     void incrementOverflowToKnx() { inc16(_overflowToKnx); _lostToKnx = _lostToKnx + 1; }
     void incrementRoutedToIp() { inc32(_routedToIp); }
     void incrementRoutedToKnx() { inc32(_routedToKnx); }
@@ -43,6 +43,7 @@ class KnxIpCounters
     uint16_t overflowToIp() const { return (uint16_t)_overflowToIp; }
     uint16_t overflowToKnx() const { return (uint16_t)_overflowToKnx; }
     uint32_t lostToKnx() const { return _lostToKnx; }
+    uint32_t lostToIp() const { return _lostToIp; }
     uint32_t routedToIp() const { return _routedToIp; }
     uint32_t routedToKnx() const { return _routedToKnx; }
     uint32_t filteredToIp() const { return _filteredToIp; }
@@ -64,6 +65,7 @@ class KnxIpCounters
     volatile uint32_t _overflowToIp = 0;
     volatile uint32_t _overflowToKnx = 0;
     volatile uint32_t _lostToKnx = 0; // wraps on purpose: only differences are read
+    volatile uint32_t _lostToIp = 0;  // wraps on purpose: only differences are read
     volatile uint32_t _routedToIp = 0;
     volatile uint32_t _routedToKnx = 0;
     volatile uint32_t _filteredToIp = 0;
