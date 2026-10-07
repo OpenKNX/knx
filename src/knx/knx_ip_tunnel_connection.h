@@ -56,10 +56,7 @@ class KnxIpTunnelConnection
     uint16_t _txLen[KNX_TUNNEL_RESEND_DEPTH] = {0}; // used bytes per slot (<= BUF=280); MUST be 16-bit -- an
                                                     // extended-frame datagram (~273 B) truncated in a uint8_t
                                                     // would make pumpTunnel send the wrong length
-    bool _txIsGroup[KNX_TUNNEL_RESEND_DEPTH] = {false}; // per slot: queued frame is group-addressed, i.e.
-                                                        // best-effort and evictable to make room for a
-                                                        // connection-oriented frame. Only read for slots
-                                                        // below _txCount, so Reset() need not clear it.
+    bool _txIsGroup[KNX_TUNNEL_RESEND_DEPTH] = {false}; // per slot: droppable group frame (destination != 0), evictable; read only below _txCount
     uint8_t _txHead = 0;    // slot in flight / next to send
     uint8_t _txTail = 0;    // next free slot to enqueue
     uint8_t _txCount = 0;   // queued slots (0..DEPTH)

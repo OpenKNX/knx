@@ -557,9 +557,10 @@ void IpTunnelServer::sendFrameToTunnel(KnxIpTunnelConnection* tunnel, CemiFrame&
     // spelled "svc == TunnelingRequest", which was the same thing only as long as the service was picked
     // by the message code; addressType() reads a control-field bit that carries no meaning in an M_Prop
     // frame, so the test has to name the message code itself.
+    // Broadcasts and system broadcasts (destination 0) carry management answers and stay undroppable.
     const bool isGroupTelegram = (frame.messageCode() == L_data_req || frame.messageCode() == L_data_con
                                   || frame.messageCode() == L_data_ind)
-                                 && frame.addressType() == AddressType::GroupAddress;
+                                 && frame.addressType() == AddressType::GroupAddress && frame.destinationAddress() != 0;
 
 #ifdef KNX_TUNNEL_RESEND
     const uint16_t cemiLen = frame.totalLenght();
@@ -1973,7 +1974,7 @@ void IpTunnelServer::HandleTunnelingRequest(uint8_t* buffer, uint16_t length, ui
 
 #if defined(KNX_TUNNEL_RESEND) && KNX_TUNNEL_BACKPRESSURE <= KNX_TUNNEL_RESEND_DEPTH
     // From KNX_TUNNEL_BACKPRESSURE undroppable frames on, no TUNNELLING_ACK (deviation from 03_08_04 2.6.1 p.9): the client repeats after 1 s
-    // and disconnects if the repeat is unanswered too. Group frames do not count, except the head on the wire.
+    // and disconnects if the repeat is unanswered too. Droppable group frames do not count, except the head on the wire; broadcasts do.
     uint8_t held = 0;
     for (uint8_t j = 0; j < tun->_txCount; j++)
         held += !tun->_txIsGroup[(tun->_txHead + j) % KNX_TUNNEL_RESEND_DEPTH] || (j == 0 && tun->_armed);
