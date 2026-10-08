@@ -347,11 +347,13 @@ void ApplicationLayer::connectConfirm(uint16_t destination, uint16_t tsap, bool 
 void ApplicationLayer::disconnectIndication(uint16_t tsap)
 {
     _connectedTsap = -1;
+    _bau.connectionClosed(tsap);
 }
 
 void ApplicationLayer::disconnectConfirm(Priority priority, uint16_t tsap, bool status)
 {
     _connectedTsap = -1;
+    _bau.connectionClosed(tsap);
 }
 
 void ApplicationLayer::dataConnectedIndication(Priority priority, uint16_t tsap, APDU& apdu)

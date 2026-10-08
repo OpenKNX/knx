@@ -161,6 +161,7 @@ class BusAccessUnit
                                          bool status);
     virtual void keyWriteAppLayerConfirm(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, uint8_t level);
     virtual void connectConfirm(uint16_t destination);
+    virtual void connectionClosed(uint16_t tsap);
     virtual void systemNetworkParameterReadIndication(Priority priority, HopCountType hopType, const SecurityControl &secCtrl, uint16_t objectType,
                                                       uint16_t propertyId, uint8_t* testInfo, uint16_t testInfoLength);
 

@@ -324,6 +324,10 @@ void BusAccessUnit::connectConfirm(uint16_t destination)
 {
 }
 
+void BusAccessUnit::connectionClosed(uint16_t tsap)
+{
+}
+
 void BusAccessUnit::systemNetworkParameterReadIndication(Priority priority, HopCountType hopType, const SecurityControl &secCtrl, uint16_t objectType,
                                                          uint16_t propertyId, uint8_t* testInfo, uint16_t testInfoLength)
 {

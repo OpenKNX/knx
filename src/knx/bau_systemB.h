@@ -183,6 +183,7 @@ class BauSystemB : protected BusAccessUnit
     void systemNetworkParameterReadLocalConfirm(Priority priority, HopCountType hopType, const SecurityControl &secCtrl, uint16_t objectType,
                                                 uint16_t propertyId, uint8_t* testInfo, uint16_t testInfoLength, bool status) override;
     void connectConfirm(uint16_t tsap) override;
+    void connectionClosed(uint16_t tsap) override;
 
     void nextRestartState();
     /** @brief Steps of the 03_05_02 3.7.1.1.1 Basic Restart this stack implements, without restarting the device; subclasses add theirs. */

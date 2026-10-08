@@ -954,8 +954,16 @@ bool BauSystemB::restartRequest(uint16_t asap, const SecurityControl secCtrl)
     _restartState = Connecting; // order important, has to be set BEFORE connectRequest
     _restartSecurity = secCtrl;
     applicationLayer().connectRequest(asap, SystemPriority);
+    if (_restartState == Idle)
+        return false; // refused at once: E25 while another T_Connect waits, or a synchronous negative con (E20)
     applicationLayer().deviceDescriptorReadRequest(AckRequested, SystemPriority, NetworkLayerParameter, asap, secCtrl, 0);
     return true;
+}
+
+// The transport connection closed (T_Disconnect.ind of A5/A6, or .con of A14/A15, 03_03_04): a pending restartRequest() stops.
+void BauSystemB::connectionClosed(uint16_t tsap)
+{
+    _restartState = Idle;
 }
 
 void BauSystemB::connectConfirm(uint16_t tsap)
