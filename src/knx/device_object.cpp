@@ -107,7 +107,10 @@ uint8_t* DeviceObject::save(uint8_t* buffer)
 const uint8_t* DeviceObject::restore(const uint8_t* buffer)
 {
     buffer = popWord(_ownAddress, buffer);
-    return InterfaceObject::restore(buffer);
+    buffer = InterfaceObject::restore(buffer);
+    // 03_05_01 4.2.14.4 p.35: PID 14 is 00h on start-up; it is persisted only because it is writable.
+    property(PID_DEVICE_CONTROL)->write((uint8_t)0);
+    return buffer;
 }
 
 uint16_t DeviceObject::saveSize()
@@ -177,6 +180,27 @@ void DeviceObject::verifyMode(bool value)
         data |= VERIFY_MODE;
     else
         data &= ~VERIFY_MODE;
+    prop->write(data);
+}
+
+// 03_05_01 4.2.14.8.4: Safe State is not implemented, so bit 3 of PID 14 stays 0 after a write.
+void DeviceObject::writeProperty(PropertyID id, uint16_t start, uint8_t* data, uint8_t& count)
+{
+    InterfaceObject::writeProperty(id, start, data, count);
+    if (id == PID_DEVICE_CONTROL && count > 0)
+        safeState(false);
+}
+
+void DeviceObject::safeState(bool value)
+{
+    Property* prop = property(PID_DEVICE_CONTROL);
+    uint8_t data = 0;
+    prop->read(data);
+
+    if (value)
+        data |= SAFE_STATE;
+    else
+        data &= ~SAFE_STATE;
     prop->write(data);
 }
 

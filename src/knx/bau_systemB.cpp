@@ -995,6 +995,7 @@ void BauSystemB::cemiServerReset()
 void BauSystemB::softRestart()
 {
     _deviceObj.progMode(false); // 03_05_02 3.7.1.1.1: programming mode off
+    _deviceObj.safeState(false); // and safe state off
 }
 
 void BauSystemB::nextRestartState()

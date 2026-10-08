@@ -25,6 +25,9 @@ public:
     void individualAddressDuplication(bool value);
     bool verifyMode();
     void verifyMode(bool value);
+    /** @brief Safe State Control, PID 14 bit 3 (03_05_01 4.2.14.8). */
+    void safeState(bool value);
+    void writeProperty(PropertyID id, uint16_t start, uint8_t* data, uint8_t& count) override;
     bool progMode();
     void progMode(bool value);
     uint16_t manufacturerId();
