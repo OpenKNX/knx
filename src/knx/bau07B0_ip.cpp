@@ -176,6 +176,14 @@ bool Bau07B0IP::networkChanged(bool afterOutage)
     return _ipLayer.networkChanged(afterOutage);
 }
 
+// Basic Restart after M_Reset.req (03_05_02 3.7.1.1.1): transport connection and all KNXnet/IP connections closed.
+// Open gap: IP assignment, address, mask and gateway written by ETS are not applied after M_Reset + 30 s (03_08_03 2.5.1 p.8); OFM-Network reads them at boot.
+void Bau07B0IP::softRestart()
+{
+    BauSystemBDevice::softRestart();
+    _ipTunnelServer.closeAllTunnels();
+}
+
 void Bau07B0IP::loop()
 {
     _ipLayer.loop();   // KNXnet/IP endpoint: pumps discovery + tunnel

@@ -291,6 +291,15 @@ TPAckType Bau091A::isAckRequired(uint16_t address, bool isGrpAddr)
     return ack;
 }
 
+// Basic Restart after M_Reset.req (03_05_02 3.7.1.1.1): transport connection and all KNXnet/IP connections closed.
+void Bau091A::softRestart()
+{
+    BauSystemBCoupler::softRestart();
+#ifdef KNX_TUNNELING
+    _ipTunnelServer.closeAllTunnels();
+#endif
+}
+
 // 03_02_06 4.3.5.3.2: the serial number via A_NetworkParameter_Read in broadcast mode, only in programming mode.
 void Bau091A::networkParameterReadIndication(Priority priority, HopCountType hopType, const SecurityControl &secCtrl, uint16_t objectType,
                                              uint8_t propertyId, const uint8_t* testInfo, uint16_t testInfoLength)
