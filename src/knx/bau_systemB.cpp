@@ -942,8 +942,7 @@ void BauSystemB::ftcScanReadDescriptor(const SecurityControl& sec)
 
 void BauSystemB::ftcScanDisconnect()
 {
-    // NOT gated on isConnected(): a failed TP connect leaves the transport stuck in Connecting, and only
-    // disconnectRequest returns it to Closed -- so this must run on every scan exit path.
+    // Not gated on isConnected(): a T_Connect still waiting for its con (CONNECTING) is closed here as well (E26).
     applicationLayer().disconnectRequest(SystemPriority);
 }
 #endif

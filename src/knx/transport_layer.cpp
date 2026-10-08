@@ -358,9 +358,7 @@ void TransportLayer::dataIndividualConfirm(AckType ack, uint16_t destination, Ho
             case Connecting:
                 if (destination != _connectionAddress)
                     break; // a con for another partner is treated as E27 (A0); the spec assumes no second T_Connect before the con (03_03_04 p.17)
-                _currentState = Closed; // 03_03_04 §5.4.3 Style-3: E20 x CONNECTING = CLOSED / A5. Without this the
-                                        // state stays CONNECTING while A5 disables both timers -> the connection
-                                        // wedges and the first reconnect after a failed T_CONNECT is swallowed.
+                _currentState = Closed; // 03_03_04 5.4.3 Style 3: E20 in CONNECTING -> CLOSED, A5
                 A5(destination);
                 break;
             }
@@ -795,10 +793,11 @@ void TransportLayer::A12(uint16_t destination, Priority priority)
     CemiFrame frame(0);
     TPDU& tpdu = frame.tpdu();
     tpdu.type(Connect);
-    _networkLayer->dataIndividualRequest(AckRequested, destination, NetworkLayerParameter, priority, tpdu);
+    // Armed before the request, so the A5 of a synchronous negative con (E20) leaves no timer running in CLOSED.
     _seqNoRecv = 0;
     _seqNoSend = 0;
     enableConnectionTimeout();
+    _networkLayer->dataIndividualRequest(AckRequested, destination, NetworkLayerParameter, priority, tpdu);
 }
 
 void TransportLayer::A13(uint16_t destination)
