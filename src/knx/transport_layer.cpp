@@ -24,6 +24,39 @@ void TransportLayer::groupAddressTable(AddressTableObject &addrTable)
     _groupAddressTable = &addrTable;
 }
 
+#ifdef KNX_CEMI_TRANSPORT_LAYER
+/**
+ * @brief True for the response APCIs passed in cEMI Transport Layer mode, so the device's own requests get their answers.
+ */
+static bool isIndividualResponse(ApduType type)
+{
+    switch (type)
+    {
+    case ADCResponse:
+    case PropertyValueExtResponse:
+    case PropertyValueExtWriteConResponse:
+    case PropertyExtDescriptionResponse:
+    case FunctionPropertyExtStateResponse:
+    case MemoryExtWriteResponse:
+    case MemoryExtReadResponse:
+    case MemoryResponse:
+    case UserMemoryResponse:
+    case UserManufacturerInfoResponse:
+    case FunctionPropertyStateResponse:
+    case DeviceDescriptorResponse:
+    case RoutingTableReadResponse:
+    case MemoryRouterReadResponse:
+    case AuthorizeResponse:
+    case KeyResponse:
+    case PropertyValueResponse:
+    case PropertyDescriptionResponse:
+        return true;
+    default:
+        return false;
+    }
+}
+#endif
+
 void TransportLayer::dataIndividualIndication(uint16_t destination, HopCountType hopType, Priority priority, uint16_t source, TPDU& tpdu)
 {
     //if (tpdu.apdu().length() > 0)
@@ -38,6 +71,11 @@ void TransportLayer::dataIndividualIndication(uint16_t destination, HopCountType
     switch (tpdu.type())
     {
     case DataInduvidual:
+#ifdef KNX_CEMI_TRANSPORT_LAYER
+        // cEMI Transport Layer mode: drop requests and commands from the network, pass responses (08_TSSH 8.3.6 p.163 tests the routed case).
+        if (_cemiTransportMode && !isIndividualResponse(tpdu.apdu().type()))
+            return;
+#endif
         _applicationLayer.dataIndividualIndication(hopType, priority, source, tpdu.apdu());
         return;
     case DataConnected:
@@ -500,14 +538,14 @@ uint16_t TransportLayer::localTransportRequest(APDU& apdu, bool connected, uint8
 
 // 03_08_03 2.6.1.2 p.18 / 2.6.1.6 p.19: an established KNXnet/IP Device Management connection switches the
 // Transport Layer to cEMI Transport Layer mode for the duration of that connection, and a T_Connect that
-// arrives while the mode is active is refused with T_Disconnect (08_TSSH 6.2 / test 60202).
+// arrives while the mode is active is refused with T_Disconnect (08_TSSH 8.3.2 / test 60202).
 //
 // The mode is a flag, NOT a simulated connection. Taking the layer over -- setting _connectionAddress and
 // the state to OpenIdle -- would have to be undone on every exit, would evict or be evicted by a real
 // connection (the file transfer client opens one to program another device), and would answer a T_Connect
 // the way a BUSY layer does rather than the way the mode should. The two primitives the clause names,
-// T_Connect.ind and T_Disconnect.ind, are internal to the Application Layer; the only behaviour visible on
-// the wire is the refusal, and that is what this flag produces in dataIndividualIndication().
+// T_Connect.ind and T_Disconnect.ind, are internal to the Application Layer; on the wire the flag produces the
+// refusal and the dropped network T_Data_Individual requests in dataIndividualIndication().
 void TransportLayer::cemiTransportMode(bool active)
 {
     if (_cemiTransportMode && !active)
