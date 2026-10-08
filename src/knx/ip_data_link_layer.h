@@ -61,6 +61,7 @@ class IpDataLinkLayer : public DataLinkLayer
     uint32_t multiCastAddress(); // property source; read once at enable, then latched
     uint32_t systemSetupMultiCastAddress();
     void loopSystemBroadcast();
+    bool _sbcOpenFailed = false; // the secondary socket could not be opened; no retry until the mode goes off
     bool sendSystemBroadcast(CemiFrame& frame);
     bool _sbcSocketOpen = false;
     uint32_t _joinedGroup = 0; // 03_08_03 2.5.17: PID 66 becomes active on reset, not at runtime

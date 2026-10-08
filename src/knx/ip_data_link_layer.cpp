@@ -367,8 +367,10 @@ bool IpDataLinkLayer::sendSystemBroadcast(CemiFrame& frame)
 // never uses system broadcast keeps one socket, as before.
 void IpDataLinkLayer::enableSystemBroadcast(bool value)
 {
-    if (value == _sbcSocketOpen)
-        return;
+    if (!value)
+        _sbcOpenFailed = false;
+    if (value == _sbcSocketOpen || (value && _sbcOpenFailed))
+        return; // one attempt per mode activation: a refused open must not repeat every pass
 
     if (!value)
     {
@@ -383,7 +385,10 @@ void IpDataLinkLayer::enableSystemBroadcast(bool value)
     _sbcSocketOpen = _platform.setupMultiCastSecondary(systemSetupMultiCastAddress(), KNXIP_MULTICAST_PORT);
 
     if (!_sbcSocketOpen)
+    {
+        _sbcOpenFailed = true;
         println("IP system broadcast: the system setup group could not be joined");
+    }
 }
 
 // A second socket instead of the arrival address of the datagram: the destination is not available on
