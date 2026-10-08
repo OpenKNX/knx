@@ -164,6 +164,8 @@ enum ApduType
     IndividualAddressSerialNumberRead = 0x3dc,
     IndividualAddressSerialNumberResponse = 0x3dd,
     IndividualAddressSerialNumberWrite = 0x3de,
+    NetworkParameterRead = 0x3da,
+    NetworkParameterResponse = 0x3db,
 
     // Application Layer Services on System Broadcast communication mode
     SystemNetworkParameterRead = 0x1c8,

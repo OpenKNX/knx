@@ -156,6 +156,15 @@ void ApplicationLayer::dataBroadcastIndication(HopCountType hopType, Priority pr
             _bau.individualAddressSerialNumberWriteIndication(priority, hopType, secCtrl, newIndividualAddress, knxSerialNumber);
             break;
         }
+        case NetworkParameterRead:
+        {
+            // 03_03_07 3.2.6 p.25: object_type (2), PID (1), test_info (>= 1)
+            if (apdu.length() < 5) break;
+            uint16_t objectType;
+            popWord(objectType, data + 1);
+            _bau.networkParameterReadIndication(priority, hopType, secCtrl, objectType, data[3], data + 4, apdu.length() - 4);
+            break;
+        }
         default:
             print("Broadcast-indication: unhandled APDU-Type: ");
             println(apdu.type());
@@ -638,6 +647,25 @@ void ApplicationLayer::systemNetworkParameterReadResponse(Priority priority, Hop
     //apdu.printPDU();
 
     dataSystemBroadcastRequest(AckDontCare, hopType, SystemPriority, apdu, secCtrl);
+}
+
+void ApplicationLayer::networkParameterReadResponse(Priority priority, HopCountType hopType, const SecurityControl& secCtrl, uint16_t objectType,
+                                                    uint8_t propertyId, const uint8_t* testInfo, uint16_t testInfoLength,
+                                                    const uint8_t* testResult, uint16_t testResultLength)
+{
+    // 03_03_07 3.2.6: object_type (2), PID (1), the echoed test_info, test_result; always in broadcast mode here.
+    if (testInfoLength + testResultLength > MAX_APDU_OCTET_COUNT - 4)
+        return;
+
+    CemiFrame frame(1 + 3 + testInfoLength + testResultLength);
+    APDU& apdu = frame.apdu();
+    apdu.type(NetworkParameterResponse);
+    uint8_t* data = apdu.data() + 1;
+    pushWord(objectType, data);
+    data[2] = propertyId;
+    memcpy(data + 3, testInfo, testInfoLength);
+    memcpy(data + 3 + testInfoLength, testResult, testResultLength);
+    dataBroadcastRequest(AckDontCare, hopType, SystemPriority, apdu, secCtrl);
 }
 
 //TODO: ApplicationLayer::domainAddressSerialNumberWriteRequest() not implemented: requester-only, device responds and never sends. Not needed.

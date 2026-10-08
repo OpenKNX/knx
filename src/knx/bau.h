@@ -166,6 +166,8 @@ class BusAccessUnit
 
     virtual void domainAddressSerialNumberWriteIndication(Priority priority, HopCountType hopType, const SecurityControl &secCtrl, const uint8_t* rfDoA,
                                                           const uint8_t* knxSerialNumber);
+    virtual void networkParameterReadIndication(Priority priority, HopCountType hopType, const SecurityControl &secCtrl, uint16_t objectType,
+                                                uint8_t propertyId, const uint8_t* testInfo, uint16_t testInfoLength);
 
     virtual void domainAddressSerialNumberReadIndication(Priority priority, HopCountType hopType, const SecurityControl &secCtrl, const uint8_t* knxSerialNumber);
 

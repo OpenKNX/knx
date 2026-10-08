@@ -169,6 +169,9 @@ class ApplicationLayer
     void keyWriteRequest(AckType ack, Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl& secCtrl, uint8_t level, uint32_t key);
     void keyWriteResponse(AckType ack, Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl& secCtrl, uint8_t level);
 
+    void networkParameterReadResponse(Priority priority, HopCountType hopType, const SecurityControl& secCtrl, uint16_t objectType,
+                                      uint8_t propertyId, const uint8_t* testInfo, uint16_t testInfoLength,
+                                      const uint8_t* testResult, uint16_t testResultLength);
     void systemNetworkParameterReadResponse(Priority priority, HopCountType hopType, const SecurityControl& secCtrl, uint16_t objectType,
                                             uint16_t propertyId, uint8_t* testInfo, uint16_t testInfoLength,
                                             uint8_t* testResult, uint16_t testResultLength);

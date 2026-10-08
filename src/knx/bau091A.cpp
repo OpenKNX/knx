@@ -291,6 +291,16 @@ TPAckType Bau091A::isAckRequired(uint16_t address, bool isGrpAddr)
     return ack;
 }
 
+// 03_02_06 4.3.5.3.2: the serial number via A_NetworkParameter_Read in broadcast mode, only in programming mode.
+void Bau091A::networkParameterReadIndication(Priority priority, HopCountType hopType, const SecurityControl &secCtrl, uint16_t objectType,
+                                             uint8_t propertyId, const uint8_t* testInfo, uint16_t testInfoLength)
+{
+    if (objectType != OT_DEVICE || propertyId != PID_SERIAL_NUMBER || testInfoLength < 1 || testInfo[0] != 0x01 || !_deviceObj.progMode())
+        return;
+    applicationLayer().networkParameterReadResponse(priority, hopType, secCtrl, objectType, propertyId, testInfo, testInfoLength,
+                                                    _deviceObj.propertyData(PID_SERIAL_NUMBER), 6); // PID 11 always exists
+}
+
 bool Bau091A::configured()
 {
     // _configured is set to true initially, if the device was configured with ETS it will be set to true after restart
