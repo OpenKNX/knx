@@ -22,6 +22,7 @@ class BauSystemBCoupler : public BauSystemB
     bool configured() override;
 
   protected:
+    void softRestart() override;
     ApplicationLayer& applicationLayer() override;
 
     void doMasterReset(EraseCode eraseCode, uint8_t channel) override;

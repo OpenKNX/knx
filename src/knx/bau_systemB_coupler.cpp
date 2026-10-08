@@ -65,3 +65,11 @@ void BauSystemBCoupler::doMasterReset(EraseCode eraseCode, uint8_t channel)
     _secIfObj.masterReset(eraseCode, channel);
 #endif
 }
+
+// Basic Restart (03_05_02 3.7.1.1.1): an open KNX Transport Layer connection is closed with a T_Disconnect.
+void BauSystemBCoupler::softRestart()
+{
+    BauSystemB::softRestart();
+    if (_transLayer.hasOpenConnection())
+        _transLayer.disconnectRequest(_transLayer.connectionPeer(), SystemPriority);
+}

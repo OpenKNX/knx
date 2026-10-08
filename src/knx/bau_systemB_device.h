@@ -25,6 +25,7 @@ class BauSystemBDevice : public BauSystemB
     GroupObjectTableObject& groupObjectTable();
 
   protected:
+    void softRestart() override;
     ApplicationLayer& applicationLayer() override;
 
     void groupValueWriteLocalConfirm(AckType ack, uint16_t asap, Priority priority, HopCountType hopType, const SecurityControl &secCtrl,

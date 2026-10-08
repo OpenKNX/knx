@@ -624,10 +624,9 @@ void CemiServer::handleMPropWrite(CemiFrame& frame, uint8_t channelId)
 
 void CemiServer::handleMReset(CemiFrame& frame, uint8_t channelId)
 {
-    println("M_Reset_req: sending M_Reset_ind");  
-    // A real device reset does not work for USB or KNXNET/IP.
-    // Thus, M_Reset_ind is NOT mandatory for USB and KNXNET/IP.
-    // We just save all data to the EEPROM
+    println("M_Reset_req: sending M_Reset_ind, then the implemented steps of a Basic Restart");
+    // 03_06_03 4.1.7.5.1: the implemented steps of a Basic Restart (03_05_02 3.7.1.1.1), done in software: the
+    // device keeps running, so a client sending M_Reset between its steps finds it answering again at once.
     _bau.writeMemory();
     // Prepare response
     uint8_t responseData[1];
@@ -638,6 +637,7 @@ void CemiServer::handleMReset(CemiFrame& frame, uint8_t channelId)
 #elif defined(KNX_TUNNELING)
     _ipTunnelServer.dataRequestToChannelId(responseFrame, channelId);
 #endif
+    _bau.cemiServerReset(); // after the .ind: the restart closes the connection it goes out on
 }
 
 #ifdef KNX_CEMI_TRANSPORT_LAYER

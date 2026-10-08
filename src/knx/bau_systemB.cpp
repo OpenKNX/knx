@@ -972,8 +972,30 @@ void BauSystemB::connectConfirm(uint16_t tsap)
     }
 }
 
+// Time the M_Reset.ind and its DEVICE_CONFIGURATION_ACK get before the connection they use is closed.
+static constexpr uint32_t kSoftRestartDelayMs = 200;
+
+void BauSystemB::cemiServerReset()
+{
+    if (_softRestartPending)
+        return; // 03_05_02 3.7.1.1.2: a burst of resets must not postpone the restart
+    _softRestartAt = millis();
+    _softRestartPending = true;
+}
+
+void BauSystemB::softRestart()
+{
+    _deviceObj.progMode(false); // 03_05_02 3.7.1.1.1: programming mode off
+}
+
 void BauSystemB::nextRestartState()
 {
+    if (_softRestartPending && millis() - _softRestartAt >= kSoftRestartDelayMs)
+    {
+        _softRestartPending = false;
+        softRestart();
+    }
+
     if (_selfResetPending && millis() - _selfResetAt >= kSelfResetDelayMs)
     {
         _selfResetPending = false;

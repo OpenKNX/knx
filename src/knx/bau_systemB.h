@@ -31,6 +31,8 @@ class BauSystemB : protected BusAccessUnit
     void addSaveRestore(SaveRestore* obj);
 
     bool restartRequest(uint16_t asap, const SecurityControl secCtrl);
+    /** @brief M_Reset.req: the implemented steps of a Basic Restart, shortly after the M_Reset.ind (03_06_03 4.1.7.5.1). */
+    void cemiServerReset();
     /** @brief IP interface changed: a BAU owning a KNXnet/IP endpoint rebuilds it (03_08_02 Core 4.2).
      *  false means a rebuild was attempted and failed; a BAU without an endpoint has nothing to fail. */
     virtual bool networkChanged(bool afterOutage) { (void)afterOutage; return true; }
@@ -183,6 +185,10 @@ class BauSystemB : protected BusAccessUnit
     void connectConfirm(uint16_t tsap) override;
 
     void nextRestartState();
+    /** @brief Steps of the 03_05_02 3.7.1.1.1 Basic Restart this stack implements, without restarting the device; subclasses add theirs. */
+    virtual void softRestart();
+    bool _softRestartPending = false;
+    uint32_t _softRestartAt = 0;
     void flushBeforeRead(); // write back a pending NVM sector so a management read sees what was written
     virtual void doMasterReset(EraseCode eraseCode, uint8_t channel);
 

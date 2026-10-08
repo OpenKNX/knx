@@ -294,3 +294,11 @@ void BauSystemBDevice::groupValueWriteIndication(uint16_t asap, Priority priorit
 
     updateGroupObject(go, data, dataLength);
 }
+
+// Basic Restart (03_05_02 3.7.1.1.1): an open KNX Transport Layer connection is closed with a T_Disconnect.
+void BauSystemBDevice::softRestart()
+{
+    BauSystemB::softRestart();
+    if (_transLayer.hasOpenConnection())
+        _transLayer.disconnectRequest(_transLayer.connectionPeer(), SystemPriority);
+}

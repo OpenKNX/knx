@@ -80,8 +80,6 @@ public:
     // Layer into cEMI Transport Layer mode for the duration of that connection. Idempotent, and it does not
     // touch the state machine -- see the implementation for what the mode does and deliberately does not do.
     void cemiTransportMode(bool active);
-    /** @brief True while the layer carries a connection, in either direction. */
-    bool hasOpenConnection() const { return _currentState != Closed; }
     /**
      * @brief True only while the layer carries a connection a REMOTE peer opened towards this device.
      * @details 08_TSSH 8.3.2 p.158 (fn 60202) drives the Device-Management refusal with a T_Connect the test
@@ -90,9 +88,11 @@ public:
      *          reading another device's tables) is therefore not a reason to refuse management access.
      */
     bool hasOpenRemoteConnection() const { return _currentState != Closed && _connectionFromRemote; }
+#endif
+    /** @brief True while the layer carries a connection, in either direction. */
+    bool hasOpenConnection() const { return _currentState != Closed; }
     /** @brief The peer of the connection the layer currently carries; 0 while none is open. */
     uint16_t connectionPeer() const { return _currentState == Closed ? 0 : _connectionAddress; }
-#endif
 
 #pragma region other
     void connectionTimeoutIndication();
