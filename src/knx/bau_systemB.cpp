@@ -964,6 +964,7 @@ bool BauSystemB::restartRequest(uint16_t asap, const SecurityControl secCtrl)
 void BauSystemB::connectionClosed(uint16_t tsap)
 {
     _restartState = Idle;
+    _deviceObj.verifyMode(false); // 03_05_01 4.2.14.7.3 p.36: disabled when the connection closes
 }
 
 void BauSystemB::connectConfirm(uint16_t tsap)

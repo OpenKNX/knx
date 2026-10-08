@@ -510,6 +510,8 @@ uint16_t TransportLayer::localTransportRequest(APDU& apdu, bool connected, uint8
 // the wire is the refusal, and that is what this flag produces in dataIndividualIndication().
 void TransportLayer::cemiTransportMode(bool active)
 {
+    if (_cemiTransportMode && !active)
+        _applicationLayer.cemiTransportModeEnded(); // 03_08_03 2.6.1.6 p.19: its end is a T_Disconnect.ind to the AL
     _cemiTransportMode = active;
 }
 #endif

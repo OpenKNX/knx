@@ -350,6 +350,13 @@ void ApplicationLayer::disconnectIndication(uint16_t tsap)
     _bau.connectionClosed(tsap);
 }
 
+#ifdef KNX_CEMI_TRANSPORT_LAYER
+void ApplicationLayer::cemiTransportModeEnded()
+{
+    _bau.connectionClosed(0);
+}
+#endif
+
 void ApplicationLayer::disconnectConfirm(Priority priority, uint16_t tsap, bool status)
 {
     _connectedTsap = -1;

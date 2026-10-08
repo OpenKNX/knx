@@ -80,6 +80,10 @@ class ApplicationLayer
     void connectIndication(uint16_t tsap);
     void connectConfirm(uint16_t destination, uint16_t tsap, bool status);
     void disconnectIndication(uint16_t tsap);
+#ifdef KNX_CEMI_TRANSPORT_LAYER
+    /** @brief The device management connection closed: the BAU sees it as a closed connection. */
+    void cemiTransportModeEnded();
+#endif
     void disconnectConfirm(Priority priority, uint16_t tsap, bool status);
 #pragma endregion
 
