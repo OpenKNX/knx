@@ -338,6 +338,8 @@ void TransportLayer::dataIndividualConfirm(AckType ack, uint16_t destination, Ho
                 //A0: do nothing
                 break;
             case Connecting:
+                if (destination != _connectionAddress)
+                    break; // a con for another partner is treated as E27 (A0); the spec assumes no second T_Connect before the con (03_03_04 p.17)
                 _currentState = OpenIdle;
                 A13(destination);
                 break;
@@ -354,6 +356,8 @@ void TransportLayer::dataIndividualConfirm(AckType ack, uint16_t destination, Ho
                 //A0: do nothing
                 break;
             case Connecting:
+                if (destination != _connectionAddress)
+                    break; // a con for another partner is treated as E27 (A0); the spec assumes no second T_Connect before the con (03_03_04 p.17)
                 _currentState = Closed; // 03_03_04 §5.4.3 Style-3: E20 x CONNECTING = CLOSED / A5. Without this the
                                         // state stays CONNECTING while A5 disables both timers -> the connection
                                         // wedges and the first reconnect after a failed T_CONNECT is swallowed.
