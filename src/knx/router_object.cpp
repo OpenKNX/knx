@@ -582,6 +582,26 @@ void RouterObject::functionIpEnableSbc(bool isCommand, uint8_t* data, uint8_t le
             return;
         }
 
+        // Broadcast routing locked in either direction: the mode cannot take effect.
+        if (data[2] == 1)
+        {
+            uint8_t mainLc = 0;
+            uint8_t subLc = 0;
+            const Property* mainProp = property(PID_MAIN_LCCONFIG);
+            const Property* subProp = property(PID_SUB_LCCONFIG);
+            if (mainProp != nullptr)
+                mainProp->read(mainLc);
+            if (subProp != nullptr)
+                subProp->read(subLc);
+            if ((mainLc | subLc) & LCCONFIG::BROADCAST_LOCK)
+            {
+                resultData[0] = ReturnCodes::ImpossibleCommand;
+                resultData[1] = serviceId;
+                resultLength = 2;
+                return;
+            }
+        }
+
         setIpSbcRouting(data[2] == 1);
         resultData[0] = ReturnCodes::Success;
         resultData[1] = serviceId;
