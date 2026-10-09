@@ -25,6 +25,11 @@ bool NetworkLayer::isApciSystemBroadcast(APDU& apdu)
     if (apdu.length() == 0)
         return false;
 
+    // A_DeviceDescriptor_InfoReport carries the APCI of A_DeviceDescriptor_Response; only its broadcast use
+    // makes it one (03_03_07 3.3.2 p.33). The 4 bit APCI leaves the descriptor type in the low bits.
+    if ((apdu.type() & 0x3c0) == DeviceDescriptorResponse)
+        return true;
+
     switch (apdu.type())
     {
         // Application Layer Services on System Broadcast communication mode
