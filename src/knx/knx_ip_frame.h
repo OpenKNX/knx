@@ -35,6 +35,12 @@ enum KnxIpServiceType
     RoutingSystemBroadcast = 0x533,   // 03_02_06 4.1.3
 };
 
+/** @brief Services a router takes from the system setup group when it routes on another group (03_02_06 4.3.5.2, 03_08_02). */
+inline bool knxIpSetupGroupService(uint16_t code)
+{
+    return code == RoutingSystemBroadcast || code == SearchRequest || code == SearchRequestExt;
+}
+
 class KnxIpFrame
 {
   public:

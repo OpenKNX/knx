@@ -23,6 +23,19 @@ typedef uint32_t (*FlashCallbackWrite)(uint32_t relativeAddress, uint8_t* buffer
 typedef void (*FlashCallbackCommit)();
 #endif
 
+// Octets the KNXnet/IP layer reads a datagram into; a platform queue drops longer ones.
+#define KNXIP_RX_MAX_DATAGRAM 512
+
+/** @brief Receive queue of the routing socket, where the platform keeps one of its own. Its drops are not in PID 72/73. */
+struct MulticastRxStats
+{
+    uint16_t backlog = 0;  // datagrams waiting
+    uint16_t peak = 0;     // highest backlog since boot
+    uint32_t capacity = 0; // queue size in octets
+    uint32_t dropped = 0;  // lost: the queue was full, or its content went stale unread
+    uint32_t oversize = 0; // longer than KNXIP_RX_MAX_DATAGRAM, discarded
+};
+
 enum NvMemoryType
 {
     Eeprom,
@@ -60,9 +73,26 @@ class Platform
     // TTL of outgoing multicast datagrams (PID 67, 03_08_03 2.5.18). Kept by the platform across re-joins;
     // set it before setupMultiCast(). Default: no-op.
     virtual void multicastTtl(uint8_t ttl);
+    // A second group on the routing socket, told apart per datagram by lastMulticastDestination(). Default: unsupported.
+    virtual bool joinMultiCastExtra(uint32_t addr) { (void)addr; return false; }
+    virtual bool multicastTtlAtJoinOnly() { return true; }    // a changed TTL reaches the socket at a join, if at all
+    // True when a second multicast socket receives only its own group; not on the lwIP platforms here. Default: false.
+    virtual bool multiCastSecondaryIsolated() { return false; }
+    // Destination (host order) of the datagram the last readBytesMultiCast() returned: the joined group it was sent
+    // to, otherwise an address that is no group (255.255.255.255); 0 if the platform cannot tell.
+    virtual uint32_t lastMulticastDestination() { return 0; }
+    // Datagrams received on the routing socket and not yet read. Default: the platform cannot tell.
+    virtual uint16_t multicastRxBacklog() { return 0; }
+    // A ROUTING_BUSY from another host is received and not yet read. Default: not tracked.
+    virtual bool routingBusyPending() { return false; }
+    // millis() at reception of the ROUTING_BUSY the last readBytesMultiCast() returned; fallback when not recorded.
+    virtual uint32_t routingBusyReceivedAt(uint32_t fallback) { return fallback; }
+    // Hands datagrams still waiting in the network chip to the stack (a ROUTING_BUSY among them). Default: no-op.
+    virtual void pollReceive() {}
+    // false: the platform keeps no receive queue of its own and counts nothing.
+    virtual bool multicastRxStats(MulticastRxStats& stats) { (void)stats; return false; }
 
-    // Second multicast socket, for KNXnet/IP system broadcast on the system setup group (03_02_06 4.1.3).
-    // A platform that does not implement it keeps the default below, and the feature stays off there.
+    // Second multicast socket for the system setup group (03_02_06 4.1.3). Default: not joined, nothing received.
     virtual bool setupMultiCastSecondary(uint32_t addr, uint16_t port); // false: the group was not joined
     virtual void closeMultiCastSecondary();
     virtual int readBytesMultiCastSecondary(uint8_t* buffer, uint16_t maxLen);
