@@ -613,6 +613,12 @@ static bool isSbcEligibleToIp(APDU& apdu)
         || isSecureSystemBroadcast(apdu, 0x02);  // S-A_Sync_Request
 }
 
+static bool isSbcEligibleToTp(APDU& apdu)
+{
+    return isSnpSerialNumber(apdu, SystemNetworkParameterResponse)
+        || isSecureSystemBroadcast(apdu, 0x03);  // S-A_Sync_Response
+}
+
 void NetworkLayerCoupler::broadcastIndication(AckType ack, FrameFormat format, NPDU& npdu, Priority priority, uint16_t source, uint8_t srcIfIdx)
 {
     // Send it to our local stack first
@@ -697,6 +703,11 @@ void NetworkLayerCoupler::systemBroadcastIndication(AckType ack, FrameFormat for
         HopCountType hopType = KNX_ANSWER_HOPTYPE(npdu);
         _transportLayer.dataSystemBroadcastIndication(hopType, priority, source, npdu.tpdu());
     }
+
+    // A 0533h frame goes to TP only while the IP System Broadcast Routing Mode is enabled and only the eligible
+    // services; the local stack gets every 0533h frame (4.3.5.2).
+    if (ipSbcFrame && (_rtObjPrimary == nullptr || !_rtObjPrimary->isIpSbcRoutingEnabled() || !isSbcEligibleToTp(npdu.tpdu().apdu())))
+        return;
     
     uint8_t lcconfig = LCCONFIG::PHYS_FRAME_ROUT | LCCONFIG::PHYS_REPEAT | LCCONFIG::BROADCAST_REPEAT | LCCONFIG::GROUP_IACK_ROUT | LCCONFIG::PHYS_IACK_NORMAL; // default value from spec. in case prop is not availible.
     Property* prop_lcconfig;
