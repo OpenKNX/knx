@@ -123,6 +123,9 @@ void IpDataLinkLayer::loop()
 
     uint16_t code;
     popWord(code, buffer + 2);
+
+    // A system setup group joined apart from the routing group (joinMultiCastExtra(), RP2040 and ESP32) delivers only
+    // knxIpSetupGroupService(): the platform receive callback drops the rest before it is queued.
     switch ((KnxIpServiceType)code)
     {
         case RoutingIndication:
@@ -141,9 +144,15 @@ void IpDataLinkLayer::loop()
         }
 
         case RoutingSystemBroadcast:
-            // 03_02_06 4.1.3: valid only when received on the system setup multicast address, which the
-            // dedicated socket in loopSystemBroadcast() owns. Whatever arrives here came in on the routing
-            // group or as unicast and shall be ignored.
+            // 03_02_06 4.1.3: valid only on the system setup group; unicast is ignored by destination where the platform reports it.
+#ifdef KNX_IS_ROUTER
+            {
+                // Where the platform reports the destination, only the system setup group counts (unicast is ignored).
+                const uint32_t dest = _platform.lastMulticastDestination();
+                if (dest != 0 ? dest == _setupGroup : _joinedGroup == _setupGroup)
+                    receivedSystemBroadcast(buffer, len);
+            }
+#endif
             break;
 
 
@@ -362,10 +371,12 @@ bool IpDataLinkLayer::sendSystemBroadcast(CemiFrame& frame)
     return success;
 }
 
-// Opened only while the router holds the mode enabled, and that falls back after 20 s: a device that
-// never uses system broadcast keeps one socket, as before.
+// Opened only while the router holds the mode enabled (it falls back after 20 s), and only where the platform keeps
+// it apart from the routing socket. Where the routing socket takes the system setup group itself it is not needed.
 void IpDataLinkLayer::enableSystemBroadcast(bool value)
 {
+    if (value && (_setupOnRoutingSocket || !_platform.multiCastSecondaryIsolated()))
+        value = false;
     if (!value)
         _sbcOpenFailed = false;
     if (value == _sbcSocketOpen || (value && _sbcOpenFailed))
@@ -390,17 +401,20 @@ void IpDataLinkLayer::enableSystemBroadcast(bool value)
     }
 }
 
-// A second socket instead of the arrival address of the datagram: the destination is not available on
-// every platform, and a group of its own makes "received on the system setup multicast address"
-// structural rather than a runtime comparison.
+// Only where the platform isolates a second socket (multiCastSecondaryIsolated()); RP2040 and ESP32 use the routing socket.
 void IpDataLinkLayer::loopSystemBroadcast()
 {
     if (!_sbcSocketOpen)
         return;
 
-    uint8_t buffer[512];
-    int len = _platform.readBytesMultiCastSecondary(buffer, 512);
+    uint8_t buffer[KNXIP_RX_MAX_DATAGRAM];
+    int len = _platform.readBytesMultiCastSecondary(buffer, sizeof(buffer));
+    receivedSystemBroadcast(buffer, len);
+}
 
+
+void IpDataLinkLayer::receivedSystemBroadcast(uint8_t* buffer, int len)
+{
     if (len < KNXIP_HEADER_LEN)
         return;
 
@@ -451,7 +465,18 @@ uint32_t IpDataLinkLayer::multiCastAddress()
 
 bool IpDataLinkLayer::joinMultiCast()
 {
-    return _platform.setupMultiCast(_joinedGroup, KNXIP_MULTICAST_PORT);
+    if (!_platform.setupMultiCast(_joinedGroup, KNXIP_MULTICAST_PORT))
+        return false;
+#ifdef KNX_IS_ROUTER
+    // 03_02_06 4.3.5.2: IP system broadcasts and discovery come on the system setup group whatever the routing
+    // group is. Joined on the routing socket where the platform can tell the groups apart per datagram.
+    const uint32_t setup = systemSetupMultiCastAddress();
+    _setupGroup = setup;
+    _setupOnRoutingSocket = (_joinedGroup == setup) || _platform.joinMultiCastExtra(setup);
+    if (!_setupOnRoutingSocket)
+        println("routing group differs from the system setup group, which is not joined: IP system broadcast and discovery requests on it are not received");
+#endif
+    return true;
 }
 
 /** @brief Rebuild the endpoint after the IP interface changed. Also re-opens unicast where both share a socket. */

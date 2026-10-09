@@ -201,9 +201,7 @@ bool Bau091A::networkChanged(bool afterOutage)
 
 void Bau091A::loop()
 {
-    // The system setup group is only listened to while the IP System Broadcast Routing Mode is on, and
-    // that mode expires by itself 20 s after it was enabled (03_05_01 4.5.16.1.1). Asking here keeps the
-    // socket and the mode in step without a timer of their own; both sides ignore an unchanged value.
+    // The secondary socket follows the IP SBC routing mode, which expires 20 s after the enable (03_05_01 4.5.16.1.1).
     _dlLayerPrimary.enableSystemBroadcast(_routerObj.isIpSbcRoutingEnabled());
 
     _dlLayerPrimary.loop();

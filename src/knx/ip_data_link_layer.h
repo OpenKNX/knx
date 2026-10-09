@@ -46,9 +46,7 @@ class IpDataLinkLayer : public DataLinkLayer
     // Discovery (SearchRequest) and the tunnel receive-path stay active regardless.
     void enableRoutingIndications(bool value) { _rxRoutingIndications = value; }
 
-    // IP system broadcast rides on the system setup group, which need not be the routing group
-    // (03_02_06 4.1.3). Follows the router's IP System Broadcast Routing Mode: the second socket exists
-    // only while that mode is on.
+    // System setup group socket (03_02_06 4.1.3): opened while the IP SBC mode is on, unless _setupOnRoutingSocket or not isolated.
     void enableSystemBroadcast(bool value);
     bool indicatingIpSystemBroadcast() const override { return _indicatingSbc; }
 
@@ -62,8 +60,11 @@ class IpDataLinkLayer : public DataLinkLayer
     uint32_t multiCastAddress(); // property source; read once at enable, then latched
     uint32_t systemSetupMultiCastAddress();
     void loopSystemBroadcast();
+    void receivedSystemBroadcast(uint8_t* buffer, int len);
     bool _indicatingSbc = false; // set around frameReceived() of a 0533h frame
     bool _sbcOpenFailed = false; // the secondary socket could not be opened; no retry until the mode goes off
+    bool _setupOnRoutingSocket = false; // the routing socket receives the system setup group (same group, or joined extra)
+    uint32_t _setupGroup = 0;           // PID 65 as read at the join
     bool sendSystemBroadcast(CemiFrame& frame);
     bool _sbcSocketOpen = false;
     uint32_t _joinedGroup = 0; // 03_08_03 2.5.17: PID 66 becomes active on reset, not at runtime
