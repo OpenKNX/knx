@@ -54,6 +54,8 @@ class DataLinkLayer
     virtual void enabled(bool value) = 0;
     virtual bool enabled() const = 0;
     virtual DptMedium mediumType() const = 0;
+    /** @brief True while the frame being indicated arrived as a KNX IP ROUTING_SYSTEM_BROADCAST (0533h). */
+    virtual bool indicatingIpSystemBroadcast() const { return false; }
 
   protected:
     void frameReceived(CemiFrame& frame);

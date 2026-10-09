@@ -428,7 +428,9 @@ void IpDataLinkLayer::loopSystemBroadcast()
     if (!sbc.cemiIsSystemBroadcast())
         return;
 
+    _indicatingSbc = true;
     frameReceived(sbc.frame());
+    _indicatingSbc = false;
 }
 
 uint32_t IpDataLinkLayer::systemSetupMultiCastAddress()

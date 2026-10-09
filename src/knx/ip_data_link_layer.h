@@ -50,6 +50,7 @@ class IpDataLinkLayer : public DataLinkLayer
     // (03_02_06 4.1.3). Follows the router's IP System Broadcast Routing Mode: the second socket exists
     // only while that mode is on.
     void enableSystemBroadcast(bool value);
+    bool indicatingIpSystemBroadcast() const override { return _indicatingSbc; }
 
 #ifdef KNX_IS_ROUTER
     /** @brief Report LAN->KNX losses with ROUTING_LOST_MESSAGE (03_08_05 2.3.4), about once per second (08_TSSH 6.2.2). */
@@ -61,6 +62,7 @@ class IpDataLinkLayer : public DataLinkLayer
     uint32_t multiCastAddress(); // property source; read once at enable, then latched
     uint32_t systemSetupMultiCastAddress();
     void loopSystemBroadcast();
+    bool _indicatingSbc = false; // set around frameReceived() of a 0533h frame
     bool _sbcOpenFailed = false; // the secondary socket could not be opened; no retry until the mode goes off
     bool sendSystemBroadcast(CemiFrame& frame);
     bool _sbcSocketOpen = false;

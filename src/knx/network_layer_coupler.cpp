@@ -659,7 +659,13 @@ void NetworkLayerCoupler::broadcastConfirm(AckType ack, FrameFormat format, Prio
 
 void NetworkLayerCoupler::systemBroadcastIndication(AckType ack, FrameFormat format, NPDU& npdu, Priority priority, uint16_t source, uint8_t srcIfIdx)
 {
-    // Send it to our local stack first
+    // A 0533h IP system broadcast (03_02_06 4.1.3), not a ROUTING_INDICATION carrying a system broadcast cEMI.
+    const bool ipMedium = _netLayerEntities[srcIfIdx].mediumType() == DptMedium::KNX_IP;
+    const bool ipSbcFrame = ipMedium && _netLayerEntities[srcIfIdx].dataLinkLayer().indicatingIpSystemBroadcast();
+
+    // Send it to our local stack first.
+    // A ROUTING_INDICATION with a system broadcast cEMI is routed only, the management server ignores it (NOTE 2).
+    if (!ipMedium || ipSbcFrame)
     {
         HopCountType hopType = KNX_ANSWER_HOPTYPE(npdu);
         _transportLayer.dataSystemBroadcastIndication(hopType, priority, source, npdu.tpdu());
