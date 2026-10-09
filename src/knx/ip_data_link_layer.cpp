@@ -462,7 +462,7 @@ bool IpDataLinkLayer::networkChanged(bool afterOutage)
     // the device would keep link and address but answer no SEARCH_REQUEST for the rest of its runtime.
     if (!_enabled)
     {
-        // beginMulticast() joins before it binds and never rolls the join back, so a previous attempt may
+        // On RP2040 setupMultiCast() joins before it binds and never rolls the join back, so a previous attempt may
         // still hold the membership. Leave first, else every retry only bumps lwIP's use counter silently.
         _platform.closeMultiCast();
         enabled(true);
@@ -573,7 +573,7 @@ bool IpDataLinkLayer::sendBytes(uint8_t* bytes, uint16_t length)
     const bool sent = _platform.sendBytesMultiCast(bytes, length);
     if (_counters != nullptr)
     {
-        // The platform reports success on a dead link; while the IP fault bit (03_08_03 3.5.3) is set, count a loss.
+        // A send can succeed with the link up but the IP network unreachable; while the IP fault bit (03_08_03 3.5.3) is set, count a loss.
         if (sent && !(_ipParameters.deviceState() & IpParameterObject::DeviceStateIpFault))
             _counters->incrementTransmitToIp();
         else

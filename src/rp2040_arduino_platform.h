@@ -32,6 +32,11 @@
 #define KNX_NETIF WiFi
 #endif
 
+// The KNXnet/IP socket exists only with an IP transport; KNX_NETIF above is set for TP-only builds as well.
+#if defined(KNX_IP_LAN) || defined(KNX_IP_WIFI)
+#define KNX_RP2040_HAVE_IGMP
+#endif
+
 #if USE_KNX_DMA_UART == 1
 #define KNX_DMA_UART uart1
 #define KNX_DMA_UART_IRQ UART1_IRQ
@@ -93,7 +98,9 @@ public:
     uint32_t currentSubnetMask() override;
     uint32_t currentDefaultGateway() override;
     void macAddress(uint8_t* addr) override;
+    #endif
 
+    #ifdef KNX_RP2040_HAVE_IGMP
     // multicast
     bool setupMultiCast(uint32_t addr, uint16_t port) override;
     void closeMultiCast() override;
@@ -109,13 +116,28 @@ public:
     // unicast
     bool sendBytesUniCast(uint32_t addr, uint16_t port, uint8_t* buffer, uint16_t len) override;
 
-    #define UDP_UNICAST _udp
-    protected: WiFiUDP _udp;
+    // receive queue of the routing socket
+    uint16_t multicastRxBacklog() override;
+    bool routingBusyPending() override;
+    uint32_t routingBusyReceivedAt(uint32_t fallback) override;
+    void pollReceive() override;
+    /** @brief Network driver hook for pollReceive(): drains a main-loop-pumped chip (W5500 without INT). */
+    static void setReceivePoll(void (*poll)());
+    bool multicastRxStats(MulticastRxStats& stats) override;
+
+    protected: void removeRoutingSocket();
+    protected: struct udp_pcb* _pcb = nullptr; // routing socket, ANY:port; also the unicast source
     protected: IPAddress mcastaddr;
     protected: uint16_t _port;
-    protected: uint8_t _mcastTtl = 16; // PID 67 default; applied per send, beginPacket() would force 255
+    protected: uint8_t _mcastTtl = 16; // PID 67 default; applied per send
+    protected: uint32_t _lastReadUs = 0; // time_us_32() of the last readBytesMultiCast()
     protected: WiFiUDP _udpSbc;
     protected: IPAddress mcastaddrSbc;
+    public: bool joinMultiCastExtra(uint32_t addr) override;
+    public: bool multicastTtlAtJoinOnly() override { return false; } // applied per send
+    public: uint32_t lastMulticastDestination() override;
+    protected: IPAddress mcastaddrExtra;
+    protected: uint8_t _lastDstClass = 0; // destination class of the datagram last read
     #endif
     protected: pin_size_t _rxPin = UART_PIN_NOT_DEFINED; 
     protected: pin_size_t _txPin = UART_PIN_NOT_DEFINED;

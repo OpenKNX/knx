@@ -49,16 +49,91 @@ For usage of KNX-IP you have to define either
 #endif
 #endif
 
-// ONE condition for the include and for the call below, so the two can never drift apart again. The
-// lwIP headers themselves are on the include path of EVERY arduino-pico build (the core appends them
-// unconditionally), so what broke was purely the missing declaration: the call was compiled
-// unconditionally while the #include was LAN-only, and every other RP2040 product (TP-only, GENERIC)
-// failed to build. None of them is built here, which is why it went unnoticed.
-#if defined(KNX_IP_LAN) || defined(KNX_IP_WIFI)
-#define KNX_RP2040_HAVE_IGMP
-#endif
+// KNX_RP2040_HAVE_IGMP (header) guards the lwIP includes and the routing socket code; the netif code is under KNX_IP_LAN.
 #ifdef KNX_RP2040_HAVE_IGMP
-#include <lwip/igmp.h> // closeMultiCast(): WiFiUDP::stop() does not leave the group
+#include <lwip/igmp.h>
+#include <lwip/ip.h>
+#include <lwip/pbuf.h>
+#include <lwip/udp.h>
+#include <lwip_wrap.h> // LWIPMutex: the async-context lock the core takes around every wrapped lwIP call
+#include "knx/config.h"   // KNX_IP_RX_RING_SIZE
+#include "knx/datagram_ring.h"
+#include "knx/routing_busy_marks.h"
+#ifdef KNX_IS_ROUTER
+#include "knx/knx_ip_frame.h" // knxIpSetupGroupService()
+#endif
+#include <hardware/timer.h> // time_us_32()
+
+// No readBytesMultiCast() for this long drops everything queued, fresh datagrams included (a failed OTA blocks loop() for minutes).
+// time_us_32() is one timer register read; it wraps after 71 min, which only shortens a gap that long.
+static constexpr uint32_t kRxStaleUs = 10000000;
+typedef DatagramRing<KNX_IP_RX_RING_SIZE, KNXIP_RX_MAX_DATAGRAM> RxRing;
+static RxRing s_rxRing;
+
+// Destination class per datagram; the groups are written before their join and read by the callback.
+// Without an extra group s_groupExtra equals s_groupRouting, so only a joined group is ever classed as a group.
+enum : uint8_t { kDstOther = 0, kDstRouting = 1, kDstExtra = 2 };
+static volatile uint32_t s_groupRouting = 0; // network order
+static volatile uint32_t s_groupExtra = 0;   // network order
+static RoutingBusyMarks s_busyMarks;           // ROUTING_BUSY from other hosts, recorded by the callback only
+
+/**
+ * @brief udp_recv callback of the routing socket: copies the datagram into s_rxRing and frees it.
+ * Runs with the lwIP lock held: async-context IRQ, lock release of any lwIP call, or the main-loop pump. p is never null.
+ */
+static void rxCallback(void* arg, struct udp_pcb* pcb, struct pbuf* p, const ip_addr_t* addr, u16_t port)
+{
+    (void)arg;
+    (void)pcb;
+    RxRing::Meta meta;
+    meta.srcAddr = ip4_addr_get_u32(ip_2_ip4(addr));
+    meta.srcPort = port;
+    bool busy = false;
+#ifdef KNX_IS_ROUTER // only the router asks lastMulticastDestination()
+    const uint32_t dst = ip4_addr_get_u32(ip4_current_dest_addr());
+    if (dst == s_groupRouting)
+    {
+        meta.dst = kDstRouting;
+        // ROUTING_BUSY stops sending at reception, not when loop() reads it (03_08_05 2.3.5 p.11).
+        const uint8_t* b = (const uint8_t*)p->payload;
+        busy = p->len >= 4 && b[2] == 0x05 && b[3] == 0x32 && meta.srcAddr != ip4_addr_get_u32(netif_ip4_addr(ip_current_input_netif()));
+    }
+    else if (dst == s_groupExtra) // the system setup group, joined apart from the routing group
+    {
+        // Service type at octets 2-3; pbuf_get_at() reads 0 past the end, so a short datagram is dropped too.
+        if (!knxIpSetupGroupService((uint16_t)((pbuf_get_at(p, 2) << 8) | pbuf_get_at(p, 3))))
+        {
+            pbuf_free(p);
+            return;
+        }
+        meta.dst = kDstExtra;
+    } // else kDstOther, the Meta default
+#endif
+    // offset + n <= tot_len, so pbuf_copy_partial() copies all n octets.
+    // Recorded only once stored, so a dropped ROUTING_BUSY never holds sending.
+    if (s_rxRing.push(meta, p->tot_len, [p](uint8_t* to, uint16_t n, uint16_t offset) { pbuf_copy_partial(p, to, n, offset); }) && busy)
+        s_busyMarks.record(s_rxRing.pushed(), millis());
+    pbuf_free(p);
+}
+
+/**
+ * @brief Sends one datagram from the routing socket (pcb not null), so the source port is the bound one (3671).
+ * ttl is applied for a group destination.
+ */
+static err_t routingSendTo(struct udp_pcb* pcb, uint32_t netAddr, uint16_t port, const uint8_t* data, uint16_t len, bool group, uint8_t ttl)
+{
+    LWIPMutex lock; // the TTL is a plain pcb field; the wrapped calls below nest in this lock
+    struct pbuf* p = pbuf_alloc(PBUF_TRANSPORT, len, PBUF_RAM);
+    if (p == nullptr)
+        return ERR_MEM;
+    memcpy(p->payload, data, len); // PBUF_RAM: one contiguous pbuf of len octets
+    if (group)
+        udp_set_multicast_ttl(pcb, ttl);
+    ip_addr_t dst = IPADDR4_INIT(netAddr);
+    const err_t err = udp_sendto(pcb, p, &dst, port);
+    pbuf_free(p);
+    return err;
+}
 #endif
 
 #ifdef KNX_IP_LAN
@@ -260,7 +335,9 @@ void RP2040ArduinoPlatform::macAddress(uint8_t* addr)
 {
     KNX_NETIF.macAddress(addr);
 }
+#endif
 
+#ifdef KNX_RP2040_HAVE_IGMP
 // multicast
 bool RP2040ArduinoPlatform::setupMultiCast(uint32_t addr, uint16_t port)
 {
@@ -272,36 +349,67 @@ bool RP2040ArduinoPlatform::setupMultiCast(uint32_t addr, uint16_t port)
     println(port);
 
     _port = port;
-    const bool joined = (_udp.beginMulticast(mcastaddr, port) != 0);
+    removeRoutingSocket(); // replaces a socket still open; its group stays joined
+    s_groupRouting = (uint32_t)mcastaddr;
+    s_groupExtra = s_groupRouting; // no extra group yet
+    bool joined = false;
+    if (igmp_joingroup(IP4_ADDR_ANY4, mcastaddr) == ERR_OK)
+    {
+        LWIPMutex lock;
+        _pcb = udp_new();
+        if (_pcb != nullptr)
+        {
+            udp_recv(_pcb, rxCallback, nullptr);
+            if (udp_bind(_pcb, IP_ADDR_ANY, port) == ERR_OK)
+                joined = true;
+            else
+            {
+                udp_remove(_pcb);
+                _pcb = nullptr;
+            }
+        }
+    }
+    _lastReadUs = time_us_32();
     if (!joined) println("  KNX multicast join FAILED");
-
-#ifdef KNX_IP_GENERIC
-// if(!_unicast_socket_setup)
-//     _unicast_socket_setup = UDP_UNICAST.begin(3671);
-#endif
-
-    // print("Setup Mcast addr: ");
-    // print(mcastaddr.toString().c_str());
-    // print(" on port: ");
-    // print(port);
-    // print(" result ");
-    // println(result);
     return joined;
+}
+
+/** @brief Removes the routing socket and empties its queue; after udp_remove() the callback cannot run again. */
+void RP2040ArduinoPlatform::removeRoutingSocket()
+{
+    if (_pcb != nullptr)
+    {
+        udp_remove(_pcb);
+        _pcb = nullptr;
+    }
+    s_rxRing.reset();
 }
 
 void RP2040ArduinoPlatform::closeMultiCast()
 {
-#ifdef KNX_RP2040_HAVE_IGMP
-    // WiFiUDP::stop() does not leave the group, and igmp_joingroup only reports for a NON_MEMBER group:
+    // Removing the socket does not leave the group, and igmp_joingroup only reports for a NON_MEMBER group:
     // without this pairing the re-join is silent on the wire and group->use grows unbounded.
     if ((uint32_t)mcastaddr != 0)
         igmp_leavegroup(IP4_ADDR_ANY4, mcastaddr);
-#endif
-    _udp.stop();
+    if ((uint32_t)mcastaddrExtra != 0)
+        igmp_leavegroup(IP4_ADDR_ANY4, mcastaddrExtra);
+    mcastaddrExtra = IPAddress();
+    removeRoutingSocket();
 }
 
-// The system setup group can be the same group the routing socket already joined; lwIP counts the
-// membership per group, so a second join is a second reference and no interference.
+// The routing socket is bound to ANY, so a joined group reaches it; the destination class tells the groups apart.
+bool RP2040ArduinoPlatform::joinMultiCastExtra(uint32_t addr)
+{
+    mcastaddrExtra = IPAddress(htonl(addr));
+    s_groupExtra = (uint32_t)mcastaddrExtra; // before the join: no datagram of the group arrives unclassified
+    if (igmp_joingroup(IP4_ADDR_ANY4, mcastaddrExtra) == ERR_OK)
+        return true;
+    mcastaddrExtra = IPAddress();
+    s_groupExtra = s_groupRouting;
+    return false;
+}
+
+// Never called here: multiCastSecondaryIsolated() returns false, and lwIP refuses a second ANY:3671 bind (SO_REUSE 0).
 bool RP2040ArduinoPlatform::setupMultiCastSecondary(uint32_t addr, uint16_t port)
 {
     mcastaddrSbc = IPAddress(htonl(addr));
@@ -313,9 +421,7 @@ bool RP2040ArduinoPlatform::setupMultiCastSecondary(uint32_t addr, uint16_t port
     return joined;
 }
 
-// No igmp_leavegroup here, unlike closeMultiCast(): when both sockets sit on the same group -- the
-// default, routing group == system setup group -- leaving it would take the routing socket down with it.
-// Staying a member of a group we no longer read costs an occasional membership report, nothing else.
+// No igmp_leavegroup here: the group may be the routing socket's as well. Never reached: no socket is opened.
 void RP2040ArduinoPlatform::closeMultiCastSecondary()
 {
     _udpSbc.stop();
@@ -344,38 +450,78 @@ bool RP2040ArduinoPlatform::sendBytesMultiCast(uint8_t* buffer, uint16_t len)
 {
     // printHex("<- ",buffer, len);
 
-    // ToDo: check if Ethernet is able to receive, return false if not
-    _udp.beginPacketMulticast(mcastaddr, _port, IP_ADDR_ANY, _mcastTtl);
-    _udp.write(buffer, len);
-    _udp.endPacket();
-    return true;
+    // _pcb is set: the caller sends only while enabled, which needs a successful setupMultiCast().
+    return routingSendTo(_pcb, (uint32_t)mcastaddr, _port, buffer, len, true, _mcastTtl) == ERR_OK;
 }
 
 int RP2040ArduinoPlatform::readBytesMultiCast(uint8_t* buffer, uint16_t maxLen, uint32_t& src_addr, uint16_t& src_port)
 {
-    int len = _udp.parsePacket();
-    if (len == 0)
-        return 0;
+    const uint32_t now = time_us_32();
+    if ((uint32_t)(now - _lastReadUs) >= kRxStaleUs && s_rxRing.discard() != 0)
+        println("KNX IP receive queue: stale datagrams dropped");
+    _lastReadUs = now;
 
-    if (len > maxLen)
-    {
-        println("Unexpected UDP data packet length - drop packet");
-        for (size_t i = 0; i < len; i++)
-            _udp.read();
-        return 0;
-    }
+    RxRing::Meta meta;
+    const int len = s_rxRing.pop(buffer, maxLen, meta);
+    if (len <= 0)
+        return 0; // empty, or longer than maxLen (consumed; not with the 512-octet caller, the ring drops longer ones)
 
-    _udp.read(buffer, len);
-    _remoteIP = _udp.remoteIP();
-    _remotePort = _udp.remotePort();
+    _remoteIP = IPAddress(meta.srcAddr);
+    _remotePort = meta.srcPort;
+    _lastDstClass = meta.dst;
     src_addr = htonl(_remoteIP);
     src_port = _remotePort;
 
-    // print("Remote IP: ");
-    // print(_udp.remoteIP().toString().c_str());
     // printHex("-> ", buffer, len);
 
     return len;
+}
+
+// Mapped on request: only the router asks. A destination that is no joined group reads as 255.255.255.255.
+uint32_t RP2040ArduinoPlatform::lastMulticastDestination()
+{
+    return _lastDstClass == kDstRouting ? htonl((uint32_t)mcastaddr)
+         : _lastDstClass == kDstExtra   ? htonl((uint32_t)mcastaddrExtra)
+                                        : 0xFFFFFFFFu;
+}
+
+uint16_t RP2040ArduinoPlatform::multicastRxBacklog()
+{
+    return s_rxRing.backlog();
+}
+
+static void (*s_receivePoll)() = nullptr;
+
+void RP2040ArduinoPlatform::setReceivePoll(void (*poll)())
+{
+    s_receivePoll = poll;
+}
+
+void RP2040ArduinoPlatform::pollReceive()
+{
+    if (s_receivePoll != nullptr) // set only by a driver whose chip is pumped from the main loop
+        s_receivePoll();
+}
+
+bool RP2040ArduinoPlatform::routingBusyPending()
+{
+    const uint32_t ahead = s_busyMarks.ahead(s_rxRing.popped()); // before the backlog, so a newer mark is counted in it
+    return ahead < s_rxRing.backlog(); // never set outside router builds: only the router callback records
+}
+
+uint32_t RP2040ArduinoPlatform::routingBusyReceivedAt(uint32_t fallback)
+{
+    return s_busyMarks.arrivedAt(s_rxRing.popped(), fallback);
+}
+
+bool RP2040ArduinoPlatform::multicastRxStats(MulticastRxStats& stats)
+{
+    stats.backlog = s_rxRing.backlog();
+    stats.peak = s_rxRing.peak();
+    stats.capacity = RxRing::capacity();
+    stats.dropped = s_rxRing.dropped();
+    stats.oversize = s_rxRing.oversize();
+    return true;
 }
 
 // unicast
@@ -391,24 +537,18 @@ bool RP2040ArduinoPlatform::sendBytesUniCast(uint32_t addr, uint16_t port, uint8
     // print("sendBytesUniCast to:");
     // println(ucastaddr.toString().c_str());
 
-#ifdef KNX_IP_GENERIC
-    if (!_unicast_socket_setup)
-        _unicast_socket_setup = UDP_UNICAST.begin(3671);
-#endif
-
-    // A multicast destination (IP system broadcast) gets PID 67 as well; same work as beginPacket().
-    const int begun = ((addr & 0xF0000000) == 0xE0000000)
-        ? UDP_UNICAST.beginPacketMulticast(ucastaddr, port, IP_ADDR_ANY, _mcastTtl)
-        : UDP_UNICAST.beginPacket(ucastaddr, port);
-    if (begun == 1)
+    if (_pcb == nullptr)
     {
-        UDP_UNICAST.write(buffer, len);
-        if (UDP_UNICAST.endPacket() == 0)
-            println("sendBytesUniCast endPacket fail");
+        println("sendBytesUniCast: no socket");
+        return false; // no routing socket: nothing is sent
     }
-    else
-        println("sendBytesUniCast beginPacket fail");
-
+    // A multicast destination (IP system broadcast) gets PID 67 as well.
+    const bool group = (addr & 0xF0000000) == 0xE0000000;
+    if (routingSendTo(_pcb, (uint32_t)ucastaddr, port, buffer, len, group, _mcastTtl) != ERR_OK)
+    {
+        println("sendBytesUniCast fail");
+        return false; // no pbuf, no route (link down) or the driver refused the frame
+    }
     return true;
 }
 #endif

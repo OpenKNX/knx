@@ -182,6 +182,12 @@
 #define KNX_BUSMON_CONNECTIONS 1
 #endif
 
+// KNX_IP_RX_RING_SIZE - receive queue of the KNXnet/IP socket in octets, a power of two >= 521 (one 512-octet
+// datagram + 9 header). 2048: 30 datagrams of 40 + 9 octets (03_08_05 2.3.5 SHOULD) or a 50 ms stall at 400/s.
+#ifndef KNX_IP_RX_RING_SIZE
+#define KNX_IP_RX_RING_SIZE 2048
+#endif
+
 // KNX_COUPLER_ARRIVAL_SLOTS - partners whose last frame to the coupler is remembered with its interface, so the answer
 // leaves on that interface (03_03_03 2.4.2.4.1 b). 4 bytes each. A partner not held falls back to topology. 1..255.
 #ifndef KNX_COUPLER_ARRIVAL_SLOTS
