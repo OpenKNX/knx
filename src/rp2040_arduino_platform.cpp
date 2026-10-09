@@ -137,7 +137,14 @@ static err_t routingSendTo(struct udp_pcb* pcb, uint32_t netAddr, uint16_t port,
 #endif
 
 #ifdef KNX_IP_LAN
-extern Wiznet5500lwIP KNX_NETIF;
+#include <lwip/netif.h>
+// The network module's lwIP interface, registered at its init: the stack reads it as plain lwIP, whatever driver
+// class the module instantiates.
+static struct netif* s_lanNetif = nullptr;
+void RP2040ArduinoPlatform::setNetif(struct netif* netif)
+{
+    s_lanNetif = netif;
+}
 #elif defined(KNX_IP_WIFI)
 #elif defined(KNX_IP_GENERIC)
 
@@ -318,7 +325,28 @@ void RP2040ArduinoPlatform::writeBufferedEraseBlock()
 }
 #endif
 
-#if defined(KNX_NETIF)
+#if defined(KNX_IP_LAN)
+// Network order; 0 until the network module has registered its interface.
+uint32_t RP2040ArduinoPlatform::currentIpAddress()
+{
+    return s_lanNetif ? ip4_addr_get_u32(netif_ip4_addr(s_lanNetif)) : 0;
+}
+uint32_t RP2040ArduinoPlatform::currentSubnetMask()
+{
+    return s_lanNetif ? ip4_addr_get_u32(netif_ip4_netmask(s_lanNetif)) : 0;
+}
+uint32_t RP2040ArduinoPlatform::currentDefaultGateway()
+{
+    return s_lanNetif ? ip4_addr_get_u32(netif_ip4_gw(s_lanNetif)) : 0;
+}
+void RP2040ArduinoPlatform::macAddress(uint8_t* addr)
+{
+    if (s_lanNetif)
+        memcpy(addr, s_lanNetif->hwaddr, 6);
+    else
+        memset(addr, 0, 6);
+}
+#elif defined(KNX_NETIF)
 uint32_t RP2040ArduinoPlatform::currentIpAddress()
 {
     return KNX_NETIF.localIP();

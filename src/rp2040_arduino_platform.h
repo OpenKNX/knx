@@ -54,6 +54,8 @@
 #endif
 
 
+struct netif;
+
 class RP2040ArduinoPlatform : public ArduinoPlatform
 {
 public:
@@ -123,6 +125,10 @@ public:
     void pollReceive() override;
     /** @brief Network driver hook for pollReceive(): drains a main-loop-pumped chip (W5500 without INT). */
     static void setReceivePoll(void (*poll)());
+#ifdef KNX_IP_LAN
+    /** @brief The network module's lwIP interface; IP, mask, gateway and MAC are read from it. */
+    static void setNetif(struct netif* netif);
+#endif
     bool multicastRxStats(MulticastRxStats& stats) override;
 
     protected: void removeRoutingSocket();
