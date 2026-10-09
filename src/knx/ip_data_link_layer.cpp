@@ -45,9 +45,8 @@ bool IpDataLinkLayer::sendFrame(CemiFrame& frame)
         dataConReceived(frame, false);
         return false;
     }
-    // 03_02_06 4.1.3: a system broadcast leaves as ROUTING_SYSTEM_BROADCAST on the system setup group,
-    // never as a routing indication. The coupler only marks a frame this way while the router has the IP
-    // System Broadcast Routing Mode enabled, so this branch is unreachable in the delivery state.
+    // 03_02_06 4.1.3: a frame the coupler marks SysBroadcast (IP SBC routing mode on) or the answer to an IP system broadcast
+    // (4.3.5.3.1) leaves as ROUTING_SYSTEM_BROADCAST, never as a ROUTING_INDICATION.
     if (frame.systemBroadcast() == SysBroadcast)
         return sendSystemBroadcast(frame);
 

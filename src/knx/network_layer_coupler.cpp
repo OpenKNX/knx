@@ -696,12 +696,14 @@ void NetworkLayerCoupler::systemBroadcastIndication(AckType ack, FrameFormat for
     const bool ipMedium = _netLayerEntities[srcIfIdx].mediumType() == DptMedium::KNX_IP;
     const bool ipSbcFrame = ipMedium && _netLayerEntities[srcIfIdx].dataLinkLayer().indicatingIpSystemBroadcast();
 
-    // Send it to our local stack first.
+    // Send it to our local stack first; a response produced meanwhile uses the mode of the request (03_02_06 4.3.5.3.1).
     // A ROUTING_INDICATION with a system broadcast cEMI is routed only, the management server ignores it (NOTE 2).
     if (!ipMedium || ipSbcFrame)
     {
         HopCountType hopType = KNX_ANSWER_HOPTYPE(npdu);
+        _answerAsIpSbc = ipSbcFrame;
         _transportLayer.dataSystemBroadcastIndication(hopType, priority, source, npdu.tpdu());
+        _answerAsIpSbc = false;
     }
 
     // A 0533h frame goes to TP only while the IP System Broadcast Routing Mode is enabled and only the eligible
@@ -800,6 +802,8 @@ void NetworkLayerCoupler::dataSystemBroadcastRequest(AckType ack, HopCountType h
     // for closed media like TP1 and IP
     bool isClosedMedium = (_netLayerEntities[kPrimaryIfIndex].mediumType() == DptMedium::KNX_TP1) || (_netLayerEntities[kPrimaryIfIndex].mediumType() == DptMedium::KNX_IP);
     SystemBroadcast broadcastType = (isClosedMedium && isApciSystemBroadcast(tpdu.apdu()) ? Broadcast : SysBroadcast);
+    if (_answerAsIpSbc && _netLayerEntities[kPrimaryIfIndex].mediumType() == DptMedium::KNX_IP)
+        broadcastType = SysBroadcast; // answer to an IP system broadcast (03_02_06 4.3.5.3.1)
     _netLayerEntities[kPrimaryIfIndex].sendDataRequest(npdu, ack, 0, _deviceObj.individualAddress(), priority, GroupAddress, broadcastType);
 
     isClosedMedium = (_netLayerEntities[kSecondaryIfIndex].mediumType() == DptMedium::KNX_TP1) || (_netLayerEntities[kSecondaryIfIndex].mediumType() == DptMedium::KNX_IP);

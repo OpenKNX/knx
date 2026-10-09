@@ -106,6 +106,7 @@ class NetworkLayerCoupler : public NetworkLayer
 
     RouterObject* _rtObjPrimary {nullptr};
     RouterObject* _rtObjSecondary {nullptr};
+    bool _answerAsIpSbc = false; // a local response produced while handling an IP system broadcast goes back as one
 
     // Read on the acknowledge path from the first frame on, so it must not start out indeterminate.
     // The mask defaults (15.15.0 on 091A/2920, device_object.h) do carry a device part of 0 and take a
