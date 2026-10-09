@@ -24,6 +24,8 @@ class BauSystemBCoupler : public BauSystemB
   protected:
     void softRestart() override;
     ApplicationLayer& applicationLayer() override;
+    bool answerAsIpSbc() const override { return _netLayer.answerAsIpSbc(); }
+    void answerAsIpSbc(bool on) override { _netLayer.answerAsIpSbc(on); }
 
     void doMasterReset(EraseCode eraseCode, uint8_t channel) override;
 

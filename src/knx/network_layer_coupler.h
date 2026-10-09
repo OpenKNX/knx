@@ -40,6 +40,10 @@ class NetworkLayerCoupler : public NetworkLayer
     /** @brief The run state machine that may halt coupling; null leaves the coupler always routing. */
     void applicationProgramObject(ApplicationProgramObject& obj) { _appProgram = &obj; }
 
+    /** @brief Whether a local system broadcast response leaves as an IP system broadcast (03_02_06 4.3.5.3.1). */
+    bool answerAsIpSbc() const { return _answerAsIpSbc; }
+    void answerAsIpSbc(bool on) { _answerAsIpSbc = on; }
+
     /** @brief Routing-decision counters (ours, not spec); null on builds that do not keep them. */
     void setCounters(KnxIpCounters* counters) { _counters = counters; }
 #ifdef OPENKNX_ROUTE_TRACE

@@ -186,6 +186,15 @@ class BauSystemB : protected BusAccessUnit
     void connectionClosed(uint16_t tsap) override;
 
     void nextRestartState();
+    /** @brief Answers a serial number read after a random wait in [0, maxWaitMs] (03_03_07 3.2.6, 03_05_02 2.20.1.4); one pending per service and mode. */
+    void deferNetworkParameterResponse(bool system, Priority priority, HopCountType hopType, const SecurityControl& secCtrl,
+                                       uint16_t objectType, uint16_t propertyId, const uint8_t* testInfo, uint16_t testInfoLength,
+                                       uint32_t maxWaitMs);
+    void loopNetworkParameterResponse() { if (_npPending) sendDueNetworkParameterResponses(); }
+    void sendDueNetworkParameterResponses();
+    /** @brief Response mode of the system broadcast being handled; only a coupler with a KNX IP interface has one. */
+    virtual bool answerAsIpSbc() const { return false; }
+    virtual void answerAsIpSbc(bool /*on*/) {}
     /** @brief Steps of the 03_05_02 3.7.1.1.1 Basic Restart this stack implements, without restarting the device; subclasses add theirs. */
     virtual void softRestart();
     bool _softRestartPending = false;
@@ -206,6 +215,18 @@ class BauSystemB : protected BusAccessUnit
     ApplicationProgramObject _appProgram;
     Platform& _platform;
     RestartState _restartState = Idle;
+    struct NetworkParameterResponse
+    {
+        Priority priority = SystemPriority;
+        HopCountType hopType = NetworkLayerParameter;
+        SecurityControl secCtrl = {};
+        uint16_t objectType = 0;
+        uint16_t propertyId = 0;
+        uint8_t testInfo[16] = {};
+        uint8_t testInfoLength = 0;
+        uint32_t dueAt = 0;
+    } _npResponse[3]; // [0] A_NetworkParameter_Response, [1] A_SystemNetworkParameter_Response, [2] the same as IP system broadcast
+    uint8_t _npPending = 0; // bit n: _npResponse[n] waits
     // Own master reset, carried out once its A_Restart_Response had time to leave (restartRequestIndication).
     bool _selfResetPending = false;
     uint32_t _selfResetAt = 0;

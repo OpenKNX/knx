@@ -36,6 +36,7 @@ void BauSystemBCoupler::loop()
 {
     _transLayer.loop();
     nextRestartState(); // shared with the device BAU: without it a restart request never completes here
+    loopNetworkParameterResponse();
     _memory.loop();
 #ifdef USE_DATASECURE
     _appLayer.loop();

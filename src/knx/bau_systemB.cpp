@@ -998,6 +998,56 @@ void BauSystemB::softRestart()
     _deviceObj.safeState(false); // and safe state off
 }
 
+void BauSystemB::deferNetworkParameterResponse(bool system, Priority priority, HopCountType hopType, const SecurityControl& secCtrl,
+                                               uint16_t objectType, uint16_t propertyId, const uint8_t* testInfo, uint16_t testInfoLength,
+                                               uint32_t maxWaitMs)
+{
+    // The response leaves in the mode of the request (03_02_06 4.3.5.3.1), so each mode has its own slot.
+    const uint8_t slot = !system ? 0 : answerAsIpSbc() ? 2 : 1;
+    NetworkParameterResponse& r = _npResponse[slot];
+    // A repeat in the same service and mode is answered by the pending broadcast; test_info over 16 octets is not answered (the procedures use 1 or 2).
+    if ((_npPending & (1u << slot)) || testInfoLength > sizeof(r.testInfo))
+        return;
+    // Spread by the serial number (as 03_05_02 2.14.1.2 EXAMPLE 1) and the arrival time.
+    const uint8_t* sn = _deviceObj.propertyData(PID_SERIAL_NUMBER);
+    uint32_t seed = millis();
+    for (uint8_t i = 0; i < 6; i++)
+        seed = (seed << 5) ^ (seed >> 27) ^ sn[i];
+    const uint32_t hash = seed * 2654435761u; // Knuth multiplicative hash
+    r.dueAt = millis() + (uint32_t)(((uint64_t)hash * (maxWaitMs + 1)) >> 32);
+    r.priority = priority;
+    r.hopType = hopType;
+    r.secCtrl = secCtrl;
+    r.objectType = objectType;
+    r.propertyId = propertyId;
+    memcpy(r.testInfo, testInfo, testInfoLength);
+    r.testInfoLength = (uint8_t)testInfoLength;
+    _npPending |= (uint8_t)(1u << slot);
+}
+
+void BauSystemB::sendDueNetworkParameterResponses()
+{
+    const uint32_t now = millis();
+    for (uint8_t slot = 0; slot < 3; slot++)
+    {
+        NetworkParameterResponse& r = _npResponse[slot];
+        if (!(_npPending & (1u << slot)) || (int32_t)(now - r.dueAt) < 0)
+            continue;
+        _npPending &= (uint8_t)~(1u << slot);
+        if (!_deviceObj.progMode())
+            continue; // both procedures answer only in programming mode; it ended during the wait
+        const uint8_t* sn = _deviceObj.propertyData(PID_SERIAL_NUMBER);
+        answerAsIpSbc(slot == 2);
+        if (slot != 0)
+            applicationLayer().systemNetworkParameterReadResponse(r.priority, r.hopType, r.secCtrl, r.objectType, r.propertyId,
+                                                                  r.testInfo, r.testInfoLength, (uint8_t*)sn, 6);
+        else
+            applicationLayer().networkParameterReadResponse(r.priority, r.hopType, r.secCtrl, r.objectType, (uint8_t)r.propertyId,
+                                                            r.testInfo, r.testInfoLength, sn, 6);
+        answerAsIpSbc(false);
+    }
+}
+
 void BauSystemB::nextRestartState()
 {
     if (_softRestartPending && millis() - _softRestartAt >= kSoftRestartDelayMs)
@@ -1058,9 +1108,8 @@ void BauSystemB::systemNetworkParameterReadIndication(Priority priority, HopCoun
             // Only send a reply if programming mode is on
             if (_deviceObj.progMode() && (objectType == OT_DEVICE) && (propertyId == PID_SERIAL_NUMBER))
             {
-                // Send reply. testResult data is KNX serial number
-                applicationLayer().systemNetworkParameterReadResponse(priority, hopType, secCtrl, objectType, propertyId,
-                                                             testInfo, testInfoLength, (uint8_t*)_deviceObj.propertyData(PID_SERIAL_NUMBER), 6);
+                // testResult is the KNX serial number, after a random wait of 0 s to 1 s (03_05_02 2.20.1.4 p.39)
+                deferNetworkParameterResponse(true, priority, hopType, secCtrl, objectType, propertyId, testInfo, testInfoLength, 1000);
             }
         break;
 

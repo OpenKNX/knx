@@ -306,8 +306,8 @@ void Bau091A::networkParameterReadIndication(Priority priority, HopCountType hop
 {
     if (objectType != OT_DEVICE || propertyId != PID_SERIAL_NUMBER || testInfoLength < 1 || testInfo[0] != 0x01 || !_deviceObj.progMode())
         return;
-    applicationLayer().networkParameterReadResponse(priority, hopType, secCtrl, objectType, propertyId, testInfo, testInfoLength,
-                                                    _deviceObj.propertyData(PID_SERIAL_NUMBER), 6); // PID 11 always exists
+    // Random wait 0 to 10 x Tmedia (03_03_07 3.2.6 p.25), Tmedia of TP1 = 20 ms (03_05_02 Table 2); KNX IP defines none.
+    deferNetworkParameterResponse(false, priority, hopType, secCtrl, objectType, propertyId, testInfo, testInfoLength, 200);
 }
 
 bool Bau091A::configured()
