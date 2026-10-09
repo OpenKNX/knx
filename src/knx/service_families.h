@@ -20,7 +20,12 @@
 #endif
 
 #ifndef KNX_SERVICE_FAMILY_ROUTING
+// 2 = IP system broadcast routing (08_TSSK 2.4.30); RP2040 only until the ESP32 routing socket is verified on hardware.
+#if defined(ARDUINO_ARCH_RP2040) && (defined(KNX_IP_LAN) || defined(KNX_IP_WIFI))
+#define KNX_SERVICE_FAMILY_ROUTING 2
+#else
 #define KNX_SERVICE_FAMILY_ROUTING 1
+#endif
 #endif
 
 // Supported Service Families DIB (03_08_02 7.5.4.3): 2 header octets plus one entry per family.
