@@ -586,6 +586,33 @@ void NetworkLayerCoupler::dataConfirm(AckType ack, AddressType addrType, uint16_
     // Do not process the frame any further if it was a routed frame sent from network layer
 }
 
+// System broadcasts routed between TP and IP as 0533h (08_TSSK 2.4.3-2.4.8, 2.4.20-2.4.22).
+static bool isSnpSerialNumber(APDU& apdu, ApduType type)
+{
+    // object_type 0, PID 11, operand 01h (03_03_07 3.3.8 Figure 33); length first: type() reads 2 octets.
+    if (apdu.length() < 6 || apdu.type() != type)
+        return false;
+    const uint8_t* d = apdu.data();
+    return d[1] == 0 && d[2] == 0 && ((((uint16_t)d[3] << 8) | d[4]) >> 4) == 11 && d[5] == 0x01;
+}
+
+static bool isSecureSystemBroadcast(APDU& apdu, uint8_t service)
+{
+    // S-A PDU with SCF.T = 1 and SCF.SBC = 1 (secure_application_layer.cpp: T bit 7, SBC bit 3, service bits 0-2)
+    if (apdu.length() < 2 || apdu.type() != SecureService)
+        return false;
+    const uint8_t scf = apdu.data()[1];
+    return (scf & 0x80) && (scf & 0x08) && (scf & 0x07) == service;
+}
+
+static bool isSbcEligibleToIp(APDU& apdu)
+{
+    return isSnpSerialNumber(apdu, SystemNetworkParameterRead)
+        || (apdu.length() == 11 && apdu.type() == DomainAddressSerialNumberWrite) // 4 octet domain address
+        || isSecureSystemBroadcast(apdu, 0x00)   // S-A_Data
+        || isSecureSystemBroadcast(apdu, 0x02);  // S-A_Sync_Request
+}
+
 void NetworkLayerCoupler::broadcastIndication(AckType ack, FrameFormat format, NPDU& npdu, Priority priority, uint16_t source, uint8_t srcIfIdx)
 {
     // Send it to our local stack first
@@ -632,10 +659,10 @@ void NetworkLayerCoupler::broadcastIndication(AckType ack, FrameFormat format, N
         const uint8_t dstIfIdx = (srcIfIdx == kSecondaryIfIndex) ? kPrimaryIfIndex : kSecondaryIfIndex;
 
         if (_netLayerEntities[dstIfIdx].mediumType() == DptMedium::KNX_IP
-            && isApciSystemBroadcast(npdu.tpdu().apdu())
+            && isSbcEligibleToIp(npdu.tpdu().apdu())
             && _rtObjPrimary != nullptr
             && _rtObjPrimary->isIpSbcRoutingEnabled())
-            broadcastType = SysBroadcast;
+            broadcastType = SysBroadcast; // anything else, and everything while the mode is off, leaves as a broadcast
 
         sendMsgHopCount(ack, GroupAddress, 0, npdu, priority, broadcastType, srcIfIdx, source);
     }
