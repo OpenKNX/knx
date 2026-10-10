@@ -189,6 +189,8 @@ void IpDataLinkLayer::flushTxQueue()
             _counters->incrementOverflowToIp();
         confirmQueued(false);
     }
+    while (_sbcCount != 0)
+        releaseSbc(true);
     _busyHold = false;
     _sendRefusals = 0;
 }
@@ -326,6 +328,9 @@ void IpDataLinkLayer::loop()
     // Up to kRxPerLoop datagrams of every service (routing, tunnelling, discovery) per pass, router and interface alike.
     // Router: the queue is served between datagrams; a ROUTING_BUSY still unread holds the send (canSendIndication()).
 #ifdef KNX_IS_ROUTER
+    if (_sbcCount != 0 && (uint32_t)(millis() - _routingSentAt) >= KNX_ROUTING_SLOW_GAP_MS)
+        while (_sbcCount != 0)
+            releaseSbc(false);
     loopTxQueue();
 #endif
     uint8_t received = 0;
@@ -629,11 +634,62 @@ void IpDataLinkLayer::loopHandleSearchRequestExtended(uint8_t* buffer, uint16_t 
 bool IpDataLinkLayer::sendSystemBroadcast(CemiFrame& frame)
 {
     KnxIpRoutingSystemBroadcast packet(frame);
+#ifdef KNX_IS_ROUTER
+    // 03_02_06 2.1 p.6: held for the pause after a ROUTING_INDICATION; a ROUTING_BUSY does not hold it (4.3.5.4 p.13).
+    // Held on the routing group (the "assigned multicast address") and behind one already held; kSbcSlots held, a further one is cast off
+    // (03_08_05 3.7.3 p.13). Not held without an endpoint.
+    if (_sbcCount != 0 && (uint32_t)(millis() - _routingSentAt) >= KNX_ROUTING_SLOW_GAP_MS)
+        while (_sbcCount != 0)
+            releaseSbc(false); // pause over before loop() released them: the held ones go first
+    if (_enabled && (_sbcCount != 0 || (_joinedGroup == _setupGroup && (uint32_t)(millis() - _routingSentAt) < KNX_ROUTING_SLOW_GAP_MS)))
+    {
+        uint8_t* copy = _sbcCount < kSbcSlots ? new (std::nothrow) uint8_t[packet.totalLength()] : nullptr;
+        if (copy == nullptr)
+        {
+            if (_counters != nullptr)
+                _counters->incrementOverflowToIp();
+            dataConReceived(frame, false);
+            return false;
+        }
+        memcpy(copy, packet.data(), packet.totalLength());
+        _sbcPending[_sbcCount] = copy;
+        _sbcPendingLen[_sbcCount] = packet.totalLength();
+        _sbcCount++;
+        return true; // the L_Data.con follows from releaseSbc()
+    }
+#endif
     const bool success = sendUniCastCounted(systemSetupMultiCastAddress(), KNXIP_MULTICAST_PORT,
                                             packet.data(), packet.totalLength());
     dataConReceived(frame, success);
     return success;
 }
+
+#ifdef KNX_IS_ROUTER
+// Dequeues the oldest held ROUTING_SYSTEM_BROADCAST before its L_Data.con; sends it unless discard.
+void IpDataLinkLayer::releaseSbc(bool discard)
+{
+    uint8_t* const datagram = _sbcPending[0];
+    const uint16_t len = _sbcPendingLen[0];
+    for (uint8_t i = 1; i < _sbcCount; i++)
+    {
+        _sbcPending[i - 1] = _sbcPending[i];
+        _sbcPendingLen[i - 1] = _sbcPendingLen[i];
+    }
+    _sbcCount--;
+    _sbcPending[_sbcCount] = nullptr;
+    bool success = false;
+    if (discard)
+    {
+        if (_counters != nullptr)
+            _counters->incrementOverflowToIp();
+    }
+    else
+        success = sendUniCastCounted(systemSetupMultiCastAddress(), KNXIP_MULTICAST_PORT, datagram, len);
+    CemiFrame frame(datagram + LEN_KNXIP_HEADER, len - LEN_KNXIP_HEADER);
+    dataConReceived(frame, success);
+    delete[] datagram;
+}
+#endif
 
 // Opened only while the router holds the mode enabled (it falls back after 20 s), and only where the platform keeps
 // it apart from the routing socket. Where the routing socket takes the system setup group itself it is not needed.

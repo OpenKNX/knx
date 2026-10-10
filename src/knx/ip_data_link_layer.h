@@ -121,6 +121,11 @@ class IpDataLinkLayer : public DataLinkLayer
     bool _busyDecaying = false;       // N decay running (from the resume on)
     void flushTxQueue();
     void confirmQueued(bool success); // dequeues the head and emits its L_Data.con
+    static constexpr uint8_t kSbcSlots = 2;      // 03_08_05 3.7.1 p.13: queues of at least two telegrams
+    uint8_t* _sbcPending[kSbcSlots] = {};        // ROUTING_SYSTEM_BROADCASTs held for the pause after a ROUTING_INDICATION, oldest first
+    uint16_t _sbcPendingLen[kSbcSlots] = {};
+    uint8_t _sbcCount = 0;
+    void releaseSbc(bool discard);
     uint32_t _busyPhase = 0;          // golden-ratio sequence for trandom, 0 = not seeded
     uint8_t _busyPauseSlot = 0;       // 0..5: slot 0 takes the low end of the range, slot 3 the high end
     static constexpr int32_t kBusyNoteGapMs = 10;           // N counts ROUTING_BUSY frames this far apart (03_08_05 2.3.5 note 3)
