@@ -48,6 +48,7 @@ class IpParameterObject : public InterfaceObject
     // Written through the property write callback as well, so a module that only has the generic
     // propertyValueWrite() path (OFM-Network for the IP fault bit) can reach it.
     uint8_t _deviceState = 0;
+    uint16_t _busyWaitTime = 100; // PID_ROUTING_BUSY_WAIT_TIME, RAM only
     bool _deviceStateChanged = false;
     uint32_t _knxFaultSince = 0;   // millis() the bus first looked unusable; 0 = it does not
     bool _deviceStateInit = false; // first pass seeds the timer without reporting a change

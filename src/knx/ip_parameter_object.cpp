@@ -178,8 +178,25 @@ IpParameterObject::IpParameterObject(DeviceObject& deviceObject, Platform& platf
         // 03_08_03 2.5.21 p.14, routers only. Bit 0 earned; bit 1 withheld because PID 75 counts
         // queue-accepts, not confirmed sends (tpuart_data_link_layer.cpp). Bits 2-4 not implemented.
         new DataProperty(PID_KNXNETIP_ROUTING_CAPABILITIES, false, PDT_UNSIGNED_CHAR, 1, ReadLv3 | WriteLv0, (uint8_t)0x01),
-        // 03_08_03 2.5.28 p.16, default 100 ms. A parameter, not a claim - ROUTING_BUSY is not sent.
-        new DataProperty(PID_ROUTING_BUSY_WAIT_TIME, false, PDT_UNSIGNED_INT, 1, ReadLv3 | WriteLv0, (uint16_t)100),
+        // 03_08_03 2.5.28 p.16, default 100 ms: tw of the ROUTING_BUSY we send, 20..100 ms (03_08_05 p.11). Writable but
+        // kept in RAM: a persisted writable property changes the NVM layout and discards the ETS configuration.
+        new CallbackProperty<IpParameterObject>(this, PID_ROUTING_BUSY_WAIT_TIME, true, PDT_UNSIGNED_INT, 1, ReadLv3 | WriteLv3,
+            [](IpParameterObject* io, uint16_t start, uint8_t count, uint8_t* data) -> uint8_t
+            {
+                if (start == 0) { pushWord(1, data); return 1; }
+                pushWord(io->_busyWaitTime, data);
+                return 1;
+            },
+            [](IpParameterObject* io, uint16_t start, uint8_t count, const uint8_t* data) -> uint8_t
+            {
+                if (start != 1 || count != 1)
+                    return 0;
+                const uint16_t tw = getWord(data);
+                if (tw < 20 || tw > 100)
+                    return 0;
+                io->_busyWaitTime = tw;
+                return 1;
+            }),
 #endif
         new DataProperty(PID_TTL, true, PDT_UNSIGNED_CHAR, 1, ReadLv3 | WriteLv3, (uint8_t)16),
         new CallbackProperty<IpParameterObject>(this, PID_KNXNETIP_DEVICE_CAPABILITIES, false, PDT_BITSET16, 1, ReadLv3 | WriteLv0,
