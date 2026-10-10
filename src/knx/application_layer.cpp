@@ -317,6 +317,10 @@ void ApplicationLayer::dataIndividualIndication(HopCountType hopType, Priority p
 
 void ApplicationLayer::dataIndividualIndication(HopCountType hopType, Priority priority, uint16_t tsap, APDU& apdu, const SecurityControl& secCtrl)
 {
+    // 03_03_07 Table 1 p.9: A_ADC_Read and A_ADC_Response are connection-oriented services only.
+    const ApduType type = apdu.type();
+    if (type == ADCRead || (type & 0x3F8) == ADCResponse)
+        return;
     individualIndication(hopType, priority, tsap, apdu, secCtrl);
 }
 
