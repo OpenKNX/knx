@@ -131,7 +131,7 @@ bool IpDataLinkLayer::canSendIndication(uint32_t now)
     if ((uint32_t)(micros() - _routingSentUs) < KNX_ROUTING_INDICATION_GAP_US)
         return false;
     if (sendLimitPeek(now))
-        return false; // the one-second window is shared with ROUTING_SYSTEM_BROADCAST
+        return false;
     _platform.pollReceive(); // a ROUTING_BUSY may still wait in the network chip
     return !_platform.routingBusyPending();
 }
@@ -625,16 +625,9 @@ void IpDataLinkLayer::loopHandleSearchRequestExtended(uint8_t* buffer, uint16_t 
 // The system setup group is where every IP system broadcast goes, whatever the routing group is set to
 // (03_02_06 4.1.3). Sending to a multicast address needs no membership -- only receiving does -- so the
 // unicast API, which is the only one carrying a destination, does the job here.
+// The 50/s limit of 03_02_06 2.1 p.6 covers ROUTING_INDICATIONs only: a ROUTING_SYSTEM_BROADCAST is neither refused nor counted by it.
 bool IpDataLinkLayer::sendSystemBroadcast(CemiFrame& frame)
 {
-    if (isSendLimitReached())
-    {
-        if (_counters != nullptr)
-            _counters->incrementOverflowToIp();
-        dataConReceived(frame, false);
-        return false;
-    }
-
     KnxIpRoutingSystemBroadcast packet(frame);
     const bool success = sendUniCastCounted(systemSetupMultiCastAddress(), KNXIP_MULTICAST_PORT,
                                             packet.data(), packet.totalLength());

@@ -86,7 +86,7 @@ class IpDataLinkLayer : public DataLinkLayer
     bool sendControlUniCast(uint32_t addr, uint16_t port, uint8_t* buffer, uint16_t len); // PID 74 only
     bool _enabled = false;
     bool _rxRoutingIndications = true;
-    // 03_02_06 2.1 p.6: at most 50 datagrams within one second (routing indications and system broadcasts); last 50 send times.
+    // 03_02_06 2.1 p.6: at most 50 ROUTING_INDICATIONs within one second; last 50 send times.
     static constexpr uint8_t kSendLimit = 50;
     static constexpr uint32_t kSendWindowMs = 1005; // 1 s + 5 ms for millis() steps and send-path jitter
     uint32_t _sendTimes[kSendLimit] = {0};
