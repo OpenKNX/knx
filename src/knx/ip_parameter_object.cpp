@@ -175,8 +175,8 @@ IpParameterObject::IpParameterObject(DeviceObject& deviceObject, Platform& platf
                 pushInt(io->_counters ? io->_counters->transmitToKnx() : 0, data);
                 return 1;
             }),
-        // 03_08_03 2.5.21 p.14, routers only. Bit 0 set; bit 1 (transmitted telegram count) not advertised; bits 2-4 not implemented.
-        new DataProperty(PID_KNXNETIP_ROUTING_CAPABILITIES, false, PDT_UNSIGNED_CHAR, 1, ReadLv3 | WriteLv0, (uint8_t)0x01),
+        // 03_08_03 2.5.21 Table 4 p.14, routers only: bit 0 PID 72/73, bit 1 PID 74/75 (74 every datagram sent, 75 acknowledged on TP); bits 2-4 not implemented.
+        new DataProperty(PID_KNXNETIP_ROUTING_CAPABILITIES, false, PDT_UNSIGNED_CHAR, 1, ReadLv3 | WriteLv0, (uint8_t)0x03),
         // 03_08_03 2.5.28 p.16, default 100 ms: tw of the ROUTING_BUSY we send, 20..100 ms (03_08_05 p.11). Writable but
         // kept in RAM: a persisted writable property changes the NVM layout and discards the ETS configuration.
         new CallbackProperty<IpParameterObject>(this, PID_ROUTING_BUSY_WAIT_TIME, true, PDT_UNSIGNED_INT, 1, ReadLv3 | WriteLv3,
