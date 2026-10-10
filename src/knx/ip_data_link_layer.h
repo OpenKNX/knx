@@ -94,7 +94,10 @@ class IpDataLinkLayer : public DataLinkLayer
     uint32_t _routingSentAt = 0; // millis() of the last ROUTING_INDICATION sent
 #endif
     bool sendFrame(CemiFrame& frame);
-
+    static_assert(KNX_IP_RX_PER_LOOP >= 1 && KNX_IP_RX_PER_LOOP <= 255, "uint8_t counter");
+    static constexpr uint8_t kRxPerLoop = KNX_IP_RX_PER_LOOP; // datagrams read per loop() at most
+    /** @brief Reads and dispatches one datagram of any service; false when the platform returned none (also after an oversize drop). */
+    bool loopReceive();
 
 #if KNX_SERVICE_FAMILY_CORE >= 2
     void loopHandleSearchRequestExtended(uint8_t* buffer, uint16_t length);

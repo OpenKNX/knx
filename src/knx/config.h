@@ -188,6 +188,11 @@
 #define KNX_IP_RX_RING_SIZE 2048
 #endif
 
+// KNX_IP_RX_PER_LOOP - datagrams IpDataLinkLayer::loop() reads per pass (1..255); trades loop() time for burst intake.
+#ifndef KNX_IP_RX_PER_LOOP
+#define KNX_IP_RX_PER_LOOP 8
+#endif
+
 // KNX_COUPLER_ARRIVAL_SLOTS - partners whose last frame to the coupler is remembered with its interface, so the answer
 // leaves on that interface (03_03_03 2.4.2.4.1 b). 4 bytes each. A partner not held falls back to topology. 1..255.
 #ifndef KNX_COUPLER_ARRIVAL_SLOTS

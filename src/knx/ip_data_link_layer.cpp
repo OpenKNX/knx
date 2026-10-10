@@ -99,15 +99,25 @@ void IpDataLinkLayer::loop()
     }
     loopSystemBroadcast();
 
-    uint8_t buffer[512];
+    // Up to kRxPerLoop datagrams of every service (routing, tunnelling, discovery) per pass, router and interface alike.
+    uint8_t received = 0;
+    while (received < kRxPerLoop && loopReceive())
+    {
+        received++;
+    }
+}
+
+bool IpDataLinkLayer::loopReceive()
+{
+    uint8_t buffer[KNXIP_RX_MAX_DATAGRAM];
     uint16_t remotePort = 0;
     uint32_t remoteAddr = 0;
-    int len = _platform.readBytesMultiCast(buffer, 512, remoteAddr, remotePort);
+    int len = _platform.readBytesMultiCast(buffer, sizeof(buffer), remoteAddr, remotePort);
     if (len <= 0)
-        return;
+        return false;
 
     if (len < KNXIP_HEADER_LEN)
-        return;
+        return true;
     
     if (buffer[0] != KNXIP_HEADER_LEN
         || buffer[1] != KNXIP_PROTOCOL_VERSION)
@@ -120,7 +130,7 @@ void IpDataLinkLayer::loop()
         if (buffer[0] == KNXIP_HEADER_LEN)
             _ipTunnelServer.shutdownOnProtocolVersionChange(buffer, (uint16_t)len, remoteAddr);
 #endif
-        return;
+        return true;
     }
 
     // KNXnet/IP total length (octets 4-5) must equal the received datagram; a mismatch is malformed ->
@@ -129,7 +139,7 @@ void IpDataLinkLayer::loop()
     popWord(declaredLen, buffer + 4);
     if (declaredLen != (uint16_t)len)
     {
-        return;
+        return true;
     }
 
 #ifdef KNX_ACTIVITYCALLBACK
@@ -229,6 +239,7 @@ void IpDataLinkLayer::loop()
         }
 
     }
+    return true;
 }
 
 #if KNX_SERVICE_FAMILY_CORE >= 2
