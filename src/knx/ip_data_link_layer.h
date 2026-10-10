@@ -51,6 +51,8 @@ class IpDataLinkLayer : public DataLinkLayer
     /** @brief Move the routing endpoint to another multicast group at the next loop pass (A_DomainAddressSerialNumber_Write). */
     void changeRoutingGroup(uint32_t group);
     bool indicatingIpSystemBroadcast() const override { return _indicatingSbc; }
+    /** @brief M_Reset.req: applies PID 67 and the routing group (03_05_02 3.7.1.1.1); re-joins only when one of them requires it. */
+    void reinitialise();
 
 #ifdef KNX_IS_ROUTER
     /** @brief Report LAN->KNX losses with ROUTING_LOST_MESSAGE (03_08_05 2.3.4), about once per second (08_TSSH 6.2.2). */
@@ -66,6 +68,7 @@ class IpDataLinkLayer : public DataLinkLayer
     void receivedSystemBroadcast(uint8_t* buffer, int len);
     uint32_t _pendingGroup = 0;
     uint8_t readTtl();           // PID 67
+    uint8_t _ttl = 16;           // PID 67 as last applied
     bool _indicatingSbc = false; // set around frameReceived() of a 0533h frame
     bool _sbcOpenFailed = false; // the secondary socket could not be opened; no retry until the mode goes off
     bool _setupOnRoutingSocket = false; // the routing socket receives the system setup group (same group, or joined extra)

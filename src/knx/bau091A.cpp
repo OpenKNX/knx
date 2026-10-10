@@ -289,13 +289,15 @@ TPAckType Bau091A::isAckRequired(uint16_t address, bool isGrpAddr)
     return ack;
 }
 
-// Basic Restart after M_Reset.req (03_05_02 3.7.1.1.1): transport connection and all KNXnet/IP connections closed.
+// Basic Restart after M_Reset.req (03_05_02 3.7.1.1.1): transport connection and all KNXnet/IP connections closed,
+// changed KNXnet/IP parameters (PID 66, PID 67) applied.
 void Bau091A::softRestart()
 {
     BauSystemBCoupler::softRestart();
 #ifdef KNX_TUNNELING
     _ipTunnelServer.closeAllTunnels();
 #endif
+    _dlLayerPrimary.reinitialise();
 }
 
 // 03_02_06 4.3.5.3.4: the device with this serial number takes the 4 octet domain address as its routing multicast address.

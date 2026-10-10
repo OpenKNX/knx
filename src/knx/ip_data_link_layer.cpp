@@ -499,6 +499,22 @@ uint32_t IpDataLinkLayer::usableGroup(uint32_t group)
     return group;
 }
 
+void IpDataLinkLayer::reinitialise()
+{
+    // 03_05_02 3.7.1.1.1: PID 67 and PID 66 apply after the restart.
+    // Re-joins for a changed group, or for a changed TTL where the platform sets it at the join only.
+    const uint8_t ttl = readTtl();
+    bool rejoin = false;
+#ifdef KNX_IS_ROUTER
+    rejoin = (ttl != _ttl) && _platform.multicastTtlAtJoinOnly(); // only a router sends multicast
+#endif
+    _ttl = ttl;
+    _platform.multicastTtl(ttl);
+    const uint32_t group = usableGroup(multiCastAddress());
+    if (group != _joinedGroup || rejoin)
+        changeRoutingGroup(group);
+}
+
 uint8_t IpDataLinkLayer::readTtl()
 {
     uint8_t ttl = 16; // stays the default if the property holds no element
@@ -564,6 +580,7 @@ void IpDataLinkLayer::enabled(bool value)
         const uint8_t ttl = readTtl();
         if (ttl == 0)
             println("PID_TTL is 0: multicast datagrams are sent with TTL 0");
+        _ttl = ttl;
         _platform.multicastTtl(ttl);
         _enabled = joinMultiCast();        // no endpoint, no enabled(): enabled() must not report a lie
         return;
