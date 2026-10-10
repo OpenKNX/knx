@@ -79,8 +79,24 @@ void IpDataLinkLayer::loop()
 {
     if (!_enabled)
         return;
-
-
+    if (_groupChangePending)
+    {
+        _groupChangePending = false;
+        enableSystemBroadcast(false);
+        _platform.closeMultiCast();
+        const uint32_t previous = _joinedGroup;
+        _joinedGroup = _pendingGroup;
+        _enabled = joinMultiCast();
+        if (!_enabled)
+        {
+            // Not joinable here: keep the endpoint on the group that worked rather than losing it until reboot.
+            _platform.closeMultiCast();
+            _joinedGroup = previous;
+            _enabled = joinMultiCast();
+            if (!_enabled)
+                return;
+        }
+    }
     loopSystemBroadcast();
 
     uint8_t buffer[512];
@@ -412,6 +428,17 @@ void IpDataLinkLayer::loopSystemBroadcast()
     receivedSystemBroadcast(buffer, len);
 }
 
+void IpDataLinkLayer::changeRoutingGroup(uint32_t group)
+{
+    if (!_enabled)
+    {
+        _joinedGroup = group; // joined with the endpoint
+        _groupChangePending = false;
+        return;
+    }
+    _pendingGroup = group;
+    _groupChangePending = true;
+}
 
 void IpDataLinkLayer::receivedSystemBroadcast(uint8_t* buffer, int len)
 {

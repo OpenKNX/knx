@@ -15,6 +15,8 @@
 class Bau091A : public BauSystemBCoupler, public ITpUartCallBacks, public DataLinkLayerCallbacks
 {
   public:
+    void domainAddressSerialNumberWriteIpIndication(Priority priority, HopCountType hopType, const SecurityControl &secCtrl, const uint8_t* ipDoA,
+                                                    const uint8_t* knxSerialNumber) override;
     void softRestart() override;
     void networkParameterReadIndication(Priority priority, HopCountType hopType, const SecurityControl &secCtrl, uint16_t objectType,
                                         uint8_t propertyId, const uint8_t* testInfo, uint16_t testInfoLength) override;

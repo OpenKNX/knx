@@ -48,6 +48,8 @@ class IpDataLinkLayer : public DataLinkLayer
 
     // System setup group socket (03_02_06 4.1.3): opened while the IP SBC mode is on, unless _setupOnRoutingSocket or not isolated.
     void enableSystemBroadcast(bool value);
+    /** @brief Move the routing endpoint to another multicast group at the next loop pass (A_DomainAddressSerialNumber_Write). */
+    void changeRoutingGroup(uint32_t group);
     bool indicatingIpSystemBroadcast() const override { return _indicatingSbc; }
 
 #ifdef KNX_IS_ROUTER
@@ -62,11 +64,13 @@ class IpDataLinkLayer : public DataLinkLayer
     uint32_t systemSetupMultiCastAddress();
     void loopSystemBroadcast();
     void receivedSystemBroadcast(uint8_t* buffer, int len);
+    uint32_t _pendingGroup = 0;
     uint8_t readTtl();           // PID 67
     bool _indicatingSbc = false; // set around frameReceived() of a 0533h frame
     bool _sbcOpenFailed = false; // the secondary socket could not be opened; no retry until the mode goes off
     bool _setupOnRoutingSocket = false; // the routing socket receives the system setup group (same group, or joined extra)
     uint32_t _setupGroup = 0;           // PID 65 as read at the join
+    bool _groupChangePending = false;
     bool sendSystemBroadcast(CemiFrame& frame);
     bool _sbcSocketOpen = false;
     uint32_t _joinedGroup = 0; // 03_08_03 2.5.17: PID 66 becomes active on reset, not at runtime

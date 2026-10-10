@@ -298,6 +298,22 @@ void Bau091A::softRestart()
 #endif
 }
 
+// 03_02_06 4.3.5.3.4: the device with this serial number takes the 4 octet domain address as its routing multicast address.
+// There is no Security Mode here that would make it ignore the frame; applied at once, the client retries for 60 s.
+void Bau091A::domainAddressSerialNumberWriteIpIndication(Priority priority, HopCountType hopType, const SecurityControl &secCtrl, const uint8_t* ipDoA,
+                                                         const uint8_t* knxSerialNumber)
+{
+    // PID 11 and PID 66 always exist here: DeviceObject and IpParameterObject (KNX_IS_ROUTER) create them as DataProperty.
+    if (memcmp(knxSerialNumber, _deviceObj.propertyData(PID_SERIAL_NUMBER), 6) != 0)
+        return;
+    if (ipDoA[0] < 224 || ipDoA[0] > 239 || (ipDoA[0] == 224 && ipDoA[1] == 0 && ipDoA[2] == 0))
+        return; // not a usable multicast address: as IpDataLinkLayer::enabled(), 224.0.0.0/24 is refused by lwIP
+    const uint32_t group = ((uint32_t)ipDoA[0] << 24) | ((uint32_t)ipDoA[1] << 16) | ((uint32_t)ipDoA[2] << 8) | ipDoA[3];
+    _ipParameters.property(PID_ROUTING_MULTICAST_ADDRESS)->write(group);
+    _memory.scheduleSave(); // PID 66 is written to NVM about 5 s later (Memory::loop())
+    _dlLayerPrimary.changeRoutingGroup(group);
+}
+
 // 03_02_06 4.3.5.3.2: the serial number via A_NetworkParameter_Read in broadcast mode, only in programming mode.
 void Bau091A::networkParameterReadIndication(Priority priority, HopCountType hopType, const SecurityControl &secCtrl, uint16_t objectType,
                                              uint8_t propertyId, const uint8_t* testInfo, uint16_t testInfoLength)

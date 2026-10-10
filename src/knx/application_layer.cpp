@@ -244,10 +244,12 @@ void ApplicationLayer::dataSystemBroadcastIndication(HopCountType hopType, Prior
         }
         case DomainAddressSerialNumberWrite:
         {
-            if (apdu.length() < 13) break;
             const uint8_t* knxSerialNumber = &data[1];
             const uint8_t* domainAddress = &data[7];
-            _bau.domainAddressSerialNumberWriteIndication(priority, hopType, secCtrl, domainAddress, knxSerialNumber);
+            if (apdu.length() == 11) // 4 octet KNX IP domain address = routing multicast address (03_04_01, 03_02_06 4.3.5.3.4)
+                _bau.domainAddressSerialNumberWriteIpIndication(priority, hopType, secCtrl, domainAddress, knxSerialNumber);
+            else if (apdu.length() >= 13)
+                _bau.domainAddressSerialNumberWriteIndication(priority, hopType, secCtrl, domainAddress, knxSerialNumber);
             break;
         }
         case DomainAddressSerialNumberRead:
