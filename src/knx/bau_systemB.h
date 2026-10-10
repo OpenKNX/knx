@@ -67,6 +67,7 @@ class BauSystemB : protected BusAccessUnit
     // answer ONLY connection-oriented (the connectionless scan misses them). Driven serially from the client.
     bool ftcScanConnect(uint16_t pa);                       // open a T_Connect to pa (self-guards: no-op if already connected)
     bool ftcScanConnected();                                // T_Connect established?
+    bool ftcScanConnectedTo(uint16_t pa); // the open transport connection is to pa
     bool ftcScanReadAcked() { return false; }               // presence-on-ACK: not yet exposed by the embedded transport layer -> fall back to the DeviceDescriptor answer (host tunnel overrides this with the real T_ACK)
     void ftcScanReadDescriptor(const SecurityControl& sec); // CO DeviceDescriptor_Read on the open connection
     void ftcScanDisconnect();                               // ALWAYS callable -- also unwedges a stuck Connecting state

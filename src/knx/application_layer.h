@@ -106,6 +106,7 @@ class ApplicationLayer
     void connectRequest(uint16_t destination, Priority priority);
     void disconnectRequest(Priority priority);
     bool isConnected();
+    bool isConnectedTo(uint16_t tsap) { return _connectedTsap == tsap; } // a transport connection to tsap is open
     void restartRequest(AckType ack, Priority priority, HopCountType hopType, const SecurityControl& secCtrl);
     void restartResponse(AckType ack, Priority priority, HopCountType hopType, const SecurityControl& secCtrl, uint8_t errorCode, uint16_t processTime, uint16_t asap);
     void propertyValueReadRequest(AckType ack, Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl& secCtrl,

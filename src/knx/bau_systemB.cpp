@@ -907,7 +907,9 @@ void BauSystemB::memoryReadAppLayerConfirm(Priority priority, HopCountType hopTy
 
 bool BauSystemB::ftcSendAdcRead(uint16_t asap, const SecurityControl secCtrl, uint8_t channelNr, uint8_t readCount)
 {
-    // Same connectionless, AckRequested, LowPriority path as the other ftc reads.
+    // A_ADC_Read is connection-oriented only (03_03_07 Table 1 p.9): sent only over an open T_Connect to asap.
+    if (!applicationLayer().isConnectedTo(asap))
+        return false;
     applicationLayer().adcReadRequest(AckRequested, LowPriority, NetworkLayerParameter, asap, secCtrl, channelNr, readCount);
     return true;
 }
@@ -933,6 +935,11 @@ bool BauSystemB::ftcScanConnect(uint16_t pa)
 bool BauSystemB::ftcScanConnected()
 {
     return applicationLayer().isConnected();
+}
+
+bool BauSystemB::ftcScanConnectedTo(uint16_t pa)
+{
+    return applicationLayer().isConnectedTo(pa);
 }
 
 void BauSystemB::ftcScanReadDescriptor(const SecurityControl& sec)
