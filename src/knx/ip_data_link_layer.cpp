@@ -257,7 +257,40 @@ void IpDataLinkLayer::handleRoutingBusy(const uint8_t* buffer, uint16_t len, uin
     _busyHold = true;
 }
 
+void IpDataLinkLayer::loopRoutingBusy(uint16_t txQueueFill)
+{
+    // ROUTING_BUSY from KNX_ROUTING_BUSY_TP_FILL queued TP frames or KNX_ROUTING_BUSY_RX_BACKLOG unread datagrams (03_08_05 2.3.5).
+    // At most every tw/2; within one episode a repeat needs a ROUTING_INDICATION received since the last ROUTING_BUSY.
+    if (!_enabled || (txQueueFill < KNX_ROUTING_BUSY_TP_FILL && _platform.multicastRxBacklog() < KNX_ROUTING_BUSY_RX_BACKLOG))
+    {
+        _busyEpisode = false;
+        return;
+    }
+    const uint32_t now = millis();
+    if ((uint32_t)(now - _routingSentAt) < KNX_ROUTING_SLOW_GAP_MS)
+        return; // 5 ms pause after a ROUTING_INDICATION (03_02_06 2.1 p.6)
 
+    uint16_t tw = 100;
+    const Property* prop = _ipParameters.property(PID_ROUTING_BUSY_WAIT_TIME);
+    if (prop != nullptr)
+        prop->read(tw);
+    if (tw < 20)
+        tw = 20; // 03_08_05 p.11: 20 ms <= tw <= 100 ms
+    else if (tw > 100)
+        tw = 100;
+    if (_busySent && (uint32_t)(now - _busySentAt) < (uint32_t)(tw / 2))
+        return; // also across episodes: a queue hovering at the threshold must not send one per drained frame
+    if (_busyEpisode && !_ipRxSinceBusy)
+        return;
+
+    uint8_t busy[] = {KNXIP_HEADER_LEN, KNXIP_PROTOCOL_VERSION, 0x05, 0x32, 0x00, 0x0C, 0x06, _ipParameters.deviceState(),
+                      (uint8_t)(tw >> 8), (uint8_t)tw, 0x00, 0x00};
+    _busySentAt = now;
+    _busySent = true;
+    _busyEpisode = true;
+    _ipRxSinceBusy = false;
+    sendControlMultiCast(busy, sizeof(busy));
+}
 #endif
 
 
@@ -367,7 +400,12 @@ bool IpDataLinkLayer::loopReceive()
             // frame from ETS would otherwise be pushed onto the bus as garbage. Order matters: totalLenght()!=0
             // first, so the short-circuit keeps valid() from OOB-reading a zero-length frame.
             if (routingIndication.frame().totalLenght() != 0 && routingIndication.frame().valid())
+            {
+#ifdef KNX_IS_ROUTER
+                _ipRxSinceBusy = true; // a sender still talks: our ROUTING_BUSY may be repeated
+#endif
                 frameReceived(routingIndication.frame());
+            }
             break;
         }
 
@@ -854,7 +892,7 @@ bool IpDataLinkLayer::sendControlUniCast(uint32_t addr, uint16_t port, uint8_t* 
 }
 
 #ifdef KNX_IS_ROUTER
-// ROUTING_LOST_MESSAGE: counted as sendBytes() counts a sent datagram, never PID 72. Callers hold _enabled.
+// ROUTING_BUSY, ROUTING_LOST_MESSAGE: counted as sendBytes() counts a sent datagram, never PID 72. Callers hold _enabled.
 bool IpDataLinkLayer::sendControlMultiCast(uint8_t* bytes, uint16_t length)
 {
     const bool sent = _platform.sendBytesMultiCast(bytes, length);
@@ -923,7 +961,7 @@ void IpDataLinkLayer::loopLostMessage()
     const uint32_t now = millis();
     if (now - _lostSentAt < 1000)
         return;
-    if (now - _routingSentAt < 6) // 03_02_06 2.1 p.6: >= 5 ms after a ROUTING_INDICATION; 6 covers the ms granularity
+    if (now - _routingSentAt < KNX_ROUTING_SLOW_GAP_MS) // 03_02_06 2.1 p.6: >= 5 ms after a ROUTING_INDICATION
         return;
 
     const uint8_t deviceState = _ipParameters.deviceState();

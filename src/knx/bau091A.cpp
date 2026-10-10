@@ -206,6 +206,7 @@ void Bau091A::loop()
 
     _dlLayerPrimary.loop();
     _dlLayerSecondary.loop();
+    _dlLayerPrimary.loopRoutingBusy(_dlLayerSecondary.transmitQueueSize());
     BauSystemBCoupler::loop();
 #ifdef KNX_TUNNELING
     _ipTunnelServer.loop();

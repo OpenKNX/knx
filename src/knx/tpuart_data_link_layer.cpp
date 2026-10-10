@@ -258,6 +258,11 @@ void TpUartDataLinkLayer::enabled(bool value)
     stop(!value);
 }
 
+uint16_t TpUartDataLinkLayer::transmitQueueSize()
+{
+    return (uint16_t)_tpuart.getTransmitter().queueSize();
+}
+
 bool TpUartDataLinkLayer::enabled() const
 {
     return _initialized && _tpuart.isConnected();

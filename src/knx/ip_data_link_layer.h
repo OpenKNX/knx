@@ -57,6 +57,8 @@ class IpDataLinkLayer : public DataLinkLayer
 #ifdef KNX_IS_ROUTER
     /** @brief Report LAN->KNX losses with ROUTING_LOST_MESSAGE (03_08_05 2.3.4), about once per second (08_TSSH 6.2.2). */
     void loopLostMessage();
+    /** @brief Send ROUTING_BUSY while the TP transmit queue holds too many frames (03_08_05 2.3.5 p.11). */
+    void loopRoutingBusy(uint16_t txQueueFill);
     /** @brief True while a received ROUTING_BUSY holds back ROUTING_INDICATIONs; the TP side then acknowledges routed frames with BUSY. */
     bool routingPaused() const { return _busyHold && (int32_t)(millis() - _busyUntil) < 0; }
 #endif
@@ -112,6 +114,10 @@ class IpDataLinkLayer : public DataLinkLayer
     uint8_t _sendRefusals = 0;        // routing indications the network driver refused in a row
     uint32_t _busyNDecAt = 0;         // last decrement of _busyN
     uint8_t _busyN = 0;               // ROUTING_BUSY frames in the moving period
+    uint32_t _busySentAt = 0;         // last ROUTING_BUSY sent
+    bool _busySent = false;
+    bool _ipRxSinceBusy = false;      // a ROUTING_INDICATION arrived since our last ROUTING_BUSY
+    bool _busyEpisode = false;        // the TP queue is above the threshold and a ROUTING_BUSY went out for it
     bool _busyDecaying = false;       // N decay running (from the resume on)
     void flushTxQueue();
     void confirmQueued(bool success); // dequeues the head and emits its L_Data.con
@@ -136,6 +142,10 @@ class IpDataLinkLayer : public DataLinkLayer
     static_assert(KNX_IP_RX_PER_LOOP >= 1 && KNX_IP_RX_PER_LOOP <= 255, "uint8_t counter");
     static constexpr uint8_t kRxPerLoop = KNX_IP_RX_PER_LOOP; // datagrams read per loop() at most
 #ifdef KNX_IS_ROUTER
+    static_assert(KNX_ROUTING_BUSY_TP_FILL >= 1 && KNX_ROUTING_BUSY_TP_FILL <= 0xFFFF, "uint16_t queue fill");
+    static_assert(KNX_ROUTING_BUSY_RX_BACKLOG >= 1 && KNX_ROUTING_BUSY_RX_BACKLOG <= 0xFFFF, "uint16_t backlog");
+    // >= 6: the real gap exceeds the value - 1 ms; <= 20: the 20 ms pause 03_02_06 2.1 allows, at most 50/s.
+    static_assert(KNX_ROUTING_SLOW_GAP_MS >= 6 && KNX_ROUTING_SLOW_GAP_MS <= 20, "KNX_ROUTING_SLOW_GAP_MS out of 6..20");
     static_assert(KNX_ROUTING_INDICATION_GAP_US >= 20001 && KNX_ROUTING_INDICATION_GAP_US <= 100000, "KNX_ROUTING_INDICATION_GAP_US out of 20001..100000");
     static_assert(KNX_ROUTING_SEND_RETRIES >= 1 && KNX_ROUTING_SEND_RETRIES <= 255, "KNX_ROUTING_SEND_RETRIES out of 1..255");
     static_assert(KNX_ROUTING_BUSY_SAME_SOURCE_GAP_MS >= 1 && KNX_ROUTING_BUSY_SAME_SOURCE_GAP_MS <= 10, "KNX_ROUTING_BUSY_SAME_SOURCE_GAP_MS out of 1..10");

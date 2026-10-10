@@ -51,6 +51,8 @@ class TpUartDataLinkLayer : public DataLinkLayer
     void enabled(bool value);
     bool enabled() const;
     DptMedium mediumType() const override;
+    /** @brief Frames waiting in the TP transmit queue (ROUTING_BUSY trigger, 03_08_05 2.3.5). */
+    uint16_t transmitQueueSize();
     void reset();
     bool monitor(); // false = the chip refused (not initialized, or a routing device has no monitor)
     // Console-initiated busmon (`bcu mon`): same as monitor() but also echoes each raw frame to the

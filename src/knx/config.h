@@ -198,6 +198,20 @@
 #define KNX_IP_TX_QUEUE_SIZE 30
 #endif
 
+// KNX_ROUTING_BUSY_TP_FILL / _RX_BACKLOG - frames queued for TP / datagrams unread that send ROUTING_BUSY (03_08_05 2.3.5 SHOULD: ten).
+#ifndef KNX_ROUTING_BUSY_TP_FILL
+#define KNX_ROUTING_BUSY_TP_FILL 10
+#endif
+#ifndef KNX_ROUTING_BUSY_RX_BACKLOG
+#define KNX_ROUTING_BUSY_RX_BACKLOG 10
+#endif
+
+// KNX_ROUTING_SLOW_GAP_MS - millis() difference before the next multicast datagram after a ROUTING_INDICATION (03_02_06
+// 2.1, tslow 03_08_05 Figure 5): 5 ms + 1 ms margin + 1 ms millis() granularity, so the real gap exceeds 6 ms. 6..20.
+#ifndef KNX_ROUTING_SLOW_GAP_MS
+#define KNX_ROUTING_SLOW_GAP_MS 7
+#endif
+
 // KNX_ROUTING_INDICATION_GAP_US - micros() between two ROUTING_INDICATIONs, the 20 ms pause of 03_02_06 2.1; the 50/s window applies too. 20001..100000.
 #ifndef KNX_ROUTING_INDICATION_GAP_US
 #define KNX_ROUTING_INDICATION_GAP_US 20001
