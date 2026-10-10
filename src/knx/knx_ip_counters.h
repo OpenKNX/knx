@@ -50,7 +50,7 @@ class KnxIpCounters
     static void add16(volatile uint32_t& v, uint8_t n) { const uint32_t c = v + n; v = (c > 0xFFFF) ? 0xFFFF : c; }
 
     volatile uint32_t _transmitToIp = 0;  // PID 74: every KNXnet/IP datagram sent, ACKs included
-    volatile uint32_t _transmitToKnx = 0; // PID 75: telegrams put on the KNX subnetwork
+    volatile uint32_t _transmitToKnx = 0; // PID 75: telegrams acknowledged on the KNX subnetwork
     volatile uint32_t _overflowToIp = 0;
     volatile uint32_t _overflowToKnx = 0;
     volatile uint32_t _lostToKnx = 0; // wraps on purpose; ROUTING_LOST_MESSAGE reports its delta (03_08_05 2.3.4)

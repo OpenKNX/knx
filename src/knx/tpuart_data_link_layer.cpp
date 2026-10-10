@@ -82,14 +82,7 @@ bool TpUartDataLinkLayer::sendFrame(CemiFrame &cemiFrame)
     }
 
     // success: queue took ownership of tpFrame -> it deletes it after TX (no delete here)
-    // TODO EC PID 75 increments here at queue-accept, but 03_08_03 2.5.26 wants "successfully transmitted".
-    // The exact point is the ACK-confirmed L_Data.con below (isTransmitted -> dataConReceived, gated on
-    // tpFrame.isAck()). Deviation = 0 on a healthy bus, over-counts un-ACKed frames; harmless while the
-    // statistics capability (PID 70 bit1) is not advertised - PID 70 now exists on the router
-    // (ip_parameter_object.cpp) and bit1 is held CLEAR for exactly this reason. Moving the counter
-    // to that L_Data.con is what earns the bit. Move only with a cross-target audit.
-    if (_counters != nullptr)
-        _counters->incrementTransmitToKnx();
+    // PID 75 is counted on the positive L_Data.con in processRxFrame() (03_08_03 2.5.26: "successfully transmitted").
     // printHex("  CEMI>: ", cemiFrame.data(), cemiFrame.dataLength());
     return true;
 }
@@ -454,7 +447,10 @@ void TpUartDataLinkLayer::processRxFrame(TPUart::Frame &tpFrame)
     CemiFrame cemiFrame(cemiData, tpFrame.cemiSize());
 
     if (tpFrame.isTransmitted()) {
-        dataConReceived(cemiFrame, tpFrame.isAck());
+        const bool acked = tpFrame.isAck();
+        if (acked && _counters != nullptr)
+            _counters->incrementTransmitToKnx(); // PID 75
+        dataConReceived(cemiFrame, acked);
         free(cemiData); // Frame::cemiData() returns a malloc()'d buffer -> must be free()'d, not delete'd
         return;
     }
