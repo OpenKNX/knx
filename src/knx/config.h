@@ -193,6 +193,37 @@
 #define KNX_IP_RX_PER_LOOP 8
 #endif
 
+// KNX_IP_TX_QUEUE_SIZE - router KNX->IP queue in datagrams (1..255); 6 octets each plus the queued datagram on the heap.
+#ifndef KNX_IP_TX_QUEUE_SIZE
+#define KNX_IP_TX_QUEUE_SIZE 30
+#endif
+
+// KNX_ROUTING_INDICATION_GAP_US - micros() between two ROUTING_INDICATIONs, the 20 ms pause of 03_02_06 2.1; the 50/s window applies too. 20001..100000.
+#ifndef KNX_ROUTING_INDICATION_GAP_US
+#define KNX_ROUTING_INDICATION_GAP_US 20001
+#endif
+
+// KNX_ROUTING_BUSY_RESUME_MARGIN_MS - cut from the trandom range of N * 50 ms for the resume latency; deviation from 03_08_05 2.3.5 p.11 (18: (32, 50] ms unused at N = 1). 0..49.
+#ifndef KNX_ROUTING_BUSY_RESUME_MARGIN_MS
+#define KNX_ROUTING_BUSY_RESUME_MARGIN_MS 18
+#endif
+
+// KNX_ROUTING_SEND_RETRIES - refused send attempts (not retries) of a queued ROUTING_INDICATION before it is counted as lost (PID 72).
+// A refusal while a ROUTING_BUSY waits in the network chip does not count. 1..255.
+#ifndef KNX_ROUTING_SEND_RETRIES
+#define KNX_ROUTING_SEND_RETRIES 8
+#endif
+
+// KNX_ROUTING_BUSY_SAME_SOURCE_GAP_MS - gap from which one sender's next ROUTING_BUSY raises N; deviation: 03_08_05 2.3.5 asks 10 ms for every ROUTING_BUSY. 1..10.
+#ifndef KNX_ROUTING_BUSY_SAME_SOURCE_GAP_MS
+#define KNX_ROUTING_BUSY_SAME_SOURCE_GAP_MS 5
+#endif
+
+// KNX_ROUTING_BUSY_BURST_MARGIN_MS - extra cut of the range when several ROUTING_BUSY extend one pause (read-time lag). 0..20.
+#ifndef KNX_ROUTING_BUSY_BURST_MARGIN_MS
+#define KNX_ROUTING_BUSY_BURST_MARGIN_MS 6
+#endif
+
 // KNX_COUPLER_ARRIVAL_SLOTS - partners whose last frame to the coupler is remembered with its interface, so the answer
 // leaves on that interface (03_03_03 2.4.2.4.1 b). 4 bytes each. A partner not held falls back to topology. 1..255.
 #ifndef KNX_COUPLER_ARRIVAL_SLOTS

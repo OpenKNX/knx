@@ -14,6 +14,7 @@
 #include "knx_ip_search_response_extended.h"
 #include "knx_facade.h"
 
+#include <new>
 #include <stdio.h>
 #include <string.h>
 
@@ -51,6 +52,34 @@ bool IpDataLinkLayer::sendFrame(CemiFrame& frame)
         return sendSystemBroadcast(frame);
 
     KnxIpRoutingIndication packet(frame);
+#ifdef KNX_IS_ROUTER
+    // Held back instead of dropped while ROUTING_BUSY, its slow start or the 50/s limit apply (03_08_05 2.3.5).
+    const uint32_t now = millis();
+    if (_txCount == 0 && canSendIndication(now))
+    {
+        const SendResult result = sendIndicationNow(packet.data(), packet.totalLength());
+        if (result != RiHeld)
+        {
+            dataConReceived(frame, result == RiSent);
+            return result == RiSent;
+        }
+    }
+    // Refused at once without an endpoint (03_08_05 3.7.2 p.13), with a full queue or without memory.
+    uint8_t* copy = (_enabled && _txCount < kTxQueueSize) ? new (std::nothrow) uint8_t[packet.totalLength()] : nullptr;
+    if (copy == nullptr)
+    {
+        if (_counters != nullptr)
+            _counters->incrementOverflowToIp();
+        dataConReceived(frame, false);
+        return false;
+    }
+    memcpy(copy, packet.data(), packet.totalLength());
+    const uint8_t tail = (uint8_t)((_txHead + _txCount) % kTxQueueSize);
+    _txQueue[tail] = copy;
+    _txLen[tail] = packet.totalLength();
+    _txCount++;
+    return true; // the L_Data.con follows when the datagram leaves or is discarded (confirmQueued())
+#else
     // only send 50 packet per second: see KNX 3.2.6 p.6
     if (isSendLimitReached())
     {
@@ -62,16 +91,174 @@ bool IpDataLinkLayer::sendFrame(CemiFrame& frame)
         return false;
     }
     bool success = sendBytes(packet.data(), packet.totalLength());
-#ifdef KNX_IS_ROUTER
-    _routingSentAt = millis(); // 5 ms pause before a ROUTING_LOST_MESSAGE (03_02_06 2.1)
-#endif
 #ifdef KNX_ACTIVITYCALLBACK
     if(_dllcb)
         _dllcb->activity((_netIndex << KNX_ACTIVITYCALLBACK_NET) | (KNX_ACTIVITYCALLBACK_DIR_SEND << KNX_ACTIVITYCALLBACK_DIR));
 #endif
     dataConReceived(frame, success);
     return success;
+#endif
 }
+
+#ifdef KNX_IS_ROUTER
+IpDataLinkLayer::SendResult IpDataLinkLayer::sendIndicationNow(uint8_t* data, uint16_t len)
+{
+    const uint32_t now = millis(); // read after canSendIndication() polled the chip, which takes time
+    bool held = false;
+    const bool success = sendBytes(data, len, &held);
+    if (held)
+        return RiHeld;
+    if (success)
+    {
+        sendLimitRecord(now);
+        _routingSentAt = now; // tslow spacing and the 5 ms pause before a ROUTING_LOST_MESSAGE (03_02_06 2.1)
+        _routingSentUs = micros();
+    }
+#ifdef KNX_ACTIVITYCALLBACK
+    if(_dllcb)
+        _dllcb->activity((_netIndex << KNX_ACTIVITYCALLBACK_NET) | (KNX_ACTIVITYCALLBACK_DIR_SEND << KNX_ACTIVITYCALLBACK_DIR));
+#endif
+    return success ? RiSent : RiFailed;
+}
+
+bool IpDataLinkLayer::canSendIndication(uint32_t now)
+{
+    if (_platform.routingBusyPending())
+        return false; // a ROUTING_BUSY arrived and is not read yet
+    if (_busyHold && (int32_t)(now - _busyUntil) < 0)
+        return false; // tw + trandom of a received ROUTING_BUSY
+    // 20 ms after every ROUTING_INDICATION (03_02_06 2.1 p.6, also covers tslow of 03_08_05 Figure 5); the 50/s window applies as well.
+    if ((uint32_t)(micros() - _routingSentUs) < KNX_ROUTING_INDICATION_GAP_US)
+        return false;
+    if (sendLimitPeek(now))
+        return false; // the one-second window is shared with ROUTING_SYSTEM_BROADCAST
+    _platform.pollReceive(); // a ROUTING_BUSY may still wait in the network chip
+    return !_platform.routingBusyPending();
+}
+
+void IpDataLinkLayer::loopTxQueue()
+{
+    const uint32_t now = millis();
+    if (_busyHold && (int32_t)(now - _busyUntil) >= 0)
+        _busyHold = false;
+    // N decays every 5 ms (tbd) from the resume; deviation: 03_08_05 2.3.5 p.11 starts the decay after tslowduration = N * 100 ms.
+    // The 20 ms gap between ROUTING_INDICATIONs keeps the slow restart.
+    if (_busyN > 0 && !_busyHold)
+    {
+        if (!_busyDecaying)
+        {
+            _busyDecaying = true;
+            _busyNDecAt = now;
+        }
+        const uint32_t steps = (uint32_t)(now - _busyNDecAt) / kBusyDecayMs;
+        if (steps > 0)
+        {
+            _busyN = (steps >= _busyN) ? 0 : (uint8_t)(_busyN - steps);
+            _busyNDecAt += steps * kBusyDecayMs;
+        }
+    }
+    if (_txCount == 0 || !canSendIndication(now))
+        return;
+
+    const SendResult result = sendIndicationNow(_txQueue[_txHead], _txLen[_txHead]);
+    if (result == RiHeld)
+        return; // stays at the head; the ROUTING_BUSY is read in the next pass
+    confirmQueued(result == RiSent);
+}
+
+// Dequeues the head before its L_Data.con: a frame sent from within the con finds a consistent queue.
+void IpDataLinkLayer::confirmQueued(bool success)
+{
+    uint8_t* const datagram = _txQueue[_txHead];
+    const uint16_t len = _txLen[_txHead];
+    _txQueue[_txHead] = nullptr;
+    _txHead = (uint8_t)((_txHead + 1) % kTxQueueSize);
+    _txCount--;
+    CemiFrame frame(datagram + LEN_KNXIP_HEADER, len - LEN_KNXIP_HEADER);
+    dataConReceived(frame, success);
+    delete[] datagram;
+}
+
+// 03_08_05 3.7.2 p.13: queued telegrams are discarded when the connection to the medium is lost; the pause goes too.
+// Each gets a negative L_Data.con and counts in PID 72. Callers clear _enabled first, so a con cannot queue a new frame.
+void IpDataLinkLayer::flushTxQueue()
+{
+    while (_txCount > 0)
+    {
+        if (_counters != nullptr)
+            _counters->incrementOverflowToIp();
+        confirmQueued(false);
+    }
+    _busyHold = false;
+    _sendRefusals = 0;
+}
+
+void IpDataLinkLayer::handleRoutingBusy(const uint8_t* buffer, uint16_t len, uint32_t remoteAddr)
+{
+    // 03_08_05 5.4 Figure 8 p.17: header + 6 (03_02_06 Figure 4 shows + 4, its own fields add to 6); a
+    // shorter frame is ignored, our own one looped back as well.
+    if (len < KNXIP_HEADER_LEN + 6 || remoteAddr == htonl(_platform.currentIpAddress()))
+        return;
+    if (_counters != nullptr)
+        _counters->incrementBusyRx();
+
+    // Every control field value stops sending for tw: we do not interpret it (03_08_05 p.11). Timed from reception.
+    const uint32_t now = _platform.routingBusyReceivedAt(millis());
+    uint16_t tw = getWord(buffer + KNXIP_HEADER_LEN + 2);
+    if (tw > 100)
+        tw = 100; // receiver-side deviation: the 100 ms cap of 03_08_05 2.3.5 p.11 binds the sender; a larger tw is cut to 100
+
+    // N counts ROUTING_BUSY frames 10 ms or more apart (03_08_05 2.3.5); deviation: one sender's next one from KNX_ROUTING_BUSY_SAME_SOURCE_GAP_MS.
+    // Signed gap, _busyRxAt kept at the latest: a later read may carry an earlier arrival.
+    const bool first = _busyN == 0;
+    const int32_t gap = (int32_t)(now - _busyRxAt);
+    if (first || gap >= kBusyNoteGapMs || (remoteAddr == _busyRxSrc && gap >= KNX_ROUTING_BUSY_SAME_SOURCE_GAP_MS))
+    {
+        if (_busyN < 255)
+            _busyN++;
+    }
+    if (first || gap > 0)
+        _busyRxAt = now;
+    _busyRxSrc = remoteAddr;
+
+    if (!_busyHold || (int32_t)(now - _busyUntil) >= 0)
+    {
+        _busyBurstAt = now; // first ROUTING_BUSY of this pause
+        _busyBurstTw = tw;
+        // Slot scheme, deviation from the random real number of 03_08_05 2.3.5 p.11: 6 slots in turn from a random start; slot 0 waits 0, slot 3 the full range, the others a golden-ratio fraction.
+        if (_busyPhase == 0)
+        {
+            _busyPhase = micros() * kBusySeedMul;
+            _busyPauseSlot = (uint8_t)(_busyPhase % kBusyPauseSlots);
+        }
+        _busyPhase += kBusyPhaseStep;
+        _busyPauseSlot = (uint8_t)((_busyPauseSlot + 1u) % kBusyPauseSlots);
+    }
+
+    // The higher of the remaining wait and the new tw applies (p.11).
+    const uint32_t waitEnd = now + tw + 1; // +1: millis() granularity, the real wait is never below tw
+    if (!_busyHold || (int32_t)(waitEnd - _busyWaitEnd) > 0)
+        _busyWaitEnd = waitEnd;
+
+    // trandom = slot fraction of a range of N * 50 ms less the resume margin and the tw growth of this pause, never below that of N = 1.
+    // Deviation from 03_08_05 2.3.5 p.11: at N = 1 the range ends at 50 - margin (32 ms by default), so (32, 50] ms is never used.
+    const int32_t moved = (int32_t)(_busyWaitEnd - (_busyBurstAt + _busyBurstTw + 1));
+    // moved rests on read times, not on arrivals: a sequence gets KNX_ROUTING_BUSY_BURST_MARGIN_MS on top for that error.
+    int32_t range = (int32_t)((uint32_t)_busyN * kBusyRandomStepMs - KNX_ROUTING_BUSY_RESUME_MARGIN_MS)
+                  - (moved > 0 ? moved + KNX_ROUTING_BUSY_BURST_MARGIN_MS : 0);
+    if (range < (int32_t)kBusyRandomStepMs - KNX_ROUTING_BUSY_RESUME_MARGIN_MS)
+        range = (int32_t)kBusyRandomStepMs - KNX_ROUTING_BUSY_RESUME_MARGIN_MS;
+    const uint32_t u = _busyPauseSlot == kBusySlotLow ? 0u : _busyPauseSlot == kBusySlotHigh ? 0xFFFFFFFFu : _busyPhase;
+    const uint32_t trandom = (uint32_t)(((uint64_t)u * ((uint32_t)range + 1u)) >> 32);
+    // The "higher value" rule applies to tw (_busyWaitEnd); the pause's phase is scaled to the range again after each
+    // ROUTING_BUSY, so the resume follows the grown N and is never before the last tw.
+    _busyUntil = _busyWaitEnd + trandom;
+    _busyDecaying = false;
+    _busyHold = true;
+}
+
+
+#endif
 
 
 
@@ -93,6 +280,10 @@ void IpDataLinkLayer::loop()
             _platform.closeMultiCast();
             _joinedGroup = previous;
             _enabled = joinMultiCast();
+#ifdef KNX_IS_ROUTER
+            if (!_enabled)
+                flushTxQueue();
+#endif
             if (!_enabled)
                 return;
         }
@@ -100,10 +291,21 @@ void IpDataLinkLayer::loop()
     loopSystemBroadcast();
 
     // Up to kRxPerLoop datagrams of every service (routing, tunnelling, discovery) per pass, router and interface alike.
+    // Router: the queue is served between datagrams; a ROUTING_BUSY still unread holds the send (canSendIndication()).
+#ifdef KNX_IS_ROUTER
+    loopTxQueue();
+#endif
     uint8_t received = 0;
     while (received < kRxPerLoop && loopReceive())
     {
         received++;
+#ifdef KNX_IS_ROUTER
+        if (_txCount > 0 || _busyHold) // only while something waits to go out or a pause runs
+        {
+            _platform.pollReceive(); // stamps a ROUTING_BUSY waiting in a main-loop-pumped chip now
+            loopTxQueue();
+        }
+#endif
     }
 }
 
@@ -221,10 +423,14 @@ bool IpDataLinkLayer::loopReceive()
             break;
         }
         case RoutingBusy:
+#ifdef KNX_IS_ROUTER
+            handleRoutingBusy(buffer, (uint16_t)len, remoteAddr);
+#else
             // 03_08_05 5.4 Figure 8 p.17: header + 6 (03_02_06 Figure 4 shows + 4, its own fields add to 6); a
-            // shorter frame is ignored. The ROUTING_BUSY receive pause (03_08_05 2.3.5) goes here.
+            // shorter frame is ignored. Holding back own ROUTING_INDICATIONs is implemented for the router only.
             if (_counters != nullptr && len >= KNXIP_HEADER_LEN + 6)
                 _counters->incrementBusyRx();
+#endif
             break;
         default:
         {
@@ -573,6 +779,10 @@ bool IpDataLinkLayer::networkChanged(bool afterOutage)
     // it here lets the next loop pass rebuild it while the mode is still on.
     enableSystemBroadcast(false);
     _platform.closeMultiCast();
+    _enabled = false;
+#ifdef KNX_IS_ROUTER
+    flushTxQueue();
+#endif
     _enabled = joinMultiCast(); // the socket is gone if this failed; enabled() must not claim otherwise
     return _enabled;
 }
@@ -604,6 +814,9 @@ void IpDataLinkLayer::enabled(bool value)
         enableSystemBroadcast(false);
         _platform.closeMultiCast();
         _enabled = false;
+#ifdef KNX_IS_ROUTER
+        flushTxQueue();
+#endif
         return;
     }
 }
@@ -651,7 +864,7 @@ bool IpDataLinkLayer::sendControlMultiCast(uint8_t* bytes, uint16_t length)
 }
 #endif
 
-bool IpDataLinkLayer::sendBytes(uint8_t* bytes, uint16_t length)
+bool IpDataLinkLayer::sendBytes(uint8_t* bytes, uint16_t length, bool* held)
 {
     if (!_enabled)
     {
@@ -661,6 +874,29 @@ bool IpDataLinkLayer::sendBytes(uint8_t* bytes, uint16_t length)
     }
 
     const bool sent = _platform.sendBytesMultiCast(bytes, length);
+#ifdef KNX_IS_ROUTER
+    // A ROUTING_INDICATION the network driver refused stays queued: the W5500 driver refuses it for a ROUTING_BUSY in its
+    // receive buffer. Other refusals are counted; the KNX_ROUTING_SEND_RETRIES-th refused attempt counts it as lost.
+    if (held != nullptr)
+    {
+        if (!sent)
+        {
+            _platform.pollReceive();
+            *held = true;
+            if (_platform.routingBusyPending())
+                return false;
+            if (++_sendRefusals < KNX_ROUTING_SEND_RETRIES)
+            {
+                _routingSentUs = micros();
+                return false;
+            }
+            *held = false;
+        }
+        _sendRefusals = 0;
+    }
+#else
+    (void)held;
+#endif
     if (_counters != nullptr)
     {
         // A send can succeed with the link up but the IP network unreachable; while the IP fault bit (03_08_03 3.5.3) is set, count a loss.

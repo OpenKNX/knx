@@ -31,7 +31,7 @@ enum KnxIpServiceType
     TunnelingAck = 0x421,
     RoutingIndication = 0x530,
     RoutingLostMessage = 0x531,
-    RoutingBusy = 0x532,              // 03_02_06 4.1.4, counted on receive, not acted upon
+    RoutingBusy = 0x532,              // 03_02_06 4.1.4, flow control 03_08_05 2.3.5
     RoutingSystemBroadcast = 0x533,   // 03_02_06 4.1.3
 };
 
