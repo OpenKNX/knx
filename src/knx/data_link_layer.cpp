@@ -64,6 +64,12 @@ void DataLinkLayer::dataRequestFromTunnel(CemiFrame& frame)
     if (mediumType() == DptMedium::KNX_TP1 && frame.valid() && frame.npdu().octetCount() <= 15)
         frame.frameType(StandardFrame);
 
+    if (refusedFromTunnel(frame))
+    {
+        frame.confirm(ConfirmError);
+        _cemiServer->dataConfirmationToTunnel(frame);
+        return;
+    }
 
 #ifdef KNX_TUNNELING
     // TunnelOpti

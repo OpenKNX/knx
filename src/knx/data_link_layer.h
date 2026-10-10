@@ -62,6 +62,8 @@ class DataLinkLayer
     void dataConReceived(CemiFrame& frame, bool success);
     bool sendTelegram(NPDU& npdu, AckType ack, uint16_t destinationAddr, AddressType addrType, uint16_t sourceAddr, FrameFormat format, Priority priority, SystemBroadcast systemBroadcast, bool doNotRepeat = false);
     virtual bool sendFrame(CemiFrame& frame) = 0;
+    /** @brief True to refuse a tunnelled frame with a negative L_Data.con before it is processed or forwarded. */
+    virtual bool refusedFromTunnel(CemiFrame& frame) { (void)frame; return false; }
     uint8_t* frameData(CemiFrame& frame);
     DeviceObject& _deviceObject;
     NetworkLayerEntity& _networkLayerEntity;

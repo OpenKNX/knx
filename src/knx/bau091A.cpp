@@ -230,9 +230,15 @@ void Bau091A::updateDeviceState()
 #endif
 }
 
+bool Bau091A::isRoutingToIpHeld(uint16_t address, bool isGrpAddr)
+{
+    // The pause first: without a ROUTING_BUSY no routing decision is taken here.
+    return _dlLayerPrimary.routingPaused() && isAckRequired(address, isGrpAddr) == TPAckType::AckReqBusy;
+}
+
 TPAckType Bau091A::isAckRequired(uint16_t address, bool isGrpAddr)
 {
-    //only called from TpUartDataLinkLayer
+    // called from TpUartDataLinkLayer and from isRoutingToIpHeld()
     TPAckType ack = TPAckType::AckReqNone;
     int8_t routed = -1; // routing decision for this frame once taken, so the BUSY check below does not take it again
 

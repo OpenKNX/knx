@@ -22,6 +22,8 @@ class ITpUartCallBacks
   public:
     virtual ~ITpUartCallBacks() = default;
     virtual TPAckType isAckRequired(uint16_t address, bool isGrpAddr) = 0;
+    /** @brief A frame for this destination would be answered BUSY on TP now (routing to IP held by a ROUTING_BUSY). */
+    virtual bool isRoutingToIpHeld(uint16_t address, bool isGrpAddr) { (void)address; (void)isGrpAddr; return false; }
 };
 
 class TpUartDataLinkLayer : public DataLinkLayer
@@ -134,6 +136,7 @@ class TpUartDataLinkLayer : public DataLinkLayer
     uint16_t _individualAddress = 0;
 
     bool sendFrame(CemiFrame& frame);
+    bool refusedFromTunnel(CemiFrame& frame) override;
     inline void connected(bool state = true);
     void processRxFrame(TPUart::Frame& tpFrame);
     void processDroppedFrame(TPUart::Frame& tpFrame);
