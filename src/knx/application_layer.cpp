@@ -1241,7 +1241,11 @@ void ApplicationLayer::userMemorySend(ApduType type, AckType ack, Priority prior
 void ApplicationLayer::individualIndication(HopCountType hopType, Priority priority, uint16_t tsap, APDU & apdu, const SecurityControl& secCtrl)
 {
     uint8_t* data = apdu.data();
-    switch (apdu.type())
+    ApduType type = apdu.type();
+    // APDU::type() keeps the 6 channel bits of A_ADC_Response (0x1C0 | channel); 0x1C1-0x1C7 are no other service.
+    if ((type & 0x3F8) == ADCResponse)
+        type = ADCResponse;
+    switch (type)
     {
         case DeviceDescriptorRead:
             _bau.deviceDescriptorReadIndication(priority, hopType, tsap, secCtrl, *data & 0x3f);
