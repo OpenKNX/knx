@@ -234,6 +234,7 @@ TPAckType Bau091A::isAckRequired(uint16_t address, bool isGrpAddr)
 {
     //only called from TpUartDataLinkLayer
     TPAckType ack = TPAckType::AckReqNone;
+    int8_t routed = -1; // routing decision for this frame once taken, so the BUSY check below does not take it again
 
     uint8_t lcconfig = LCCONFIG::PHYS_FRAME_ROUT | LCCONFIG::PHYS_REPEAT | LCCONFIG::BROADCAST_REPEAT | LCCONFIG::GROUP_IACK_ROUT | LCCONFIG::PHYS_IACK_NORMAL; // default value from spec. in case prop is not availible.
     Property* prop_lcconfig = _routerObj.property(PID_SUB_LCCONFIG);
@@ -252,7 +253,8 @@ TPAckType Bau091A::isAckRequired(uint16_t address, bool isGrpAddr)
             if(lcconfig & LCCONFIG::GROUP_IACK_ROUT)
             {
                 // is group address in filter table? ACK if yes, No if not
-                if(_netLayer.isRoutedGroupAddress(address, 1))
+                routed = _netLayer.isRoutedGroupAddress(address, 1);
+                if(routed)
                     ack = TPAckType::AckReqAck;
                 else
                     ack = TPAckType::AckReqNone;
@@ -275,16 +277,29 @@ TPAckType Bau091A::isAckRequired(uint16_t address, bool isGrpAddr)
         else if((lcconfig & LCCONFIG::PHYS_IACK) == LCCONFIG::PHYS_IACK_NACK)
             ack = TPAckType::AckReqNack;
         else
-            if(_netLayer.isRoutedIndividualAddress(address, 1) || address == _deviceObj.individualAddress()) // Also ACK for our own individual address
+        {
+            routed = _netLayer.isRoutedIndividualAddress(address, 1);
+            if(routed || address == _deviceObj.individualAddress()) // Also ACK for our own individual address
                 ack = TPAckType::AckReqAck;
             else
                 ack = TPAckType::AckReqNone;
+        }
 
 #ifdef KNX_TUNNELING
         if(_ipTunnelServer.isSentToTunnel(address, isGrpAddr))
             ack = TPAckType::AckReqAck;
 #endif
 
+    }
+    // Coupler data link behaviour: a frame bound for IP is acknowledged BUSY while a received ROUTING_BUSY holds sending back.
+    // Checked last and only while paused: the routing decision costs nothing in the normal acknowledge path.
+    if (ack == TPAckType::AckReqAck && _dlLayerPrimary.routingPaused() && (isGrpAddr || address != _deviceObj.individualAddress()))
+    {
+        if (routed < 0)
+            routed = isGrpAddr ? (address == 0 ? !(lcconfig & LCCONFIG::BROADCAST_LOCK) : _netLayer.isRoutedGroupAddress(address, 1))
+                               : _netLayer.isRoutedIndividualAddress(address, 1);
+        if (routed)
+            ack = TPAckType::AckReqBusy;
     }
     return ack;
 }
