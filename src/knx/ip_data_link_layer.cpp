@@ -463,6 +463,24 @@ uint32_t IpDataLinkLayer::multiCastAddress()
 #endif
 }
 
+uint32_t IpDataLinkLayer::usableGroup(uint32_t group)
+{
+    const uint8_t firstOctet = (uint8_t)(group >> 24);
+    const bool linkLocal = (group >> 8) == 0xE00000; // 224.0.0.0/24: lwIP refuses these
+    if (firstOctet < 224 || firstOctet > 239 || linkLocal)
+        return 0xE000170C; // 224.0.23.12, 03_08_02 8.5.2.1
+    return group;
+}
+
+uint8_t IpDataLinkLayer::readTtl()
+{
+    uint8_t ttl = 16; // stays the default if the property holds no element
+    const Property* ttlProp = _ipParameters.property(PID_TTL);
+    if (ttlProp != nullptr)
+        ttlProp->read(ttl);
+    return ttl;
+}
+
 bool IpDataLinkLayer::joinMultiCast()
 {
     if (!_platform.setupMultiCast(_joinedGroup, KNXIP_MULTICAST_PORT))
@@ -514,18 +532,9 @@ void IpDataLinkLayer::enabled(bool value)
         // 03_08_03 2.5.17: a runtime write to PID 66 becomes active on reset, so read the property once
         // per device lifetime. An unusable value falls back to the default instead of leaving no endpoint.
         if (_joinedGroup == 0)
-        {
-            _joinedGroup = multiCastAddress();
-            const uint8_t firstOctet = (uint8_t)(_joinedGroup >> 24);
-            const bool linkLocal = (_joinedGroup >> 8) == 0xE00000; // 224.0.0.0/24: lwIP refuses these
-            if (firstOctet < 224 || firstOctet > 239 || linkLocal)
-                _joinedGroup = 0xE000170C; // 224.0.23.12, 03_08_02 8.5.2.1
-        }
+            _joinedGroup = usableGroup(multiCastAddress());
         // 03_08_03 2.5.18: PID 67 is the TTL of every multicast send; read per enable, kept across re-joins.
-        uint8_t ttl = 16; // stays the default if the property holds no element
-        const Property* ttlProp = _ipParameters.property(PID_TTL);
-        if (ttlProp != nullptr)
-            ttlProp->read(ttl);
+        const uint8_t ttl = readTtl();
         if (ttl == 0)
             println("PID_TTL is 0: multicast datagrams are sent with TTL 0");
         _platform.multicastTtl(ttl);

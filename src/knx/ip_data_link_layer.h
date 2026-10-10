@@ -57,10 +57,12 @@ class IpDataLinkLayer : public DataLinkLayer
 
   private:
     bool joinMultiCast();        // join _joinedGroup
+    static uint32_t usableGroup(uint32_t group); // the group, or 224.0.23.12 outside 224.0.0.0/4 or in 224.0.0.0/24
     uint32_t multiCastAddress(); // property source; read once at enable, then latched
     uint32_t systemSetupMultiCastAddress();
     void loopSystemBroadcast();
     void receivedSystemBroadcast(uint8_t* buffer, int len);
+    uint8_t readTtl();           // PID 67
     bool _indicatingSbc = false; // set around frameReceived() of a 0533h frame
     bool _sbcOpenFailed = false; // the secondary socket could not be opened; no retry until the mode goes off
     bool _setupOnRoutingSocket = false; // the routing socket receives the system setup group (same group, or joined extra)
