@@ -539,7 +539,7 @@ struct tm KNXValue::timeValue() const
             return timeStruct;
         }
     }
-    struct tm tmp = {0};
+    struct tm tmp = {};
     return tmp;
 }
 

@@ -4,15 +4,16 @@
 #include <cstdlib>
 #include <cstring>
 
-#define ASSERT_PAYLOAD(x)      \
-    if (payload_length != (x)) \
+// The size_t cast names the conversion the comparison applies anyway; a negative length becomes a huge one and fails the check.
+#define ASSERT_PAYLOAD(x)              \
+    if (payload_length != (size_t)(x)) \
     return false
 // Two variants: the encoders return int/bool, the *ToPayload helpers return void.
-#define ENSURE_PAYLOAD(x)      \
-    if (payload_length < (x))  \
+#define ENSURE_PAYLOAD(x)              \
+    if (payload_length < (size_t)(x))  \
     return false
-#define ENSURE_PAYLOAD_V(x)    \
-    if (payload_length < (x))  \
+#define ENSURE_PAYLOAD_V(x)            \
+    if (payload_length < (size_t)(x))  \
     return
 
 
@@ -438,7 +439,7 @@ int busValueToTime(const uint8_t* payload, size_t payload_length, const Dpt& dat
 
             if (hours > 23 || minutes > 59 || seconds > 59)
                 return false;
-            struct tm tmp = {0};
+            struct tm tmp = {};
             tmp.tm_hour = hours;
             tmp.tm_wday = weekDay;
             tmp.tm_min = minutes;
@@ -461,7 +462,7 @@ int busValueToDate(const uint8_t* payload, size_t payload_length, const Dpt& dat
     if (year > 99 || month < 1 || month > 12 || day < 1)
         return false;
 
-    struct tm tmp = {0};
+    struct tm tmp = {};
     year += year >= 90 ? 1900 : 2000;
     tmp.tm_mday = day;
     // KNX convention: tm_year is the absolute year and tm_mon is 1..12. Convert before mktime/strftime.
@@ -652,7 +653,7 @@ int busValueToDateTime(const uint8_t* payload, size_t payload_length, const Dpt&
                 if (hours == 24 && (minutes != 0 || seconds != 0))
                     return false;
 
-                struct tm tmp = {0};
+                struct tm tmp = {};
                 tmp.tm_sec = seconds;
                 tmp.tm_min = minutes;
                 tmp.tm_hour = hours;
