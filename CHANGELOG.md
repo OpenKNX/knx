@@ -1,7 +1,111 @@
 # Changelog
 
 
-## unreleased
+## ec/v2.6.0-beta.1 - 2026-10-11
+
+KNXnet/IP conformance against 08_TSSH and 08_TSSK on the IP router and the IP interface: the routing flow
+control in both directions (`ROUTING_LOST_MESSAGE`, `ROUTING_BUSY`), the IP system broadcast, the basic
+restart after `M_Reset.req`, the statistics properties PID 72 to 75, the tunnel control endpoints and the
+receive path of the routing socket. Each entry names the input and what the other side observed before and
+after. Measured with the KNX IP validation tool and the conformance suite of OAM-IP-Interface on RP2040 and
+ESP32; the known limits are listed at the end of this batch.
+
+### Routing flow control (router)
+
+* New: the router sends `ROUTING_LOST_MESSAGE`. 03_08_05 2.3.4 p.10 and the service matrix 7.2 p.20 make it mandatory and it was never sent. The first loss after a quiet second is reported at once, later ones are summed at most once per second (08_TSSH 6.2.1/6.2.2); the report waits at least 5 ms after the last `ROUTING_INDICATION` (03_02_06 2.1 p.6) and is held while the IP fault bit is set
+* New: a received `ROUTING_BUSY` pauses the router. No `ROUTING_INDICATION` leaves for tw + trandom from its reception, also while it is still unread (03_08_05 2.3.5 p.10-11); the frames wait in a paced queue of `KNX_IP_TX_QUEUE_SIZE` (30) datagrams, at least 20 ms apart, and the `L_Data.con` of a queued frame follows when it leaves or is discarded. Before, a received `ROUTING_BUSY` was ignored, and the 51st frame of a second was dropped with PID 72 and a negative `L_Data.con`
+* New: while that pause runs, a routed TP frame is acknowledged with BUSY so the TP sender repeats it, and a tunnelled frame for IP is refused with a negative `L_Data.con` before it is processed, so the client's repeat creates no duplicate
+* New: the router sends `ROUTING_BUSY` itself, with tw from PID 78 and the PID 69 device state, when the TP transmit queue holds 10 frames or 10 datagrams wait unread (03_08_05 2.3.5 p.11). At most every tw/2, and within one episode a repeat needs a `ROUTING_INDICATION` received since the last one
+* Fix: `PID_ROUTING_BUSY_WAIT_TIME` (78) exists on the router, default 100 ms (03_08_03 2.5.28 p.16), and takes a write of 20 to 100 ms. The value is kept in RAM, because a persisted writable property changes the NVM layout and discards the ETS configuration
+* Fix: routing datagrams are limited to 50 in any sliding second (03_02_06 2.1 p.6). Ten 100 ms buckets summed over a 0.9 to 1.0 s window let more than 50 through a real second; the window is now a ring of the last 50 send times
+* Fix: received `ROUTING_LOST_MESSAGE` and `ROUTING_BUSY` are consumed and counted per service, on router and interface. They fell through to the tunnel server and printed "Unhandled KNX-IP service identifier" for every datagram
+* Fix: up to `KNX_IP_RX_PER_LOOP` (8) datagrams are read per loop pass instead of one, so a backlog no longer grows until the socket queue drops datagrams unseen. Applies to every service on both products
+* Fix: `PID_TTL` (67) is applied to outgoing multicast datagrams. It was stored but never used: the RP2040 core forced TTL 255 and the ESP32 used the lwIP default
+* New: a changed PID 66 or PID 67 becomes active in the basic restart after `M_Reset.req` instead of at the next power-up (03_05_02 3.7.1.1.1)
+* New: `A_DomainAddressSerialNumber_Write` with this device's serial number and a 4 octet domain address sets PID 66 and moves the routing endpoint (03_02_06 4.3.5.3.4). A group that cannot be joined falls back to the previous one; an address outside 224.0.0.0/4 or in 224.0.0.0/24 is ignored
+* New: RP2040 builds announce Routing service family version 2 (IP system broadcast routing, 08_TSSK 2.4.30). ESP32 stays at 1 until its raw routing socket is verified on hardware
+* Fix: a partner on IP whose individual address lies in the router's TP line gets its answer on the interface the request arrived on (03_03_03 2.4.2.4.1 b). The answer was routed by topology to TP and never reached it. The last `KNX_COUPLER_ARRIVAL_SLOTS` (4) partners are kept; others fall back to topology
+
+### Routing statistics (PID 70, 72 to 75)
+
+* Fix: `PID_KNXNETIP_DEVICE_CAPABILITIES` reports what the device serves. It answered a hardcoded 0x0001 on every build, so a device serving tunnelling denied it and a router denied routing (03_08_03 2.5.19 Table 2 p.13); the bits now come from the same switches that build the Supported Service Families DIB
+* Fix: PID 73 counts every LAN to KNX loss on the router: frames lost to an allocation failure, while the TP chip is not connected, or dropped by a transmitter reset were not counted (03_08_05 7.3.3 case 3.2)
+* Fix: PID 72 counts while the IP side is down (03_08_05 7.3.3 case 3.1), counts a frame dropped from a full tunnel queue, an oversize frame and an evicted group frame (03_08_03 2.5.23 p.15), and no longer counts a tunnel frame that left on its repeat, a failed control datagram, a `SEARCH_RESPONSE` or a `ROUTING_LOST_MESSAGE` -- those are no KNX telegrams (03_08_05 2.3.4)
+* Fix: PID 75 counts a TP telegram on its positive `L_Data.con` instead of when the queue took it (03_08_03 2.5.26 p.16: "successfully transmitted"), and a telegram counted in PID 73 at a chip reset is no longer counted in PID 75 as well
+* New: PID 70 is 03h. Bit 1, the transmitted telegram count, is set now that PID 75 counts what was acknowledged on TP (03_08_03 2.5.21 Table 4 p.14)
+* New: `lostToIp` counts every PID 72 increment without saturating, for readers that need differences past 0xFFFF
+* Fix: a multicast or unicast send that lwIP refuses reports its result on RP2040 and ESP32. `sendBytesMultiCast()` and `sendBytesUniCast()` returned true, so the datagram was counted in PID 74 as sent
+
+### Device state (PID 69)
+
+* Fix: the router maintains and events `PID_KNXNETIP_DEVICE_STATE`. It never set the KNX fault bit and never consumed the change flag, so neither fault bit was evented with `M_PropInfo.ind` as 03_08_03 2.5.20 requires
+* Fix: `CONNECTIONSTATE_RESPONSE` reports `E_KNX_CONNECTION` on every product when the TP bus voltage drops (08_TSSH 3.5.4). The router answered `E_NO_ERROR`, because the bus state came only through the hardware busmonitor bridge, which it does not build. `IKnxBusState` replaces `IHwBusMonitorDll::hwBusOperational()`
+
+### IP system broadcast
+
+* Fix: an RP2040 router in the delivery state receives a `ROUTING_SYSTEM_BROADCAST` on 224.0.23.12, and with a routing group other than the system setup group the routing socket joins that group as well and takes the `SEARCH_REQUEST`s and 0533h frames from it (03_02_06 4.1.3, 4.3.5.2). Before, the second socket's bind was refused and they were never received
+* Fix: only the listed system broadcast services are routed from TP to IP as `ROUTING_SYSTEM_BROADCAST`, and a 0533h frame is passed to TP only for the listed services while the mode is on (08_TSSK 2.4.3-2.4.8, 2.4.20-2.4.22; 03_02_06 4.3.5.2). Other system broadcast APCIs from TP leave as broadcast
+* Fix: a `ROUTING_INDICATION` carrying a system broadcast cEMI is routed only; the management server no longer answers it (03_02_06 4.3.5.3.1 NOTE 2)
+* Fix: a request that came as IP system broadcast is answered as one. The answer to `A_SystemNetworkParameter_Read` for the serial number left as a `ROUTING_INDICATION` broadcast (03_02_06 4.3.5.3.1, 4.3.5.3.2)
+* Fix: `ROUTING_SYSTEM_BROADCAST` is neither counted in nor refused by the 50 per second limit, which 03_02_06 2.1 p.6 applies to `ROUTING_INDICATION` only; on the system setup group it is held for the 5 ms pause after a `ROUTING_INDICATION`, two at most
+* Fix: the function property command that enables the IP system broadcast routing mode answers `E_COMMAND_IMPOSSIBLE` while the broadcast lock is set, and the system setup socket is opened once per mode activation instead of on every loop pass
+* Fix: `A_DeviceDescriptor_InfoReport` is handled as a system broadcast service, as 03_03_07 3.3.2 p.33 sends it with `T_Data_SystemBroadcast`
+* New: a broadcast `A_NetworkParameter_Read` for the serial number is answered in programming mode (03_02_06 4.3.5.3.2). It was logged as an unhandled broadcast APDU
+* Fix: serial number reads are answered after the random wait the standard asks for: 0 to 200 ms for `A_NetworkParameter_Read` on the router, 0 to 1 s for `A_SystemNetworkParameter_Read` on every device built with this stack (03_03_07 3.2.6 p.25, 3.3.8 p.43). Programming mode is checked again when the answer is due
+
+### Tunnelling
+
+* Fix: a reserved tunnel slot is matched on the UDP source instead of the declared HPAI. A client could name a reserved IP in its control HPAI and its own in the data HPAI, take the reserved slot and receive that slot's tunnel data. The device management transport owner is decided the same way
+* Fix: control messages go to the client's control endpoint. The server `DISCONNECT_REQUEST` went to the data IP with the control port (03_08_02 5.4 p.14), and it now carries the server's own control endpoint in its HPAI (08_TSSH 3.5.3 p.21)
+* Fix: a `CONNECTIONSTATE_REQUEST` or `DISCONNECT_REQUEST` from another IP than the client's control IP or connect source is answered `E_CONNECTION_ID` to its UDP source and leaves the session alone. Only the IP is compared; the client may change its control port (03_08_02 8.6.3.3 p.51)
+* Fix: busmonitor indications go to the client's data endpoint. The connect stored the control HPAI, so a client with separate control and data IPs received `L_Busmon.ind` on the wrong host
+* Fix: every unsupported tunnelling layer is refused with `E_CONNECTION_OPTION` (23h), raw and busmonitor included (03_08_04 Figure 6 p.27, 08_TSSH 5.1.3-5.1.5). The text of 4.a p.28 and Table 11 name 29h; the comment records both
+* Fix: the `L_Data.con` of a frame addressed to the device itself goes out before the local answer. The answer reached the client first, and clients that wait for the con discarded it
+* Fix: the device's own individual address is never assigned to a tunnel (03_08_04 4.2.2 prerequisite 2), and a depleted address list is answered `E_NO_MORE_CONNECTIONS` (24h) instead of `E_NO_MORE_UNIQUE_CONNECTIONS` (25h), on which a conformant client repeats forever. 25h remains for an entry that equals the own address or duplicates another one in use
+* Fix: a broadcast is never dropped or evicted from a tunnel queue. Every frame with a group address type was droppable, so the `A_IndividualAddress_Response` of a device in programming mode could be lost for the client
+* Change: the `TUNNELLING_ACK` is withheld while the client's queue is full of undroppable frames (`KNX_TUNNEL_BACKPRESSURE`), so the client repeats after 1 s instead of being disconnected with END_OVERFLOW. This deviates from 03_08_04 2.6.1 p.9, which acknowledges every received request
+
+### Device management and cEMI
+
+* New: `PID_MAX_INTERFACE_APDU_LENGTH` (68) and `PID_MAX_LOCAL_APDU_LENGTH` (69) are served on the cEMI server object, read-only, and feed the extended DIBs. They existed only as enum constants, so a client asking got a refusal (03_08_02 7.5.4.8 p.29, 7.5.4.9 p.31)
+* Fix: Device Management version 2 is announced when the cEMI transport layer is built (03_08_03 4.2.5 p.23)
+* Fix: while a Device Management connection holds the transport layer in cEMI Transport Layer mode, the device drops every `T_Data_Individual` request from the network unless its APCI is one of 18 response services (08_TSSH 8.3.6 for the routed case; dropping tunnel and TP requests too is a design decision). Measured: a routed property read during such a connection was answered in 2 of 2 runs before and in 0 of 3 after
+* New: `M_Reset.req` runs the basic restart of 03_05_02 3.7.1.1.1: 200 ms after the `M_Reset.ind` programming mode goes off, the transport connection is closed with `T_Disconnect` and every KNXnet/IP connection is closed. Before, only the `M_Reset.ind` and an NVM write happened
+* Fix: `PID_DEVICE_CONTROL` (14) is 00h after a start, since it is writable and therefore restored, and its safe state bit stays 0 (03_05_01 4.2.14.4 p.35, 4.2.14.8.4 p.36). Verify mode is cleared when a transport connection closes (4.2.14.7.3 p.36)
+
+### Transport and application layer
+
+* Fix: a group, broadcast or individual frame whose transport control field is undefined is ignored (03_03_04 Figure 3, clause 5). A device in programming mode answered `A_IndividualAddress_Read` with TPCI C1h and took `A_IndividualAddress_Write` with TPCI 40h, 80h or 10h, and `A_DeviceDescriptor_Read` with control octet 13h was answered like 03h (08_03_04 2.1 b, 2.2 b)
+* Fix: a broadcast without an APCI octet is no system broadcast. `isApciSystemBroadcast()` read one octet past a TP frame with LG = 0
+* Fix: a `T_Connect` confirmation for another partner is ignored. After an abandoned connect to A and a new one to B, A's late positive con opened the connection as if B had confirmed
+* Fix: the connection timer is armed before the `T_Connect` request, so a negative con inside the send call leaves no timer running in CLOSED
+* Fix: a pending `restartRequest()` ends when its connection closes. Its state stayed Connecting, so the confirmation of the next own connection sent `A_Restart` to that connection's partner
+* Fix: `A_ADC_Read` is answered only over a transport connection. 03_03_07 Table 1 p.9 lists `A_ADC_Read` and `A_ADC_Response` for `T_Data_Connected` only, and the device answered a connectionless one. Measured on the router and the interface: no answer to the connectionless read in 6 of 6 runs, `A_ADC_Response` with read count 0 over a connection
+* Fix: `A_ADC_Response` is decoded for channels 1 to 7. `APDU::type()` keeps the channel bits, so a response for channel 1 (0x1C1) never reached its case; 0x1C8 and up belong to other services and stay as they are
+* Fix: the file transfer client sends its `A_ADC_Read` only over a connection to the target; `ftcSendAdcRead()` returns false without one instead of sending a read no device answers. `ApplicationLayer::isConnectedTo()` and `BauSystemB::ftcScanConnectedTo()` are new
+
+### Platform
+
+* New: RP2040 and ESP32 receive the routing socket through a raw `udp_pcb` and a datagram ring with backlog, peak, drop and oversize counts. The callback classes each datagram by destination and stamps a received `ROUTING_BUSY` with its arrival time. Sends leave from the bound socket, source port 3671, with PID 67 per send
+* Change (RP2040): the platform reads IP, mask, gateway and MAC from the lwIP interface the network module registers with `setNetif()`. The declaration `extern Wiznet5500lwIP KNX_NETIF` goes; it needs the matching OFM-Network version
+* New: platform hooks for the routing receive queue, a second multicast group and `ROUTING_BUSY`; every default keeps the previous behaviour
+
+### Housekeeping
+
+* Change: the `OPENKNX_CON_DIAG` con counters are removed, four unused duplicate defines are dropped, and the Supported Service Families DIB length is derived in one header
+* Change: the README rows for Core, Tunnelling, Device Management and Routing name the current defaults and lines
+
+### Known limits of this batch
+
+* Both `ROUTING_BUSY` triggers count system broadcasts: the receive backlog counts 0533h datagrams and the TP queue fill counts system broadcast frames queued for TP, although 03_02_06 4.3.5.4 p.13 excludes system broadcast frames from the mechanism
+* `ROUTING_BUSY` handling deviates in four details: the same sender is counted from 5 ms instead of 10 ms, trandom is one of 6 slots instead of a random real number, a received tw above 100 ms is cut to 100 ms, and N decays every 5 ms from the resume
+* A tunnelled frame for IP is refused during a `ROUTING_BUSY` pause instead of queued (03_08_05 3.7.1 p.13), also its TP and local part, so the first `ROUTING_INDICATION` after the pause waits for the client's next request
+* While a client holds a Device Management connection, the device answers no individual request from routing, tunnels or TP until that connection closes; answers to its own requests are not affected
+* The withheld `TUNNELLING_ACK` deviates from 03_08_04 2.6.1 p.9; a client flooded with more broadcasts than the queue holds while no droppable frame is left is disconnected (END_OVERFLOW)
+* The interface applies an IP assignment, address, mask and gateway written by ETS at boot only, not after `M_Reset.req`
+* Safe state is not implemented; PID 14 bit 3 stays 0
+* PID 72 to 75 are RAM counters and start at 0 after every start
+
 
 The largest batch so far: memory safety and conformance across the application, transport, network and
 data link layers, the property and load-state machinery, the KNXnet/IP tunnel server, and the datapoint
