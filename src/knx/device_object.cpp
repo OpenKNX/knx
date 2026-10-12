@@ -378,6 +378,13 @@ DeviceObject::DeviceObject()
             {
                 return readText(io->_firmwareBuild, MAX_ELEM_FIRMWARE_BUILD, start, count, data);
             }),
+        // The chip the firmware was built for. One application exists for several chips, and nothing
+        // else in the Device Object tells them apart; a tool compares this with a firmware file.
+        new CallbackProperty<DeviceObject>(this, PID_MFR_MCU, false, PDT_UNSIGNED_CHAR, MAX_ELEM_MCU, ReadLv3 | WriteLv0,
+            [](DeviceObject* io, uint16_t start, uint8_t count, uint8_t* data) -> uint8_t
+            {
+                return readText(io->_mcu, MAX_ELEM_MCU, start, count, data);
+            }),
 #ifdef USE_RF
         new DataProperty(PID_RF_DOMAIN_ADDRESS_CEMI_SERVER, true, PDT_GENERIC_06, 1, ReadLv3 | WriteLv3),
 #endif
@@ -596,6 +603,11 @@ void DeviceObject::firmwareName(const char* value)
 void DeviceObject::firmwareBuild(const char* value)
 {
     _firmwareBuild = value;
+}
+
+void DeviceObject::mcu(const char* value)
+{
+    _mcu = value;
 }
 
 void DeviceObject::buildTimestamp(uint32_t value)

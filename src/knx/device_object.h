@@ -12,12 +12,15 @@
 #define MAX_ELEM_MANUFACTURER_DATA 40
 #define MAX_ELEM_FIRMWARE_NAME 48
 #define MAX_ELEM_FIRMWARE_BUILD 16
+#define MAX_ELEM_MCU 16
 
 // The descriptive setters below exist: deviceName, hardwareId, firmwareName, firmwareBuild,
 // buildTimestamp, firmwareRevision and productId. Clients gate on this so they also build against
 // stacks that predate them. It lives here, next to the setters, and not in config.h - that file is
 // wrapped in NO_KNX_CONFIG and would drop the flag while the feature is present.
 #define KNX_HAS_DEVICE_INFORMATION 1
+// The mcu setter exists. A flag of its own, because it came after the ones above.
+#define KNX_HAS_DEVICE_MCU 1
 
 class DeviceObject: public InterfaceObject
 {
@@ -66,6 +69,7 @@ public:
     void hardwareId(const char* value);
     void firmwareName(const char* value);
     void firmwareBuild(const char* value);
+    void mcu(const char* value);
     void buildTimestamp(uint32_t value);
     uint32_t buildTimestamp();
     uint16_t version();
@@ -97,6 +101,7 @@ private:
     const char* _hardwareId = nullptr;
     const char* _firmwareName = nullptr;
     const char* _firmwareBuild = nullptr; // short git hash of the product build
+    const char* _mcu = nullptr;           // chip the firmware was built for, e.g. "RP2040"
     uint32_t _buildTimestamp = 0;         // seconds since the epoch, 0 = not set
 #if MASK_VERSION == 0x091A || MASK_VERSION == 0x2920
     uint16_t _ownAddress = 0xFF00; // 15.15.0; couplers have 15.15.0 as default PA
