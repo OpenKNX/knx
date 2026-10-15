@@ -17,8 +17,6 @@ Memory::~Memory()
 
 void Memory::readMemory()
 {
-    println("readMemory");
-
     uint8_t* flashStart = _platform.getNonVolatileMemoryStart();
     size_t flashSize = _platform.getNonVolatileMemorySize();
     if (flashStart == nullptr)
@@ -77,11 +75,10 @@ void Memory::readMemory()
         // The product callback cannot see this: it compares the ETS application, not the build.
         if (!legacy && layoutWord != layoutFingerprint())
         {
-            println("stored layout belongs to a different firmware build");
-            print("expected layout: ");
-            print(layoutFingerprint(), HEX);
-            print(", stored layout: ");
-            println(layoutWord, HEX);
+            print("NVM: layout ");
+            print(layoutWord, HEX);
+            print(" != ");
+            println(layoutFingerprint(), HEX);
         }
         else if (_versionCheckCallback != 0) {
             versionCheck = _versionCheckCallback(manufacturerId, hardwareType, version);
@@ -100,30 +97,22 @@ void Memory::readMemory()
         } 
         else 
         {
-            println("manufacturerId or hardwareType are different");
-            print("expexted manufacturerId: ");
-            print(_deviceObject.manufacturerId(), HEX);
-            print(", stored manufacturerId: ");
-            println(manufacturerId, HEX);
-            print("expexted hardwareType: ");
-            printHex("", _deviceObject.hardwareType(), LEN_HARDWARE_TYPE);
-            print(", stored hardwareType: ");
-            printHex("", hardwareType, LEN_HARDWARE_TYPE);
-            println("");
+            print("NVM: manufacturer ");
+            print(manufacturerId, HEX);
+            printHex(" hardware ", hardwareType, LEN_HARDWARE_TYPE);
         }
     } 
     else 
     {
-        println("DataObject api changed, any data stored in flash is invalid.");
-        print("expexted DataObject api version: ");
-        print(_deviceObject.apiVersion, HEX);
-        print(", stored api version: ");
-        println(apiVersion, HEX);
+        print("NVM: api ");
+        print(apiVersion, HEX);
+        print(" != ");
+        println(_deviceObject.apiVersion, HEX);
     }
 
     if (versionCheck == FlashAllInvalid)
     {
-        println("ETS has to reprogram PA and application!");
+        println("NVM: not restored");
         return;
     }
 
@@ -131,14 +120,10 @@ void Memory::readMemory()
         println("NVM: migrating older image");
 
     DataProperty::restoredOutOfStep = false;
-    println("restoring data from flash...");
-    print("Restore saveRestores: ");
-    println(_saveCount);
     for (int i = 0; i < _saveCount; i++)
     {
         buffer = legacy ? _saveRestores[i]->restoreLegacy(buffer) : _saveRestores[i]->restore(buffer);
     }
-    println("Restored saveRestores");
 
 #if MASK_VERSION == 0x091A
     if(versionCheck == FlashTablesInvalid)
@@ -148,14 +133,12 @@ void Memory::readMemory()
 #else
     if (versionCheck == FlashTablesInvalid) 
     {
-        println("TableObjects are referring to an older firmware version and are not restored");
+        println("NVM: older application, tables not restored");
         // A legacy image still goes through its table records: they are its only plausibility check.
         if (!legacy)
             return;
     }
 #endif
-    print("Restore TableObjs: ");
-    println(_tableObjCount);
     uint16_t olderSizes[MAXTABLEOBJ] = {0};
     // The records of a legacy image are checked only after this loop; until then no table may use its pointer.
     TableObject::_unvalidatedImage = legacy;
@@ -166,8 +149,6 @@ void Memory::readMemory()
         buffer = _tableObjects[i]->restore(buffer);
         uint16_t memorySize = 0;
         buffer = popWord(memorySize, buffer);
-        print("Size: ");
-        println(memorySize);
         // A static table's extent is a build constant, so the persisted word may describe the previous
         // firmware's block; dynamic tables keep using the saved word.
         uint32_t blockSize = _tableObjects[i]->_staticTableAdr ? _tableObjects[i]->_size : memorySize;
@@ -186,7 +167,6 @@ void Memory::readMemory()
             unloadAndFill(_tableObjects[i]);
 #endif
     }
-    println("restored TableObjects");
 
     if (legacy)
     {
@@ -281,16 +261,12 @@ void Memory::writeMemory()
 
     flashPos = _platform.writeNonVolatileMemory(flashPos, buffer, bufferPos - buffer);
 
-    print("save saveRestores ");
-    println(_saveCount);
     for (int i = 0; i < _saveCount; i++)
     {
         bufferPos = _saveRestores[i]->save(buffer);
         flashPos = _platform.writeNonVolatileMemory(flashPos, buffer, bufferPos - buffer);
     }
 
-    print("save tableobjs ");
-    println(_tableObjCount);
     for (int i = 0; i < _tableObjCount; i++)
     {
         bufferPos = _tableObjects[i]->save(buffer);
