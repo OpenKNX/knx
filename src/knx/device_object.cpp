@@ -319,6 +319,8 @@ void DeviceObject::maxApduLength(uint16_t value)
     prop->write(value);
 }
 
+#ifdef USE_RF
+// Defined only under USE_RF, as the property is registered: a caller without RF fails to link instead of reading null.
 const uint8_t* DeviceObject::rfDomainAddress()
 {
     DataProperty* prop = (DataProperty*)property(PID_RF_DOMAIN_ADDRESS_CEMI_SERVER);
@@ -330,6 +332,7 @@ void DeviceObject::rfDomainAddress(uint8_t* value)
     Property* prop = property(PID_RF_DOMAIN_ADDRESS_CEMI_SERVER);
     prop->write(value);
 }
+#endif
 
 uint8_t DeviceObject::defaultHopCount()
 {
