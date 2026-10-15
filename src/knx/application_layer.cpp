@@ -180,10 +180,12 @@ void ApplicationLayer::dataBroadcastConfirm(AckType ack, HopCountType hopType, P
 void ApplicationLayer::dataBroadcastConfirm(AckType ack, HopCountType hopType, Priority priority, APDU& apdu, const SecurityControl& secCtrl, bool status)
 {
     uint8_t* data = apdu.data();
+    // A confirm can carry another sender's frame (a tunnel client with its own source), so lengths as in the indication.
     switch (apdu.type())
     {
         case IndividualAddressWrite:
         {
+            if (apdu.length() < 3) break; // APCI + 2 address octets
             uint16_t newAddress;
             popWord(newAddress, data + 1);
             _bau.individualAddressWriteLocalConfirm(ack, hopType, secCtrl, newAddress, status);
@@ -196,10 +198,12 @@ void ApplicationLayer::dataBroadcastConfirm(AckType ack, HopCountType hopType, P
             _bau.individualAddressReadResponseConfirm(ack, hopType, secCtrl, status);
             break;
         case IndividualAddressSerialNumberRead:
+            if (apdu.length() < 7) break; // APCI + 6 serial octets
             _bau.individualAddressSerialNumberReadLocalConfirm(ack, hopType, secCtrl, data + 1, status);
             break;
         case IndividualAddressSerialNumberResponse:
         {
+            if (apdu.length() < 9) break; // APCI + 6 serial + 2 domain address
             uint16_t domainAddress;
             popWord(domainAddress, data + 7);
             _bau.individualAddressSerialNumberReadResponseConfirm(ack, hopType, secCtrl, data + 1, domainAddress, status);
@@ -207,6 +211,7 @@ void ApplicationLayer::dataBroadcastConfirm(AckType ack, HopCountType hopType, P
         }
         case IndividualAddressSerialNumberWrite:
         {
+            if (apdu.length() < 9) break; // APCI + 6 serial + 2 new address
             uint16_t newAddress;
             popWord(newAddress, data + 7);
             _bau.individualAddressSerialNumberWriteLocalConfirm(ack, hopType, secCtrl, data + 1, newAddress, status);
