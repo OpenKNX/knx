@@ -4,7 +4,8 @@
 
 /**
  * @brief KNXnet/IP parameter object counters (03_08_03 2.5.23-2.5.26); PID counters saturate, lostToIp/lostToKnx wrap, the others are ours, not spec.
- * PID 72/73 (2.5.23/2.5.24): KNX telegrams finally lost: send limit, queue full, failed send, link down, oversize tunnel frame, allocation failure; to KNX also TP chip down.
+ * PID 72 (2.5.23): telegrams to IP finally lost: send limit, queue full, failed send, link down, oversize tunnel frame, allocation failure.
+ * PID 73 (2.5.24) / lostToKnx: telegrams to KNX not sent (NotSentCause), not while the chip is in busmonitor mode; a send the chip answers without a positive L_Data.con is counted per address type instead.
  * Not counted: control datagrams, filtered telegrams, frames queued behind a tunnel head (txDrop).
  */
 class KnxIpCounters
@@ -26,6 +27,12 @@ class KnxIpCounters
     void incrementLostMessageRx(uint16_t lost) { inc32(_lostMessageRx); add32(_lostReportedRx, lost); }
     void incrementBusyRx() { inc32(_busyRx); }
 
+    /** @brief Why a telegram for the KNX subnetwork was not sent; own counters, no property. Dropped: transmitter reset, the frame may already have been on the bus. */
+    enum NotSentCause : uint8_t { NotSentQueueFull, NotSentNoMemory, NotSentChipNotReady, NotSentDropped, NotSentCauses };
+    void incrementNotSentToKnx(NotSentCause cause) { inc32(_notSentToKnx[cause]); }
+    /** @brief Sent on TP without a positive L_Data.con: no ACK, BUSY/NACK on every attempt, or the chip's confirmation was lost. */
+    void incrementUnconfirmedToKnx(bool group) { inc32(_unconfirmedToKnx[group ? 1 : 0]); }
+
     uint32_t transmitToIp() const { return _transmitToIp; }
     uint32_t transmitToKnx() const { return _transmitToKnx; }
     uint16_t overflowToIp() const { return (uint16_t)_overflowToIp; }
@@ -41,6 +48,8 @@ class KnxIpCounters
     uint32_t lostMessageRx() const { return _lostMessageRx; }
     uint32_t lostReportedRx() const { return _lostReportedRx; }
     uint32_t busyRx() const { return _busyRx; }
+    uint32_t notSentToKnx(NotSentCause cause) const { return _notSentToKnx[cause]; }
+    uint32_t unconfirmedToKnx(bool group) const { return _unconfirmedToKnx[group ? 1 : 0]; }
 
   private:
     // 03_08_03: "The count does not wrap around when the maximum is reached."
@@ -64,4 +73,6 @@ class KnxIpCounters
     volatile uint32_t _lostMessageRx = 0;
     volatile uint32_t _lostReportedRx = 0;
     volatile uint32_t _busyRx = 0;
+    volatile uint32_t _notSentToKnx[NotSentCauses] = {};
+    volatile uint32_t _unconfirmedToKnx[2] = {}; // [individual, group]
 };

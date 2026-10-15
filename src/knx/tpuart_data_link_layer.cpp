@@ -37,22 +37,28 @@ bool TpUartDataLinkLayer::sendFrame(CemiFrame &cemiFrame)
     if (!tpFrame || tpFrame->data() == nullptr)
     {
         delete tpFrame; // no-op on nullptr; the queue never took ownership
-#ifdef KNX_IS_ROUTER
         if (_counters != nullptr)
-            _counters->incrementOverflowToKnx(); // lost before reaching the queue
-#endif
+        {
+            if (!_tpuart.isMonitoring()) // during a busmonitor session the frame is discarded anyway
+                _counters->incrementOverflowToKnx(); // lost before reaching the queue
+            _counters->incrementNotSentToKnx(KnxIpCounters::NotSentNoMemory);
+        }
         dataConReceived(cemiFrame, false);
         return false;
     }
 
     // when not connected or in monitoring mode, discard the frame - silently
-    if (!_tpuart.isConnected() || _tpuart.isMonitoring())
+    const bool monitoring = _tpuart.isMonitoring();
+    if (!_tpuart.isConnected() || monitoring)
     {
         delete tpFrame; // not queued -> free (queue didn't take ownership)
-#ifdef KNX_IS_ROUTER
         if (_counters != nullptr)
-            _counters->incrementOverflowToKnx(); // chip not connected: 03_08_05 7.3.3 case 3.2
-#endif
+        {
+            // Chip not connected: 03_08_05 7.3.3 case 3.2. A busmonitor session is an operator choice, not a loss.
+            if (!monitoring)
+                _counters->incrementOverflowToKnx();
+            _counters->incrementNotSentToKnx(KnxIpCounters::NotSentChipNotReady);
+        }
         dataConReceived(cemiFrame, false);
         return false;
     }
@@ -70,7 +76,10 @@ bool TpUartDataLinkLayer::sendFrame(CemiFrame &cemiFrame)
         if (!tooLong)
         {
             if (_counters != nullptr)
+            {
                 _counters->incrementOverflowToKnx();
+                _counters->incrementNotSentToKnx(KnxIpCounters::NotSentQueueFull);
+            }
             // rate-limit the print (~1 in 1024): under an IP->TP flood the queue stays full and a blocking
             // print on every drop would starve the loop() watchdog.
             static uint16_t _qFullDrops = 0;
@@ -209,10 +218,13 @@ void TpUartDataLinkLayer::processDroppedFrame(TPUart::Frame &tpFrame)
 {
     // A frame the transmitter threw away (chip reset, watchdog, monitor exit). It got no confirmation,
     // so the layer above must be told -- otherwise it waits for a confirmation that can never come.
-#ifdef KNX_IS_ROUTER
     if (_counters != nullptr)
-        _counters->incrementOverflowToKnx(); // dropped by the transmitter, counted as lost
-#endif
+    {
+        // reset() drops the frames a busmonitor held back while the state is still BUSMONITOR; a chip that leaves it by itself is CONNECTED first.
+        if (!_tpuart.isMonitoring())
+            _counters->incrementOverflowToKnx(); // dropped by the transmitter, counted as lost
+        _counters->incrementNotSentToKnx(KnxIpCounters::NotSentDropped);
+    }
     uint8_t *cemiData = (uint8_t *)tpFrame.cemiData();
     if (cemiData == nullptr)
         return;
@@ -448,8 +460,13 @@ void TpUartDataLinkLayer::processRxFrame(TPUart::Frame &tpFrame)
 
     if (tpFrame.isTransmitted()) {
         const bool acked = tpFrame.isAck();
-        if (acked && _counters != nullptr)
-            _counters->incrementTransmitToKnx(); // PID 75
+        if (_counters != nullptr)
+        {
+            if (acked)
+                _counters->incrementTransmitToKnx(); // PID 75
+            else
+                _counters->incrementUnconfirmedToKnx(cemiFrame.addressType() == GroupAddress);
+        }
         dataConReceived(cemiFrame, acked);
         free(cemiData); // Frame::cemiData() returns a malloc()'d buffer -> must be free()'d, not delete'd
         return;
