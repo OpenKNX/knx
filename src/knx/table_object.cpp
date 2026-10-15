@@ -7,6 +7,7 @@
 #include "data_property.h"
 
 BeforeTablesUnloadCallback TableObject::_beforeTablesUnload = 0;
+bool TableObject::_unvalidatedImage = false;
 uint8_t TableObject::_tableUnloadCount = 0;
 
 void TableObject::beforeTablesUnloadCallback(BeforeTablesUnloadCallback func)

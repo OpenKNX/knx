@@ -120,7 +120,7 @@ void AssociationTableObject::prepareBinarySearch()
 const uint8_t* AssociationTableObject::restore(const uint8_t* buffer)
 {
     buffer = TableObject::restore(buffer);
-    _tableData = (loadState() == LS_LOADED) ? (uint16_t*)data() : nullptr;
+    _tableData = (loadState() == LS_LOADED && !_unvalidatedImage) ? (uint16_t*)data() : nullptr;
     prepareBinarySearch();
     return buffer;
 }

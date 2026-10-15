@@ -40,7 +40,11 @@ class Memory
     void writeMemory();
     void saveMemory();
     void addSaveRestore(SaveRestore* obj);
-    void addSaveRestore(TableObject* obj);
+    /**
+     * @param inOlderImages false for a table added since apiVersion 2: an image of that version has no record for it.
+     * A table added later changes the layout word, so apiVersion 3 images need a migration of their own then.
+     */
+    void addSaveRestore(TableObject* obj, bool inOlderImages = true);
     void loop();
 
     uint8_t* allocMemory(size_t size);
@@ -67,6 +71,14 @@ class Memory
     MemoryBlock* findBlockInList(MemoryBlock* head, uint8_t* address);
     void addNewUsedBlock(uint8_t* address, size_t size);
     static uint32_t mixRecord(uint32_t hash, uint16_t kind, SaveRestore* obj);
+    bool takeOlderBlocks(const uint8_t* recordsEnd, const uint16_t* sizes, VersionCheckResult versionCheck);
+    bool olderBlockValid(TableObject* table, uint16_t memorySize);
+#if MASK_VERSION == 0x091A
+    void unloadAndFill(TableObject* table);
+#endif
+    void refuseOlderImage();
+    void reserveBelow(uint8_t* end);
+    void moveTablesAbove(uint8_t* end);
 
     void readEraseBlockToBuffer(uint32_t blockNum);
     uint8_t* eraseBlockStart(uint32_t blockNum);
@@ -79,6 +91,7 @@ class Memory
     DeviceObject& _deviceObject;
     SaveRestore* _saveRestores[MAXSAVE] = {0};
     TableObject* _tableObjects[MAXTABLEOBJ] = {0};
+    bool _tableInOlderImages[MAXTABLEOBJ] = {false};
     uint8_t _saveCount = 0;
     uint8_t _tableObjCount = 0;
     MemoryBlock* _freeList = nullptr;

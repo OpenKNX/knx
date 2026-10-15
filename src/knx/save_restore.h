@@ -34,6 +34,15 @@ class SaveRestore
     }
     
     /**
+     * @brief restore() for an image of apiVersion 2, written before the NVM header carried a layout word.
+     * A record whose stored layout changed since then overrides it; the default reads the current layout.
+     */
+    virtual const uint8_t* restoreLegacy(const uint8_t* buffer)
+    {
+        return restore(buffer);
+    }
+
+    /**
      * @return The maximum number of bytes the object needs to save its state. 
      */
     virtual uint16_t saveSize()

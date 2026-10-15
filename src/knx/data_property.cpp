@@ -3,6 +3,8 @@
 
 #include <cstring>
 
+bool DataProperty::restoredOutOfStep = false;
+
 uint8_t DataProperty::read(uint16_t start, uint8_t count, uint8_t* data) const
 {
     if (start == 0)
@@ -130,6 +132,7 @@ const uint8_t* DataProperty::restore(const uint8_t* buffer)
     {
         // Stream out of step: skip the record and keep the constructor default. Zeroing the count would
         // allocate a non-null zero-size block that the raw accessors hand to a fixed-length read.
+        restoredOutOfStep = true;
         return buffer;
     }
 

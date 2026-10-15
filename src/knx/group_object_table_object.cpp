@@ -41,7 +41,7 @@ const uint8_t* GroupObjectTableObject::restore(const uint8_t* buffer)
 
     // Gate on the load state as AssociationTableObject::restore() does: a download interrupted after the
     // additional-load-control step would otherwise come back LS_LOADING with a half-written table.
-    _tableData = (loadState() == LS_LOADED) ? (uint16_t*)data() : nullptr;
+    _tableData = (loadState() == LS_LOADED && !_unvalidatedImage) ? (uint16_t*)data() : nullptr;
     initGroupObjects();
 
     return buffer;

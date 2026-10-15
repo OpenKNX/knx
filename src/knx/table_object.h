@@ -69,6 +69,9 @@ class TableObject: public InterfaceObject
 
     static BeforeTablesUnloadCallback _beforeTablesUnload;
 
+    /** @brief Set by Memory while it reads an image it has not checked yet: restore() caches nothing from data(). */
+    static bool _unvalidatedImage;
+
     Memory& _memory;
 
   private:

@@ -27,6 +27,12 @@ class IpParameterObject : public InterfaceObject
     // default. Restoring the stored state and then seeding the empty ones keeps them readable on every
     // device, not just on one that was never saved.
     const uint8_t* restore(const uint8_t* buffer) override;
+#ifndef KNX_IS_ROUTER
+    const uint8_t* restoreLegacy(const uint8_t* buffer) override;
+#endif
+  private:
+    const uint8_t* restoreRecord(const uint8_t* buffer, bool legacy);
+  public:
 
     /** @brief Bits of PID_KNXNETIP_DEVICE_STATE (03_08_03 2.5.20 Table 3 p.14). */
     static constexpr uint8_t DeviceStateKnxFault = 0x01;

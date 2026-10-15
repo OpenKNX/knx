@@ -74,7 +74,7 @@ const uint8_t* AddressTableObject::restore(const uint8_t* buffer)
 {
     buffer = TableObject::restore(buffer);
 
-    _groupAddresses = (uint16_t*)data();
+    _groupAddresses = _unvalidatedImage ? nullptr : (uint16_t*)data();
 
     return buffer;
 }

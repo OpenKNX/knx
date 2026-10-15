@@ -20,6 +20,9 @@ class DataProperty : public Property
     const uint8_t* data(uint16_t elementIndex);
     bool isDataProperty() const override { return true; }
 
+    /** @brief Set by restore() when a stored count exceeds the maximum: the stream is out of step. */
+    static bool restoredOutOfStep;
+
   private:
     uint16_t _currentElements = 0;
     uint8_t* _data = nullptr;

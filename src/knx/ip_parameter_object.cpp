@@ -269,7 +269,26 @@ static void seedEmptyProperty(Property* p)
 
 const uint8_t* IpParameterObject::restore(const uint8_t* buffer)
 {
-    buffer = InterfaceObject::restore(buffer);
+    return restoreRecord(buffer, false);
+}
+
+const uint8_t* IpParameterObject::restoreRecord(const uint8_t* buffer, bool legacy)
+{
+    (void)legacy; // a router has no legacy difference
+    for (int i = 0; i < _propertyCount; i++)
+    {
+        Property* prop = _properties[i];
+        if (!prop->WriteEnable())
+            continue;
+#ifndef KNX_IS_ROUTER
+        // An apiVersion 2 image may still hold PID_ROUTING_MULTICAST_ADDRESS here (stored on every mask until
+        // f781eec): 00 01 and a multicast address E0h-EFh, then the TTL record 00 01. Its value is dropped.
+        if (legacy && prop->Id() == PID_TTL && buffer[0] == 0x00 && buffer[1] == 0x01 && (buffer[2] & 0xF0) == 0xE0 &&
+            buffer[6] == 0x00 && buffer[7] == 0x01)
+            buffer += 6;
+#endif
+        buffer = prop->restore(buffer);
+    }
 
     // The saved element count wins over the constructor default, so a device that was written before these
     // properties had one comes back with 0 elements and answers Void_DP -- which a management client reads
@@ -282,6 +301,14 @@ const uint8_t* IpParameterObject::restore(const uint8_t* buffer)
 
     return buffer;
 }
+
+#ifndef KNX_IS_ROUTER
+/** @brief restore() of an apiVersion 2 image, which may still hold PID_ROUTING_MULTICAST_ADDRESS. */
+const uint8_t* IpParameterObject::restoreLegacy(const uint8_t* buffer)
+{
+    return restoreRecord(buffer, true);
+}
+#endif
 
 bool IpParameterObject::deviceStateBit(uint8_t mask, bool set)
 {

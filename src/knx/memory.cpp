@@ -3,6 +3,10 @@
 #include <string.h>
 
 #include "bits.h"
+#include "data_property.h"
+
+// Header version before the layout word was added; its images are migrated in readMemory().
+static constexpr uint16_t kApiVersionWithoutLayoutWord = 2;
 
 Memory::Memory(Platform& platform, DeviceObject& deviceObject)
     : _platform(platform), _deviceObject(deviceObject)
@@ -44,8 +48,16 @@ void Memory::readMemory()
     uint16_t apiVersion = 0;
     const uint8_t* buffer = popWord(apiVersion, flashStart);
 
+    // apiVersion 2 is the header before the layout word. Its records are the ones of this build minus the
+    // tables registered as new (compared against knx v1 2.4.0 and the 2026 product pins; the IP object has its
+    // own restoreLegacy()); a change to a record format must end this migration.
+    // The only older image migrated: no release carried an apiVersion 3 image of another layout.
+    const bool legacy = (apiVersion == kApiVersionWithoutLayoutWord);
+
     uint16_t layoutWord = 0;
-    buffer = popWord(layoutWord, buffer);
+    if (!legacy)
+        buffer = popWord(layoutWord, buffer);
+
 
     uint16_t manufacturerId = 0;
     buffer = popWord(manufacturerId, buffer);
@@ -59,11 +71,11 @@ void Memory::readMemory()
     VersionCheckResult versionCheck = FlashAllInvalid;
 
     // first check correct format of deviceObject-API
-    if (_deviceObject.apiVersion == apiVersion) 
+    if (_deviceObject.apiVersion == apiVersion || legacy)
     {
         // The records are read back positionally, so a differing layout would be parsed field by field.
         // The product callback cannot see this: it compares the ETS application, not the build.
-        if (layoutWord != layoutFingerprint())
+        if (!legacy && layoutWord != layoutFingerprint())
         {
             println("stored layout belongs to a different firmware build");
             print("expected layout: ");
@@ -115,12 +127,16 @@ void Memory::readMemory()
         return;
     }
 
+    if (legacy)
+        println("NVM: migrating older image");
+
+    DataProperty::restoredOutOfStep = false;
     println("restoring data from flash...");
     print("Restore saveRestores: ");
     println(_saveCount);
     for (int i = 0; i < _saveCount; i++)
     {
-        buffer = _saveRestores[i]->restore(buffer);
+        buffer = legacy ? _saveRestores[i]->restoreLegacy(buffer) : _saveRestores[i]->restore(buffer);
     }
     println("Restored saveRestores");
 
@@ -133,13 +149,20 @@ void Memory::readMemory()
     if (versionCheck == FlashTablesInvalid) 
     {
         println("TableObjects are referring to an older firmware version and are not restored");
-        return;
+        // A legacy image still goes through its table records: they are its only plausibility check.
+        if (!legacy)
+            return;
     }
 #endif
     print("Restore TableObjs: ");
     println(_tableObjCount);
+    uint16_t olderSizes[MAXTABLEOBJ] = {0};
+    // The records of a legacy image are checked only after this loop; until then no table may use its pointer.
+    TableObject::_unvalidatedImage = legacy;
     for (int i = 0; i < _tableObjCount; i++)
     {
+        if (legacy && !_tableInOlderImages[i])
+            continue; // no record in a legacy image: keeps its defaults
         buffer = _tableObjects[i]->restore(buffer);
         uint16_t memorySize = 0;
         buffer = popWord(memorySize, buffer);
@@ -148,27 +171,52 @@ void Memory::readMemory()
         // A static table's extent is a build constant, so the persisted word may describe the previous
         // firmware's block; dynamic tables keep using the saved word.
         uint32_t blockSize = _tableObjects[i]->_staticTableAdr ? _tableObjects[i]->_size : memorySize;
+        if (legacy)
+        {
+            olderSizes[i] = memorySize; // checked and taken once the end of the records is known
+            continue;
+        }
         if (blockSize == 0 || _tableObjects[i]->_data == nullptr)
             continue;
 
         // this works because TableObject saves a relative addr and restores it itself
         addNewUsedBlock(_tableObjects[i]->_data, blockSize);
-
 #if MASK_VERSION == 0x091A
-    	// load the tables but delete the data
-        if(versionCheck == FlashTablesInvalid)
-        {
-            println("unload and fill with 0xff");
-            _tableObjects[i]->loadState(LS_UNLOADED);
-            uint32_t start = toRelative(_tableObjects[i]->_data);
-            uint8_t fillByte = 0xff;
-            uint32_t end = start + _tableObjects[i]->_size;
-            for (uint32_t addr = start; addr < end; addr++)
-                writeMemory(addr, 1, &fillByte);
-        }
+        if (versionCheck == FlashTablesInvalid)
+            unloadAndFill(_tableObjects[i]);
 #endif
     }
     println("restored TableObjects");
+
+    if (legacy)
+    {
+        // Tables that do not describe free, disjoint blocks behind the records mean the image belongs to another
+        // layout (a legacy image carries no layout identity). It is refused before anything is written.
+        if (DataProperty::restoredOutOfStep || !takeOlderBlocks(buffer, olderSizes, versionCheck))
+        {
+            refuseOlderImage();
+            return;
+        }
+#if MASK_VERSION != 0x091A
+        // Checked, but from an older ETS application: unloaded. With the OpenKNX version check the stored
+        // hardware type still names the old application, so the next start skips the tables altogether.
+        if (versionCheck == FlashTablesInvalid)
+            for (int i = 0; i < _tableObjCount; i++)
+            {
+                _tableObjects[i]->_data = nullptr;
+                _tableObjects[i]->_size = 0;
+                _tableObjects[i]->_state = LS_UNLOADED;
+            }
+#endif
+        // The grown metadata block now reaches into what the legacy image used for tables.
+        uint8_t* metadataEnd = flashStart + metadataBlockSize;
+        reserveBelow(metadataEnd);
+        moveTablesAbove(metadataEnd);
+        writeMemory();
+        println("NVM: migrated");
+        // The tables were restored without their caches; start again from the checked new image.
+        _platform.restart();
+    }
 }
 
 /**
@@ -282,15 +330,162 @@ void Memory::addSaveRestore(SaveRestore* obj)
     _metadataSize += obj->saveSize();
 }
 
-void Memory::addSaveRestore(TableObject* obj)
+void Memory::addSaveRestore(TableObject* obj, bool inOlderImages)
 {
     if (_tableObjCount >= MAXTABLEOBJ)
         return;
 
     _tableObjects[_tableObjCount] = obj;
+    _tableInOlderImages[_tableObjCount] = inOlderImages;
     _tableObjCount += 1;
     _metadataSize += obj->saveSize();
     _metadataSize += 2; // for size
+}
+
+/**
+ * @brief Takes over the table blocks of a legacy image, starting the free list behind its records.
+ * The old metadata size is not recomputed: a property's maximum may have changed since, the stream has not.
+ * Returns false when a dynamic table does not describe a free block, which leaves the image to be refused.
+ */
+bool Memory::takeOlderBlocks(const uint8_t* recordsEnd, const uint16_t* sizes, VersionCheckResult versionCheck)
+{
+    uint8_t* start = _platform.getNonVolatileMemoryStart();
+    const size_t used = alignToPageSize(recordsEnd - start);
+    delete _freeList;
+    _freeList = new MemoryBlock(start + used, _platform.getNonVolatileMemorySize() - used);
+
+    for (int i = 0; i < _tableObjCount; i++)
+    {
+        TableObject* table = _tableObjects[i];
+        if (!_tableInOlderImages[i])
+            continue;
+        if (!table->_staticTableAdr && !olderBlockValid(table, sizes[i]))
+            return false;
+        const uint32_t blockSize = table->_staticTableAdr ? table->_size : sizes[i];
+        if (blockSize == 0 || table->_data == nullptr)
+            continue;
+        addNewUsedBlock(table->_data, blockSize);
+#if MASK_VERSION == 0x091A
+        if (versionCheck == FlashTablesInvalid)
+            unloadAndFill(table);
+#else
+        (void)versionCheck;
+#endif
+    }
+    return true;
+}
+
+#if MASK_VERSION == 0x091A
+/** @brief Unloads a table restored from an older firmware version and fills its data with FFh. */
+void Memory::unloadAndFill(TableObject* table)
+{
+    println("unload and fill with 0xff");
+    table->loadState(LS_UNLOADED);
+    uint32_t start = toRelative(table->_data);
+    uint8_t fillByte = 0xff;
+    uint32_t end = start + table->_size;
+    for (uint32_t addr = start; addr < end; addr++)
+        writeMemory(addr, 1, &fillByte);
+}
+#endif
+
+/**
+ * @brief Whether a table record of a legacy image describes a block this build can take over.
+ * A pointer exists exactly when a size does; the block is 4-aligned, holds the table and lies in one free block.
+ * Compared as offsets: the restored pointer is the NVM start plus an unchecked 32-bit value.
+ */
+bool Memory::olderBlockValid(TableObject* table, uint16_t memorySize)
+{
+    if (table->_data == nullptr)
+        return memorySize == 0 && table->_state != LS_LOADED;
+    const uint32_t relative = toRelative(table->_data);
+    if (memorySize == 0 || (relative & 3) != 0 || (memorySize & 3) != 0 || table->_size > memorySize)
+        return false;
+    for (MemoryBlock* block = _freeList; block != nullptr; block = block->next)
+    {
+        const uint32_t start = toRelative(block->address);
+        if (relative >= start && relative - start <= block->size && memorySize <= block->size - (relative - start))
+            return true;
+    }
+    return false;
+}
+
+/** @brief Discards a legacy image that does not fit this build: the next start finds no valid header. */
+void Memory::refuseOlderImage()
+{
+    println("NVM: legacy image does not fit, discarded");
+    uint8_t noHeader[2] = {0xFF, 0xFF};
+    _platform.writeNonVolatileMemory(0, noHeader, sizeof(noHeader));
+    _platform.commitNonVolatileMemory();
+    _platform.restart(); // the records restored so far are not trustworthy
+}
+
+/** @brief Takes everything below @p end out of the free list (the list is sorted by address). */
+void Memory::reserveBelow(uint8_t* end)
+{
+    while (_freeList != nullptr && _freeList->address < end)
+    {
+        MemoryBlock* head = _freeList;
+        if (head->address + head->size <= end)
+        {
+            _freeList = head->next;
+            delete head;
+            continue;
+        }
+        head->size -= end - head->address;
+        head->address = end;
+        break;
+    }
+}
+
+/**
+ * @brief Copies each dynamic table whose block starts below @p end into free memory and repoints it.
+ * A table that does not fit anywhere is unloaded. The part of an old block at or above @p end goes back to
+ * the free list.
+ */
+void Memory::moveTablesAbove(uint8_t* end)
+{
+    for (int i = 0; i < _tableObjCount; i++)
+    {
+        TableObject* table = _tableObjects[i];
+        if (table->_data == nullptr || table->_staticTableAdr || table->_data >= end)
+            continue;
+
+        MemoryBlock* old = findBlockInList(_usedList, table->_data);
+        if (old == nullptr)
+            continue;
+
+        uint8_t* target = allocMemory(old->size);
+        if (target != nullptr)
+        {
+            uint8_t chunk[32];
+            for (size_t done = 0; done < old->size; done += sizeof(chunk))
+            {
+                const size_t n = (old->size - done < sizeof(chunk)) ? old->size - done : sizeof(chunk);
+                readMemory(toRelative(old->address) + done, n, chunk);
+                writeMemory(toRelative(target) + done, n, chunk);
+            }
+            table->_data = target;
+        }
+        else
+        {
+            println("NVM: no room to move a table, unloaded");
+            table->_data = nullptr;
+            table->_size = 0;
+            table->_state = LS_UNLOADED; // set directly: no unload callback is registered this early
+        }
+
+        // The block starts below end; what reaches above it is free again.
+        removeFromUsedList(old);
+        if (old->address + old->size > end)
+        {
+            old->size -= end - old->address;
+            old->address = end;
+            addToFreeList(old);
+        }
+        else
+            delete old;
+    }
 }
 
 size_t Memory::memorySize()
