@@ -140,7 +140,6 @@ void CemiServer::dataIndicationToTunnel(CemiFrame& frame)
     print(tmpFrame.destinationAddress(), HEX);
     printHex(" frame: ", tmpFrame.data(), tmpFrame.dataLength());
     #endif
-    tmpFrame.apdu().type();
     _usbTunnelInterface.sendCemiFrame(tmpFrame);
 #elif defined(KNX_TUNNELING)
     _ipTunnelServer.dataIndicationToTunnel(frame);
@@ -650,7 +649,8 @@ void CemiServer::handleLocalTransport(CemiFrame& frame, uint8_t channelId, bool 
 
     // Drop a malformed/short frame; the device-mgmt path does not pre-validate. totalLenght()==0 first --
     // valid() only self-bounds for a non-empty frame.
-    if (frame.totalLenght() == 0 || !frame.valid())
+    // octetCount 0 carries no APCI: the application layer would take an unwritten octet as one.
+    if (frame.totalLenght() == 0 || !frame.valid() || frame.apdu().length() == 0)
         return;
 
     // Response scratch, sized like the internal CemiFrame buffer so any built frame fits.
