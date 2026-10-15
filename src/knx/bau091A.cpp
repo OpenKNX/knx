@@ -93,51 +93,22 @@ Bau091A::Bau091A(Platform& platform)
     // Set Mask Version in Device Object depending on the BAU
     _deviceObj.maskVersion(0x091A);
 
-    // Set which interface objects are available in the device object
-    // This differs from BAU to BAU with different medium types.
-    // See PID_IO_LIST
-    Property* prop = _deviceObj.property(PID_IO_LIST);
-    prop->write(1, (uint16_t) OT_DEVICE);
-    prop->write(2, (uint16_t) OT_ROUTER);
-    prop->write(3, (uint16_t) OT_APPLICATION_PROG);
-    prop->write(4, (uint16_t) OT_IP_PARAMETER);
-#if defined(USE_DATASECURE) && defined(USE_CEMI_SERVER)
-    prop->write(5, (uint16_t) OT_SECURITY);
-    prop->write(6, (uint16_t) OT_CEMI_SERVER);
-#elif defined(USE_DATASECURE)
-    prop->write(5, (uint16_t) OT_SECURITY);
-#elif defined(USE_CEMI_SERVER)
-    prop->write(5, (uint16_t) OT_CEMI_SERVER);
+    // The interface objects in index order: the position in this table is the object index (the number in
+    // the comment). PID_IO_LIST and getInterfaceObject(idx) are both built from it, so they cannot differ.
+    InterfaceObject* const objects[] = {
+        &_deviceObj,         // 0  Device Object
+        &_routerObj,         // 1  Router Object
+        &_appProgram,        // 2  Application Program
+        &_ipParameters,      // 3  KNXnet/IP Parameter Object
+#ifdef USE_DATASECURE
+        &_secIfObj,          // next  Security Interface Object
 #endif
-}
-
-InterfaceObject* Bau091A::getInterfaceObject(uint8_t idx)
-{
-    switch (idx)
-    {
-        case 0:
-            return &_deviceObj;
-        case 1:
-            return &_routerObj;
-        case 2:
-            return &_appProgram;
-        case 3:
-            return &_ipParameters;
-#if defined(USE_DATASECURE) && defined(USE_CEMI_SERVER)
-        case 4:
-            return &_secIfObj;
-        case 5:
-            return &_cemiServerObject;
-#elif defined(USE_CEMI_SERVER)
-        case 4:
-            return &_cemiServerObject;
-#elif defined(USE_DATASECURE)
-        case 4:
-            return &_secIfObj;
+#ifdef USE_CEMI_SERVER
+        &_cemiServerObject,  // next  cEMI Server Object
 #endif
-        default:
-            return nullptr;
-    }
+    };
+    static_assert(sizeof(objects) / sizeof(objects[0]) <= KNX_MAX_INTERFACE_OBJECTS, "PID_IO_LIST is too short");
+    interfaceObjects(objects, sizeof(objects) / sizeof(objects[0]));
 }
 
 InterfaceObject* Bau091A::getInterfaceObject(ObjectType objectType, uint16_t objectInstance)

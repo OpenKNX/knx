@@ -49,7 +49,7 @@ class Bau091A : public BauSystemBCoupler, public ITpUartCallBacks, public DataLi
     uint16_t ftcTxQueueSize() override;
 #endif
   protected:
-    InterfaceObject* getInterfaceObject(uint8_t idx);
+    using BauSystemB::getInterfaceObject; // keeps the index lookup of the base visible next to the override
     InterfaceObject* getInterfaceObject(ObjectType objectType, uint16_t objectInstance);
 
     // For TP1 only

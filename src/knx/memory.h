@@ -7,7 +7,7 @@
 #include "table_object.h"
 
 #define MAXSAVE 5
-#define MAXTABLEOBJ 4
+#define MAXTABLEOBJ 5 // device BAUs: four tables plus Application Program 2
 
 class MemoryBlock
 {

@@ -6,7 +6,7 @@
 BauSystemBDevice::BauSystemBDevice(Platform& platform) :
     BauSystemB(platform),
     _addrTable(_memory),
-    _assocTable(_memory), _groupObjTable(_memory),
+    _assocTable(_memory), _groupObjTable(_memory), _appProgram2(_memory, OT_INTERFACE_PROG),
 #ifdef USE_DATASECURE
     _appLayer(_deviceObj, _secIfObj, *this),
 #else
@@ -24,11 +24,15 @@ BauSystemBDevice::BauSystemBDevice(Platform& platform) :
 
     // This BAU holds group communication when stopped, so it may accept the Restart/Stop events.
     _appProgram.runControlWritable(true);
+    // 03_05_01 4.21.2.6 p.290: Application Program 2 can be started and stopped for diagnostic purposes.
+    _appProgram2.runControlWritable(true);
 
     _memory.addSaveRestore(&_deviceObj);
     _memory.addSaveRestore(&_groupObjTable); // changed order for better memory management
     _memory.addSaveRestore(&_addrTable);
     _memory.addSaveRestore(&_assocTable);
+    // Last table: its state survives a restart (03_05_01 Table 94). Older images have no record for it.
+    _memory.addSaveRestore(&_appProgram2, false);
 #ifdef USE_DATASECURE
     _memory.addSaveRestore(&_secIfObj);
 #endif
@@ -178,6 +182,7 @@ void BauSystemBDevice::doMasterReset(EraseCode eraseCode, uint8_t channel)
     _addrTable.masterReset(eraseCode, channel);
     _assocTable.masterReset(eraseCode, channel);
     _groupObjTable.masterReset(eraseCode, channel);
+    _appProgram2.masterReset(eraseCode, channel);
 #ifdef USE_DATASECURE
     _secIfObj.masterReset(eraseCode, channel);
 #endif

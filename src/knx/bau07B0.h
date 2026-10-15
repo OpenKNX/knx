@@ -19,7 +19,7 @@ class Bau07B0 : public BauSystemBDevice, public ITpUartCallBacks, public DataLin
 
     TpUartDataLinkLayer* getDataLinkLayer();
   protected:
-    InterfaceObject* getInterfaceObject(uint8_t idx);
+    using BauSystemB::getInterfaceObject; // keeps the index lookup of the base visible next to the override
     InterfaceObject* getInterfaceObject(ObjectType objectType, uint16_t objectInstance);
 
     // For TP1 only

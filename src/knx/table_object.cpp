@@ -87,7 +87,9 @@ void TableObject::masterReset(EraseCode eraseCode, uint8_t channel)
         switch (eraseCode)
         {
             case EraseCode::ResetLinks: doReset = (ot == OT_ADDR_TABLE || ot == OT_ASSOC_TABLE); break;
-            case EraseCode::ResetAP:    doReset = (ot == OT_APPLICATION_PROG || ot == OT_GRP_OBJ_TABLE); break;
+            // 03_05_02 Table 4 p.82: ResetAP resets the "Application Program Memory" (taken here as both programs),
+            // ResetParam only the "Application Parameter Memory".
+            case EraseCode::ResetAP:    doReset = (ot == OT_APPLICATION_PROG || ot == OT_INTERFACE_PROG || ot == OT_GRP_OBJ_TABLE); break;
             case EraseCode::ResetParam: doReset = (ot == OT_APPLICATION_PROG); break;
             default: break;
         }
@@ -294,10 +296,10 @@ void TableObject::loadEventLoading(const uint8_t* data)
             break;
         case LE_LOAD_COMPLETED:
             // No allocation was received: LOADED would hand consumers a null data(). A zero-size allocation
-            // already ends in Error; completing without any must too. A static table gets its block here
-            // when no save has placed it yet (fresh flash).
+            // already ends in Error; completing without any must too, except for an object with nothing to load
+            // (loadsWithoutMemory). A static table gets its block here when no save has placed it yet (fresh flash).
             allocTableStatic();
-            if (_data == nullptr)
+            if (_data == nullptr && !loadsWithoutMemory())
             {
                 loadState(LS_ERROR);
                 errorCode(E_GOT_MEM_ALLOC_ZERO);

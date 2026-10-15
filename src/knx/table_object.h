@@ -67,6 +67,9 @@ class TableObject: public InterfaceObject
     /** @brief A load event from PID_LOAD_STATE_CONTROL, before it is dispatched on the current state. */
     virtual void loadEvent(const uint8_t* data);
 
+    /** @brief True when LoadCompleted may reach Loaded without an allocation (an object with nothing to load). */
+    virtual bool loadsWithoutMemory() const { return false; }
+
     static BeforeTablesUnloadCallback _beforeTablesUnload;
 
     /** @brief Set by Memory while it reads an image it has not checked yet: restore() caches nothing from data(). */

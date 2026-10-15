@@ -112,7 +112,7 @@ class BauSystemB : protected BusAccessUnit
 
   protected:
     virtual ApplicationLayer& applicationLayer() = 0;
-    virtual InterfaceObject* getInterfaceObject(uint8_t idx) = 0;
+    virtual InterfaceObject* getInterfaceObject(uint8_t idx);
     virtual InterfaceObject* getInterfaceObject(ObjectType objectType, uint16_t objectInstance) = 0;
 
     void memoryWriteIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, uint8_t number,
@@ -213,6 +213,14 @@ class BauSystemB : protected BusAccessUnit
 
     Memory _memory;
     DeviceObject _deviceObj;
+    /**
+     * @brief Set the interface objects in index order.
+     * The position in @p objects is the object index; PID_IO_LIST is written from the same list, so the
+     * two cannot differ (03_05_01 4.3.22.1).
+     */
+    void interfaceObjects(InterfaceObject* const* objects, uint8_t count);
+    InterfaceObject* _interfaceObjects[KNX_MAX_INTERFACE_OBJECTS] = {};
+    uint8_t _interfaceObjectCount = 0;
     ApplicationProgramObject _appProgram;
     Platform& _platform;
     RestartState _restartState = Idle;

@@ -1242,3 +1242,23 @@ FunctionPropertyCallback BauSystemB::functionPropertyStateCallback()
 {
     return _functionPropertyState;
 }
+
+void BauSystemB::interfaceObjects(InterfaceObject* const* objects, uint8_t count)
+{
+    Property* ioList = _deviceObj.property(PID_IO_LIST);
+    _interfaceObjectCount = 0;
+    for (uint8_t i = 0; i < count && i < KNX_MAX_INTERFACE_OBJECTS; ++i)
+    {
+        uint16_t type = 0;
+        objects[i]->property(PID_OBJECT_TYPE)->read(type);
+        ioList->write(i + 1, type);
+        _interfaceObjects[i] = objects[i];
+        _interfaceObjectCount = i + 1;
+    }
+}
+
+InterfaceObject* BauSystemB::getInterfaceObject(uint8_t idx)
+{
+    return idx < _interfaceObjectCount ? _interfaceObjects[idx] : nullptr;
+}
+

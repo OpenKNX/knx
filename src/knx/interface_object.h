@@ -6,6 +6,11 @@
 #include "knx_types.h"
 #include "bits.h"
 
+/** Capacity of PID_IO_LIST: the longest object list of a BAU (07B0 IP with Data Secure and cEMI server). */
+#ifndef KNX_MAX_INTERFACE_OBJECTS
+    #define KNX_MAX_INTERFACE_OBJECTS 9
+#endif
+
 /** Enum for the type of an interface object. See Section 2.2 of knx:3/7/3 */
 enum ObjectType
 {

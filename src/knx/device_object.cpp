@@ -88,7 +88,7 @@ DeviceObject::DeviceObject()
                 *data = (io->_ownAddress & 0xff);
                 return 1;
             }),
-        new DataProperty(PID_IO_LIST, false, PDT_UNSIGNED_INT, 8, ReadLv3 | WriteLv0),
+        new DataProperty(PID_IO_LIST, false, PDT_UNSIGNED_INT, KNX_MAX_INTERFACE_OBJECTS, ReadLv3 | WriteLv0),
         new DataProperty(PID_HARDWARE_TYPE, true, PDT_GENERIC_06, 1, ReadLv3 | WriteLv3, hardwareType),
         new DataProperty(PID_DEVICE_DESCRIPTOR, false, PDT_GENERIC_02, 1, ReadLv3 | WriteLv0),
 #ifdef USE_RF

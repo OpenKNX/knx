@@ -64,59 +64,25 @@ Bau07B0IP::Bau07B0IP(Platform& platform)
     // Set Mask Version in Device Object depending on the BAU
     _deviceObj.maskVersion(0x07B0);
 
-    // Set which interface objects are available in the device object
-    // This differs from BAU to BAU with different medium types.
-    // See PID_IO_LIST
-    Property* prop = _deviceObj.property(PID_IO_LIST);
-    prop->write(1, (uint16_t) OT_DEVICE);
-    prop->write(2, (uint16_t) OT_ADDR_TABLE);
-    prop->write(3, (uint16_t) OT_ASSOC_TABLE);
-    prop->write(4, (uint16_t) OT_GRP_OBJ_TABLE);
-    prop->write(5, (uint16_t) OT_APPLICATION_PROG);
-    prop->write(6, (uint16_t) OT_IP_PARAMETER);
-#if defined(USE_DATASECURE) && defined(USE_CEMI_SERVER)
-    prop->write(7, (uint16_t) OT_SECURITY);
-    prop->write(8, (uint16_t) OT_CEMI_SERVER);
-#elif defined(USE_DATASECURE)
-    prop->write(7, (uint16_t) OT_SECURITY);
-#elif defined(USE_CEMI_SERVER)
-    prop->write(7, (uint16_t) OT_CEMI_SERVER);
+    // The interface objects in index order: the position in this table is the object index (the number in
+    // the comment). PID_IO_LIST and getInterfaceObject(idx) are both built from it, so they cannot differ.
+    InterfaceObject* const objects[] = {
+        &_deviceObj,         // 0  Device Object
+        &_addrTable,         // 1  Group Address Table
+        &_assocTable,        // 2  Group Association Table
+        &_groupObjTable,     // 3  Group Object Table
+        &_appProgram,        // 4  Application Program
+        &_appProgram2,       // 5  Application Program 2 (Interfaceprogram Object)
+        &_ipParameters,      // 6  KNXnet/IP Parameter Object
+#ifdef USE_DATASECURE
+        &_secIfObj,          // next  Security Interface Object
 #endif
-}
-
-InterfaceObject* Bau07B0IP::getInterfaceObject(uint8_t idx)
-{
-    switch (idx)
-    {
-        case 0:
-            return &_deviceObj;
-        case 1:
-            return &_addrTable;
-        case 2:
-            return &_assocTable;
-        case 3:
-            return &_groupObjTable;
-        case 4:
-            return &_appProgram;
-        case 5: // would be app_program 2
-            return nullptr;
-        case 6:
-            return &_ipParameters;
-#if defined(USE_DATASECURE) && defined(USE_CEMI_SERVER)
-        case 7:
-            return &_secIfObj;
-        case 8:
-            return &_cemiServerObject;
-#elif defined(USE_CEMI_SERVER)
-        case 7:
-            return &_cemiServerObject;
-#elif defined(USE_DATASECURE)
-        case 7:
-            return &_secIfObj;
+#ifdef USE_CEMI_SERVER
+        &_cemiServerObject,  // next  cEMI Server Object
 #endif
-        default:
-            return nullptr;
-    }
+    };
+    static_assert(sizeof(objects) / sizeof(objects[0]) <= KNX_MAX_INTERFACE_OBJECTS, "PID_IO_LIST is too short");
+    interfaceObjects(objects, sizeof(objects) / sizeof(objects[0]));
 }
 
 InterfaceObject* Bau07B0IP::getInterfaceObject(ObjectType objectType, uint16_t objectInstance)
@@ -135,6 +101,8 @@ InterfaceObject* Bau07B0IP::getInterfaceObject(ObjectType objectType, uint16_t o
             return &_groupObjTable;
         case OT_APPLICATION_PROG:
             return &_appProgram;
+        case OT_INTERFACE_PROG:
+            return &_appProgram2;
         case OT_IP_PARAMETER:
             return &_ipParameters;
 #ifdef USE_DATASECURE

@@ -45,6 +45,7 @@ class BauSystemBDevice : public BauSystemB
     AddressTableObject _addrTable;
     AssociationTableObject _assocTable;
     GroupObjectTableObject _groupObjTable;
+    ApplicationProgramObject _appProgram2; // Application Program 2 (object type 4), index 5 in every device BAU
 #ifdef USE_DATASECURE
     SecureApplicationLayer _appLayer;
     SecurityInterfaceObject _secIfObj;
