@@ -306,7 +306,7 @@ void TableObject::loadEventLoading(const uint8_t* data)
             loadState(LS_LOADED);
             break;
         case LE_UNLOAD:
-            loadState(LS_UNLOADED);
+            resetTable(); // a block allocated during this load is freed, not kept for good
             break;
         case LE_ADDITIONAL_LOAD_CONTROLS:
             additionalLoadControls(data);
@@ -360,7 +360,7 @@ void TableObject::loadEventError(const uint8_t* data)
         case LE_START_LOADING:
             break;
         case LE_UNLOAD:
-            loadState(LS_UNLOADED); // loadState() clears the error code on the way out of Error
+            resetTable(); // loadState() clears the error code on the way out of Error
             break;
         default:
             break; // 03_05_01 4.23.2.3.2 p.294: unknown events shall be ignored, without a change of state
