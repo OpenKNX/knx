@@ -443,6 +443,9 @@ uint16_t TransportLayer::groupAddressFromTsap(uint16_t tsap)
 
 void TransportLayer::dataGroupConfirm(AckType ack, uint16_t source, uint16_t destination, HopCountType hopType, Priority priority, TPDU& tpdu, bool status)
 {
+    // Same gate as the indication: a confirmed frame without APCI octet (octetCount 0) is no T_Data_Group.
+    if (tpdu.type() != DataGroup)
+        return;
     _applicationLayer.dataGroupConfirm(ack, hopType, priority, destination, tpdu.apdu(), status);
 }
 
@@ -457,6 +460,8 @@ void TransportLayer::dataBroadcastIndication(HopCountType hopType, Priority prio
 
 void TransportLayer::dataBroadcastConfirm(AckType ack, HopCountType hopType, Priority priority, TPDU& tpdu, bool status)
 {
+    if (tpdu.type() != DataBroadcast) // same gate as the indication
+        return;
     _applicationLayer.dataBroadcastConfirm(ack, hopType, priority, tpdu.apdu(), status);
 }
 
