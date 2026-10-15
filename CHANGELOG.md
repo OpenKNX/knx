@@ -1,7 +1,7 @@
 # Changelog
 
 
-## ec/v2.6.0-beta.1 - 2026-10-11
+## ec/v2.6.0-beta.1 - 2026-10-15
 
 KNXnet/IP conformance against 08_TSSH and 08_TSSK on the IP router and the IP interface: the routing flow
 control in both directions (`ROUTING_LOST_MESSAGE`, `ROUTING_BUSY`), the IP system broadcast, the basic
@@ -94,6 +94,21 @@ ESP32; the known limits are listed at the end of this batch.
 
 * Change: the `OPENKNX_CON_DIAG` con counters are removed, four unused duplicate defines are dropped, and the Supported Service Families DIB length is derived in one header
 * Change: the README rows for Core, Tunnelling, Device Management and Routing name the current defaults and lines
+
+### Stored image and interface objects (2026-10-15)
+
+* Feature: a stored image of apiVersion 2 (knx v1 2.4.0, IP-Interface 1.3.0, IP-Router 8.0.0) is migrated instead of discarded. With manufacturer and application number unchanged, address, KNXnet/IP settings and tunnel addresses stay, and the device restarts once; the application stays when its version is unchanged, otherwise its tables are unloaded and wait for an ETS download. Every table block is checked first; an image that does not fit is discarded with one restart and the device starts unconfigured. A migrated device cannot return to an apiVersion 2 firmware without a new download
+* Fix: `PID_IO_LIST` named the KNXnet/IP parameter object as its sixth element while it sits at index 6 and index 5 was empty, so a client that maps the list position to the index (xknx) failed on object 5. Each BAU lists its objects once in index order, and the four device BAUs carry Application Program 2 (object type 4) on index 5 with the load state machine of Application Program 1
+* Change: the layout word of the device BAUs changes with Application Program 2, so an apiVersion 3 image of a development build before it is discarded once; couplers keep theirs
+* Fix: a table unloaded while loading or in error frees its memory instead of keeping the block reserved
+* Change: the NVM log prints one line per mismatch and no trace lines, 752 bytes less flash in the RP2040 IP-Interface build
+
+### TP send counters and confirmations (2026-10-15)
+
+* Feature: telegrams to TP that are not sent are counted per cause (queue full, no memory, chip not ready, dropped by the transmitter), and telegrams sent without a positive `L_Data.con` per address type (individual, group). The not-sent causes count as lost on every product, except a frame discarded during a busmonitor session; the router keeps its PID 73 and 75 values
+* Fix: the confirm of a group or broadcast frame passes the same TPDU type check as the indication, so a tunnel client's frame with a foreign source address and octet count 0 no longer makes `APDU::type()` read past it; the broadcast confirm checks the APDU length per service
+* Fix: a cEMI `T_Data_Individual` or `T_Data_Connected` request without APCI octet is dropped instead of taking an unwritten octet as the APCI
+* Fix: the RF domain address accessors of the Device Object are defined only with `USE_RF`, as the property is registered
 
 ### Known limits of this batch
 
