@@ -416,8 +416,7 @@ void Memory::reserveBelow(uint8_t* end)
 
 /**
  * @brief Copies each dynamic table whose block starts below @p end into free memory and repoints it.
- * A table that does not fit anywhere is unloaded. The part of an old block at or above @p end goes back to
- * the free list.
+ * A table that does not fit anywhere is unloaded.
  */
 void Memory::moveTablesAbove(uint8_t* end)
 {
@@ -451,16 +450,9 @@ void Memory::moveTablesAbove(uint8_t* end)
             table->_state = LS_UNLOADED; // set directly: no unload callback is registered this early
         }
 
-        // The block starts below end; what reaches above it is free again.
+        // Not freed: the old header still describes these octets until the new one is written. The restart rebuilds the lists.
         removeFromUsedList(old);
-        if (old->address + old->size > end)
-        {
-            old->size -= end - old->address;
-            old->address = end;
-            addToFreeList(old);
-        }
-        else
-            delete old;
+        delete old;
     }
 }
 
