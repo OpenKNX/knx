@@ -76,8 +76,11 @@ class Memory
 #if MASK_VERSION == 0x091A
     void unloadAndFill(TableObject* table);
 #endif
+    void invalidateHeader();
     void refuseOlderImage();
     void reserveBelow(uint8_t* end);
+    void copyBackwards(uint8_t* from, uint8_t* to, size_t size);
+    bool pushTablesAbove(uint8_t* end);
     void moveTablesAbove(uint8_t* end);
 
     void readEraseBlockToBuffer(uint32_t blockNum);

@@ -386,13 +386,19 @@ bool Memory::olderBlockValid(TableObject* table, uint16_t memorySize)
     return false;
 }
 
+/** @brief Makes the next start find no valid header. */
+void Memory::invalidateHeader()
+{
+    uint8_t noHeader[2] = {0xFF, 0xFF};
+    _platform.writeNonVolatileMemory(0, noHeader, sizeof(noHeader));
+    _platform.commitNonVolatileMemory();
+}
+
 /** @brief Discards a legacy image that does not fit this build: the next start finds no valid header. */
 void Memory::refuseOlderImage()
 {
     println("NVM: legacy image does not fit, discarded");
-    uint8_t noHeader[2] = {0xFF, 0xFF};
-    _platform.writeNonVolatileMemory(0, noHeader, sizeof(noHeader));
-    _platform.commitNonVolatileMemory();
+    invalidateHeader();
     _platform.restart(); // the records restored so far are not trustworthy
 }
 
@@ -414,9 +420,58 @@ void Memory::reserveBelow(uint8_t* end)
     }
 }
 
+/** @brief Copies @p size octets from @p from to @p to, last chunk first, so a target above an overlapping source stays intact. */
+void Memory::copyBackwards(uint8_t* from, uint8_t* to, size_t size)
+{
+    uint8_t chunk[32];
+    while (size > 0)
+    {
+        const size_t n = (size < sizeof(chunk)) ? size : sizeof(chunk);
+        size -= n;
+        readMemory(toRelative(from) + size, n, chunk);
+        writeMemory(toRelative(to) + size, n, chunk);
+    }
+}
+
+/**
+ * @brief Moves everything from the lowest used block up to the first free block that can take the growth up in
+ * place, so that nothing starts below @p end. Returns false, with nothing written, when no free block is large
+ * enough or a static table lies in the way.
+ */
+bool Memory::pushTablesAbove(uint8_t* end)
+{
+    uint8_t* start = end;
+    for (MemoryBlock* b = _usedList; b != nullptr; b = b->next)
+        if (b->address < start)
+            start = b->address;
+    const size_t shift = end - start;
+    MemoryBlock* gap = _freeList; // sorted by address, nothing below end
+    while (gap != nullptr && gap->size < shift)
+        gap = gap->next;
+    if (gap == nullptr)
+        return false;
+    uint8_t* const stop = gap->address;
+    for (int i = 0; i < _tableObjCount; i++)
+        if (_tableObjects[i]->_staticTableAdr && _tableObjects[i]->_data >= start && _tableObjects[i]->_data < stop)
+            return false;
+
+    println("NVM: tables pushed up in place");
+    // From here the old image is overwritten: an interrupted start must find no header, not shifted tables.
+    invalidateHeader();
+    copyBackwards(start, end, stop - start);
+    for (int i = 0; i < _tableObjCount; i++)
+        if (_tableObjects[i]->_data >= start && _tableObjects[i]->_data < stop)
+            _tableObjects[i]->_data += shift;
+    for (MemoryBlock* b = _usedList; b != nullptr; b = b->next)
+        if (b->address < stop)
+            b->address += shift;
+    reserveBelow(stop + shift); // smaller free blocks inside the region moved along; the restart rebuilds the list
+    return true;
+}
+
 /**
  * @brief Copies each dynamic table whose block starts below @p end into free memory and repoints it.
- * A table that does not fit anywhere is unloaded.
+ * A table that fits nowhere else pushes the blocks up in place; only when that fails too is it unloaded.
  */
 void Memory::moveTablesAbove(uint8_t* end)
 {
@@ -431,15 +486,11 @@ void Memory::moveTablesAbove(uint8_t* end)
             continue;
 
         uint8_t* target = allocMemory(old->size);
+        if (target == nullptr && pushTablesAbove(end))
+            continue; // every block below end now starts at or above it
         if (target != nullptr)
         {
-            uint8_t chunk[32];
-            for (size_t done = 0; done < old->size; done += sizeof(chunk))
-            {
-                const size_t n = (old->size - done < sizeof(chunk)) ? old->size - done : sizeof(chunk);
-                readMemory(toRelative(old->address) + done, n, chunk);
-                writeMemory(toRelative(target) + done, n, chunk);
-            }
+            copyBackwards(old->address, target, old->size);
             table->_data = target;
         }
         else
