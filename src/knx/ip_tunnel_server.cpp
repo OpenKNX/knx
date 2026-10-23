@@ -858,4 +858,14 @@ void IpTunnelServer::HandleTunnelingRequest(uint8_t* buffer, uint16_t length)
     _cemiServer.frameReceived(tunnReq.frame(), tun->ChannelId);
 }
 
+#if KNX_SERVICE_FAMILY_CORE >= 2
+void IpTunnelServer::setTunnelingInfo(KnxIpSearchResponseExtended& response)
+{
+    // The first KNX_TUNNELING entries are the tunnels, which is exactly what
+    // the DIB reports; the device management slots behind them are not part
+    // of it.
+    response.setTunnelingInfo(_ipParameters, _deviceObject, tunnels);
+}
+#endif
+
 #endif

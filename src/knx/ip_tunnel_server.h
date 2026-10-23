@@ -11,6 +11,7 @@
 #include "knx_ip_tunnel_connection.h"
 #include "cemi_frame.h"
 #include "ip_parameter_object.h"
+#include "knx_ip_search_response_extended.h"
 
 class CemiServer;
 
@@ -31,6 +32,9 @@ class IpTunnelServer
     bool isTunnelAddress(uint16_t addr);
     bool isSentToTunnel(uint16_t address, bool isGrpAddr);
     bool HandleIpFrame(uint8_t* buffer, uint16_t length, uint32_t& src_addr, uint16_t& src_port);
+#if KNX_SERVICE_FAMILY_CORE >= 2
+    void setTunnelingInfo(KnxIpSearchResponseExtended& response);
+#endif
 
   private:
 
