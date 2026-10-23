@@ -27,18 +27,35 @@ Esp32Platform::Esp32Platform(TPUart::Interface::Abstract* interface) : ArduinoPl
 {
 }
 
+#ifdef KNX_IP_WIFI
+// Without a client link the device runs its own AP: report the AP address (device is the gateway, /24).
+static bool apOnly()
+{
+    return (uint32_t)KNX_NETIF.localIP() == 0 && (uint32_t)KNX_NETIF.softAPIP() != 0;
+}
+#endif
+
 uint32_t Esp32Platform::currentIpAddress()
 {
+#ifdef KNX_IP_WIFI
+    if (apOnly()) return KNX_NETIF.softAPIP();
+#endif
     return KNX_NETIF.localIP();
 }
 
 uint32_t Esp32Platform::currentSubnetMask()
 {
+#ifdef KNX_IP_WIFI
+    if (apOnly()) return IPAddress(255, 255, 255, 0);
+#endif
     return KNX_NETIF.subnetMask();
 }
 
 uint32_t Esp32Platform::currentDefaultGateway()
 {
+#ifdef KNX_IP_WIFI
+    if (apOnly()) return 0;
+#endif
     return KNX_NETIF.gatewayIP();
 }
 

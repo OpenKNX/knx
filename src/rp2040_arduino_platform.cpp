@@ -347,16 +347,32 @@ void RP2040ArduinoPlatform::macAddress(uint8_t* addr)
         memset(addr, 0, 6);
 }
 #elif defined(KNX_NETIF)
+#ifdef KNX_IP_WIFI
+// Without a client link the device runs its own AP: report the AP address (device is the gateway, /24).
+static bool apOnly()
+{
+    return !KNX_NETIF.localIP().isSet() && KNX_NETIF.softAPIP().isSet();
+}
+#endif
 uint32_t RP2040ArduinoPlatform::currentIpAddress()
 {
+#ifdef KNX_IP_WIFI
+    if (apOnly()) return KNX_NETIF.softAPIP();
+#endif
     return KNX_NETIF.localIP();
 }
 uint32_t RP2040ArduinoPlatform::currentSubnetMask()
 {
+#ifdef KNX_IP_WIFI
+    if (apOnly()) return IPAddress(255, 255, 255, 0);
+#endif
     return KNX_NETIF.subnetMask();
 }
 uint32_t RP2040ArduinoPlatform::currentDefaultGateway()
 {
+#ifdef KNX_IP_WIFI
+    if (apOnly()) return 0;
+#endif
     return KNX_NETIF.gatewayIP();
 }
 void RP2040ArduinoPlatform::macAddress(uint8_t* addr)
