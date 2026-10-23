@@ -105,6 +105,9 @@ public:
     #ifdef KNX_RP2040_HAVE_IGMP
     // multicast
     bool setupMultiCast(uint32_t addr, uint16_t port) override;
+    // Joins the routing (and system setup) group on netif; IP4_ADDR_ANY4 joins only reach interfaces that
+    // existed at join time, e.g. not a WiFi AP started later. Caller holds the lwIP lock. false = a join failed.
+    static bool joinMulticastGroups(struct netif* netif);
     void closeMultiCast() override;
     bool sendBytesMultiCast(uint8_t* buffer, uint16_t len) override;
     int readBytesMultiCast(uint8_t* buffer, uint16_t maxLen, uint32_t& src_addr, uint16_t& src_port) override;

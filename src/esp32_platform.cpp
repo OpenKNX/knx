@@ -172,6 +172,25 @@ bool Esp32Platform::routingSend(uint32_t netAddr, uint16_t port, const uint8_t* 
     return err == ERR_OK;
 }
 
+bool Esp32Platform::joinMulticastGroups(struct netif* netif)
+{
+    const uint32_t routing = s_groupRouting;
+    const uint32_t extra = s_groupExtra; // equals routing when no extra group is joined
+    bool ok = true;
+    ip4_addr_t g;
+    if (routing != 0)
+    {
+        ip4_addr_set_u32(&g, routing);
+        ok = igmp_joingroup_netif(netif, &g) == ERR_OK;
+    }
+    if (extra != 0 && extra != routing)
+    {
+        ip4_addr_set_u32(&g, extra);
+        ok = (igmp_joingroup_netif(netif, &g) == ERR_OK) && ok;
+    }
+    return ok;
+}
+
 /**
  * @brief Removes the routing socket, leaves its groups and marks its queued datagrams for loop() to drop.
  * Caller holds the core lock; after udp_remove() the callback cannot run for it again, so the ring head is final.

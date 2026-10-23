@@ -16,6 +16,9 @@ public:
 
     // ip stuff
     uint32_t currentIpAddress() override;
+    // Joins the routing (and system setup) group on netif; IP4_ADDR_ANY4 joins only reach interfaces that
+    // existed at join time, e.g. not a WiFi AP started later. Caller holds the tcpip core lock.
+    static bool joinMulticastGroups(struct netif* netif);
     uint32_t currentSubnetMask() override;
     uint32_t currentDefaultGateway() override;
     void macAddress(uint8_t* addr) override;

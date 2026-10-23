@@ -383,6 +383,25 @@ void RP2040ArduinoPlatform::macAddress(uint8_t* addr)
 
 #ifdef KNX_RP2040_HAVE_IGMP
 // multicast
+bool RP2040ArduinoPlatform::joinMulticastGroups(struct netif* netif)
+{
+    const uint32_t routing = s_groupRouting;
+    const uint32_t extra = s_groupExtra; // equals routing when no extra group is joined
+    bool ok = true;
+    ip4_addr_t g;
+    if (routing != 0)
+    {
+        ip4_addr_set_u32(&g, routing);
+        ok = igmp_joingroup_netif(netif, &g) == ERR_OK;
+    }
+    if (extra != 0 && extra != routing)
+    {
+        ip4_addr_set_u32(&g, extra);
+        ok = (igmp_joingroup_netif(netif, &g) == ERR_OK) && ok;
+    }
+    return ok;
+}
+
 bool RP2040ArduinoPlatform::setupMultiCast(uint32_t addr, uint16_t port)
 {
     mcastaddr = IPAddress(htonl(addr));
