@@ -112,6 +112,11 @@ ESP32; the known limits are listed at the end of this batch.
 * Fix: a cEMI `T_Data_Individual` or `T_Data_Connected` request without APCI octet is dropped instead of taking an unwritten octet as the APCI
 * Fix: the RF domain address accessors of the Device Object are defined only with `USE_RF`, as the property is registered
 
+### WiFi (2026-10-24)
+
+* Feature: with `KNX_IP_WIFI`, an RP2040 or ESP32 device that runs only its own access point reports the access point address in the KNXnet/IP properties: its address, mask 255.255.255.0, no gateway. Before, the properties gave the client address, 0.0.0.0 without a client link
+* Feature: `joinMulticastGroups(netif)` joins the routing group and the system setup group on one lwIP interface. A join to `IP4_ADDR_ANY4` reaches only the interfaces present at that time, so an access point started later missed the routing group; OFM-Network calls it when its access point starts
+
 ### Known limits of this batch
 
 * Both `ROUTING_BUSY` triggers count system broadcasts: the receive backlog counts 0533h datagrams and the TP queue fill counts system broadcast frames queued for TP, although 03_02_06 4.3.5.4 p.13 excludes system broadcast frames from the mechanism
