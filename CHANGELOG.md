@@ -1,7 +1,7 @@
 # Changelog
 
 
-## ec/v2.6.0-beta.1 - 2026-10-15
+## ec/v2.6.0-beta.1 - 2026-10-25
 
 KNXnet/IP conformance against 08_TSSH and 08_TSSK on the IP router and the IP interface: the routing flow
 control in both directions (`ROUTING_LOST_MESSAGE`, `ROUTING_BUSY`), the IP system broadcast, the basic
