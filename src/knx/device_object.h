@@ -5,6 +5,10 @@
 #define LEN_HARDWARE_TYPE 6
 #define LEN_ORDER_INFO 10
 #define LEN_PRODUCT_ID 10
+// PID_MFR_STRUCT_INFO: "OpenKNX", layout version of the manufacturer specific Properties, bit per present PID
+// (bit n = PID 202 + n). 9 octets is the most a single-element read fits into an L_Data_Standard Frame.
+#define LEN_MFR_STRUCT_INFO 9
+#define MFR_STRUCT_VERSION 1
 
 // Element limits of the descriptive text Properties. They bound both the reported max_nr_of_elem
 // (A_PropertyDescription_Read) and the number of characters a read can reach.

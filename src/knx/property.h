@@ -108,6 +108,7 @@ enum PropertyID
     PID_DEVICE_DESCRIPTOR = 83,
 
     /** Manufacturer specific Properties in the Device Object (03_05_01 4.3.1: above 201) */
+    PID_MFR_STRUCT_INFO = 202,
     PID_MFR_FIRMWARE_NAME = 203,
     PID_MFR_DEVICE_NAME = 204,
     PID_MFR_BUILD_TIMESTAMP = 205,
