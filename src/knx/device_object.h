@@ -15,10 +15,10 @@
 #define MAX_ELEM_OBJECT_NAME 80
 #define MAX_ELEM_MANUFACTURER_DATA 40
 #define MAX_ELEM_FIRMWARE_NAME 48
-#define MAX_ELEM_FIRMWARE_BUILD 16
+#define MAX_ELEM_BUILD_VERSION 16
 #define MAX_ELEM_MCU 16
 
-// The descriptive setters below exist: deviceName, hardwareId, firmwareName, firmwareBuild,
+// The descriptive setters below exist: deviceName, hardwareId, firmwareName, buildVersion,
 // buildTimestamp, firmwareRevision and productId. Clients gate on this so they also build against
 // stacks that predate them. It lives here, next to the setters, and not in config.h - that file is
 // wrapped in NO_KNX_CONFIG and would drop the flag while the feature is present.
@@ -72,7 +72,7 @@ public:
     void deviceName(const char* utf8Value);
     void hardwareId(const char* value);
     void firmwareName(const char* value);
-    void firmwareBuild(const char* value);
+    void buildVersion(const char* value);
     void mcu(const char* value);
     void buildTimestamp(uint32_t value);
     uint32_t buildTimestamp();
@@ -104,7 +104,7 @@ private:
     bool _objectNameWritten = false;
     const char* _hardwareId = nullptr;
     const char* _firmwareName = nullptr;
-    const char* _firmwareBuild = nullptr; // short git hash of the product build
+    const char* _buildVersion = nullptr;  // "X.Y.Z+githash" of the product build
     const char* _mcu = nullptr;           // chip the firmware was built for, e.g. "RP2040"
     uint32_t _buildTimestamp = 0;         // seconds since the epoch, 0 = not set
 #if MASK_VERSION == 0x091A || MASK_VERSION == 0x2920

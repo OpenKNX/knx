@@ -395,11 +395,11 @@ DeviceObject::DeviceObject()
                 pushInt(io->_buildTimestamp, data);
                 return 1;
             }),
-        // The build identity as text - the short git hash, which no number can carry.
-        new CallbackProperty<DeviceObject>(this, PID_MFR_FIRMWARE_BUILD, false, PDT_UNSIGNED_CHAR, MAX_ELEM_FIRMWARE_BUILD, ReadLv3 | WriteLv0,
+        // The build identity as text, "X.Y.Z+githash" - the hash is what no number can carry.
+        new CallbackProperty<DeviceObject>(this, PID_MFR_BUILD_VERSION, false, PDT_UNSIGNED_CHAR, MAX_ELEM_BUILD_VERSION, ReadLv3 | WriteLv0,
             [](DeviceObject* io, uint16_t start, uint8_t count, uint8_t* data) -> uint8_t
             {
-                return readText(io->_firmwareBuild, MAX_ELEM_FIRMWARE_BUILD, start, count, data);
+                return readText(io->_buildVersion, MAX_ELEM_BUILD_VERSION, start, count, data);
             }),
         // The chip the firmware was built for. One application exists for several chips, and nothing
         // else in the Device Object tells them apart; a tool compares this with a firmware file.
@@ -623,9 +623,9 @@ void DeviceObject::firmwareName(const char* value)
     _firmwareName = value;
 }
 
-void DeviceObject::firmwareBuild(const char* value)
+void DeviceObject::buildVersion(const char* value)
 {
-    _firmwareBuild = value;
+    _buildVersion = value;
 }
 
 void DeviceObject::mcu(const char* value)

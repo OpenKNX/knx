@@ -112,7 +112,7 @@ enum PropertyID
     PID_MFR_FIRMWARE_NAME = 203,
     PID_MFR_DEVICE_NAME = 204,
     PID_MFR_BUILD_TIMESTAMP = 205,
-    PID_MFR_FIRMWARE_BUILD = 206,
+    PID_MFR_BUILD_VERSION = 206,
     PID_MFR_MCU = 207,
 
     /** Properties in the RF Medium Object */
