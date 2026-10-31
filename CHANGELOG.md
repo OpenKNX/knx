@@ -1,6 +1,11 @@
 # Changelog
 
 
+## ec/v2.6.0-beta.2 - 2026-10-31
+
+* Fix (non-routing KNXnet/IP device: the IP interface and 57B0): `PID_ROUTING_MULTICAST_ADDRESS` answered a write with 0.0.0.0. ETS5 writes it with `A_PropertyValue_Write` while programming the individual address, compares the response with the written 224.0.23.12 and reported "Das Schreiben in den Speicherbereich ist fehlgeschlagen". A written value is now kept in RAM and read back; it is 0 after every restart and never persisted, and the device information DIB keeps 0.0.0.0 (03_08_02 7.5.4.2). ETS6 writes with `A_PropertyExtValue_WriteCon`, gets only a return code and was not affected. Routers are unchanged
+
+
 ## ec/v2.6.0-beta.1 - 2026-10-25
 
 KNXnet/IP conformance against 08_TSSH and 08_TSSK on the IP router and the IP interface: the routing flow
