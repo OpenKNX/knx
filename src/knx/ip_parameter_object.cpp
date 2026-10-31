@@ -121,9 +121,12 @@ IpParameterObject::IpParameterObject(DeviceObject& deviceObject, Platform& platf
 #ifdef KNX_IS_ROUTER
         new DataProperty(PID_ROUTING_MULTICAST_ADDRESS, true, PDT_UNSIGNED_LONG, 1, ReadLv3 | WriteLv3, DEFAULT_MULTICAST_ADDR),
 #else
-        // Non-routing device: PID_ROUTING_MULTICAST_ADDRESS always reads 0.0.0.0 (03_08_02 §7.5.4.2).
-        // Callback (read 0, write accepted+ignored) so a persisted value can't surface a non-zero routing
-        // multicast. It must stay a CallbackProperty and must NOT gain save/restore: InterfaceObject walks
+        // Non-routing device: the 0.0.0.0 of 03_08_02 §7.5.4.2 is the DIB field, set in the search and
+        // description responses. The property itself is unused here, but ETS writes it while programming the
+        // individual address: ETS5 with A_PropertyValue_Write, which compares the response with the written
+        // value and fails on a 0. So a write is kept in RAM and read back; it starts at 0 after every restart,
+        // which keeps the read consistent with the DIB (KNXnet/IP test 4.2.2) whenever nothing wrote it.
+        // It must stay a CallbackProperty and must NOT gain save/restore: InterfaceObject walks
         // the WriteEnable properties into one packed stream with no per-object length, the table objects are
         // restored from the same cursor, and the version check compares only the ETS application -- so any
         // change to the number of bytes this property persists misaligns every device already in the field.
@@ -136,12 +139,14 @@ IpParameterObject::IpParameterObject(DeviceObject& deviceObject, Platform& platf
                     pushWord(currentNoOfElements, data);
                     return 1;
                 }
-                pushInt((uint32_t)0, data); // non-routing device: 0.0.0.0
+                pushInt(io->_routingMulticastRam, data);
                 return 1;
             },
             [](IpParameterObject* io, uint16_t start, uint8_t count, const uint8_t* data) -> uint8_t
             {
-                return 1; // accept a write (ETS/tools may set it) but ignore it -> the read stays 0.0.0.0
+                // CallbackProperty::write() admits only start 1, count 1 for this one-element property.
+                io->_routingMulticastRam = getInt(data);
+                return 1;
             }),
 #endif
 #ifdef KNX_IS_ROUTER

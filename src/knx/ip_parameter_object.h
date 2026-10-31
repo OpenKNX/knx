@@ -55,6 +55,9 @@ class IpParameterObject : public InterfaceObject
     // propertyValueWrite() path (OFM-Network for the IP fault bit) can reach it.
     uint8_t _deviceState = 0;
     uint16_t _busyWaitTime = 100; // PID_ROUTING_BUSY_WAIT_TIME, RAM only
+#ifndef KNX_IS_ROUTER
+    uint32_t _routingMulticastRam = 0; // PID_ROUTING_MULTICAST_ADDRESS on a non-router, RAM only, never persisted
+#endif
     bool _deviceStateChanged = false;
     uint32_t _knxFaultSince = 0;   // millis() the bus first looked unusable; 0 = it does not
     bool _deviceStateInit = false; // first pass seeds the timer without reporting a change
