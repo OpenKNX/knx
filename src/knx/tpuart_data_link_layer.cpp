@@ -146,7 +146,8 @@ bool TpUartDataLinkLayer::monitor()
     // Baseline the loss counter at monitor entry so pre-existing overflows don't set a spurious "lost" bit.
     _lastBusMonRxOverflow = _tpuart.getStatistics().getRxUartOverflow()
                           + _tpuart.getStatistics().getRxSearchBufferOverflow()
-                          + _tpuart.getStatistics().getRxFrameBufferOverflow();
+                          + _tpuart.getStatistics().getRxFrameBufferOverflow()
+                          + _tpuart.getStatistics().getRxDiscardedBytes(); // the comparison in busMonStatus() sums these four
 #endif
     return true;
 #endif // MASK_VERSION != 0x091A
