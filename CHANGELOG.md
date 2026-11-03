@@ -1,6 +1,17 @@
 # Changelog
 
 
+## ec/v2.6.0-beta.3 - 2026-11-03
+
+Four busmonitor fixes on top of the previous beta.
+
+**Busmonitor**
+* Fix: a monitor refused because the line is down answers `E_KNX_CONNECTION` instead of `E_NO_MORE_CONNECTIONS` (03_08_04 5.4.3.3.3 p.30)
+* Fix: in monitor mode received frames reach only `L_Busmon` (03_03_02 2.1 p.8), own objects no longer react to telegrams. The confirmation of an own telegram from before the entry still goes up; `KNX_BUSMON_SOFT` keeps the old behaviour
+* Fix: the loss baseline at monitor entry includes discarded octets, so the first `L_Busmon.ind` of a session carries no Lost bit without a loss
+* Fix: a connect while the previous session ends is refused for at most 250 ms with `E_NO_MORE_CONNECTIONS`
+
+
 ## ec/v2.6.0-beta.2 - 2026-10-31
 
 * Fix (non-routing KNXnet/IP device: the IP interface and 57B0): `PID_ROUTING_MULTICAST_ADDRESS` answered a write with 0.0.0.0. ETS5 writes it with `A_PropertyValue_Write` while programming the individual address, compares the response with the written 224.0.23.12 and reported "Das Schreiben in den Speicherbereich ist fehlgeschlagen". A written value is now kept in RAM and read back; it is 0 after every restart and never persisted, and the device information DIB keeps 0.0.0.0 (03_08_02 7.5.4.2). ETS6 writes with `A_PropertyExtValue_WriteCon`, gets only a return code and was not affected. Routers are unchanged
