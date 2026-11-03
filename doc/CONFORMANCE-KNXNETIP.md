@@ -2,8 +2,8 @@
 
 Prüfung dieses `knx`-Stacks gegen den **KNX Standard v3.0.0** (03_08_01 Overview, 03_08_02 Core,
 03_08_03 Management, 03_08_04 Tunnelling, 03_06_03 cEMI/EMI). Quellen **nur als Klausel + Seite** (die
-PDFs sind © KNX Association, liegen lokal unter `doc/knx-standard/`, gitignored, werden nicht
-weitergegeben). Code-Verweise sind `src/knx/…`.
+PDFs sind © KNX Association, liegen ausserhalb jedes Repos unter `~/Entwicklung/KNX-Spec/`, werden
+nicht weitergegeben). Code-Verweise sind `src/knx/…`.
 
 **Geprüftes Produkt:** KNXnet/IP-**Interface** = `Bau07B0IP`, Mask **0x07B0** + `KNX_TUNNELING`, **kein**
 ROUTING. Verifiziert gegen `ec/v1dev-ec`. Wo sich der **Router** (0x091A) durch Build-Flags
