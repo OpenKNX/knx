@@ -2068,7 +2068,9 @@ void IpTunnelServer::HandleBusMonitorConnect(KnxIpConnectRequest& connRequest, u
     if (firstBusMon && !_hwBusMon->hwBusMonEnter())
     {
         println("HW-Busmon: chip cannot enter monitor mode -> refusing the connect");
-        KnxIpConnectResponse connRes(0x00, E_NO_MORE_CONNECTIONS);
+        // 03_08_04 5.4.3.3.3 p.30: no connection to the TP1 medium is E_KNX_CONNECTION, not a lack of capacity.
+        const bool busDown = _knxBusState != nullptr && !_knxBusState->knxBusOperational();
+        KnxIpConnectResponse connRes(0x00, busDown ? E_KNX_CONNECTION : E_NO_MORE_CONNECTIONS);
         sendCounted(srcIP, srcPort, connRes.data(), connRes.totalLength());
         return;
     }

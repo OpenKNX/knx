@@ -128,8 +128,8 @@ void TpUartDataLinkLayer::requestBusy(bool state)
 // Single funnel for every bus-monitor entry (the console command and hwBusMonEnter from the tunnel server),
 // and it reports whether the chip actually entered. Two ways to be refused: a device advertising the ROUTING
 // service family must not offer a bus monitor (03_08_04 2.2.4) -- in this stack the ROUTING DIB is emitted
-// only under mask 091A, so the mask IS the routing capability -- and startMonitoring() says no while the BCU
-// is uninitialized (no TP chip, dead bus). Refusing in the funnel rather than at each caller keeps a future
+// only under mask 091A, so the mask IS the routing capability -- and startMonitoring() says no while the bus
+// is not operational (no TP chip, chip lost, no bus voltage). Refusing in the funnel rather than at each caller keeps a future
 // caller from reopening the path, and callers MUST check: committing an owner or closing somebody else's
 // tunnel for a monitor that never started is exactly the bug this return value exists for.
 bool TpUartDataLinkLayer::monitor()
