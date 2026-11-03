@@ -451,6 +451,17 @@ void TpUartDataLinkLayer::processRxFrame(TPUart::Frame &tpFrame)
                 _ipTunnelServer.busMonitorFrame(&ackByte, 1, busMonStatus(false));
             }
         }
+#ifndef KNX_BUSMON_SOFT
+        // 03_03_02 2.1 p.8: "In Busmonitor Mode only the local L_Busmon-service shall be available."
+        if (!tpFrame.isTransmitted()) // the confirmation of an own telegram from before the entry is still owed
+        {
+#ifdef KNX_ACTIVITYCALLBACK
+            if (_dllcb)
+                _dllcb->activity((_netIndex << KNX_ACTIVITYCALLBACK_NET) | (KNX_ACTIVITYCALLBACK_DIR_RECV << KNX_ACTIVITYCALLBACK_DIR));
+#endif
+            return;
+        }
+#endif
 #endif
     }
 

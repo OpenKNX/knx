@@ -1209,7 +1209,7 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
     // error. Reject up front with the transient "no capacity" code E_NO_MORE_CONNECTIONS (KNX 03_08_02 Core
     // Table 8 p.39; busmon exclusivity KNX 03_08_04 Tunnelling §2.2.4 p.8) so programming/device-info fails
     // fast and deterministically. Device management (local interface
-    // object, no bus TX) stays allowed. Received frames still flow to existing tunnels (soft busmon RX).
+    // object, no bus TX) stays allowed. With KNX_BUSMON_SOFT received frames still reach the link layer and the local objects.
     // Reject a LinkLayer/group-monitor tunnel whenever the HW chip is in monitor mode -- from an ETS busmon
     // tunnel OR a local `bcu mon` (dual owner). A busmon tunnel (0x80) returned above; DEVICE_MGMT is not a
     // TUNNEL_CONNECTION so it stays allowed. hwBusMonActive() covers both owners; busMonitorActive() alone

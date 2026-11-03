@@ -182,6 +182,11 @@
 #define KNX_BUSMON_CONNECTIONS 1
 #endif
 
+// KNX_BUSMON_SOFT (EC) - off: in busmonitor mode received frames reach only L_Busmon (03_03_02 2.1 p.8).
+// Kept for a product that needs its local objects during a monitor: frames then also go up the link layer, including
+// individually addressed ones, which the device can neither acknowledge nor answer in this mode.
+// #define KNX_BUSMON_SOFT
+
 // KNX_IP_RX_RING_SIZE - receive queue of the KNXnet/IP socket in octets, a power of two >= 521 (one 512-octet
 // datagram + 9 header). 2048: 30 datagrams of 40 + 9 octets (03_08_05 2.3.5 SHOULD) or a 50 ms stall at 400/s.
 #ifndef KNX_IP_RX_RING_SIZE
