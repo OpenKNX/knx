@@ -2044,6 +2044,14 @@ void IpTunnelServer::HandleBusMonitorConnect(KnxIpConnectRequest& connRequest, u
     }
     const bool firstBusMon = (busMonitorCount() == 0);
 
+    // The previous session is still ending: the chip ignores a monitor request in its reset state.
+    if (firstBusMon && _busMonExitPending)
+    {
+        KnxIpConnectResponse connResExit(0x00, E_NO_MORE_CONNECTIONS);
+        sendCounted(srcIP, srcPort, connResExit.data(), connResExit.totalLength());
+        return;
+    }
+
 #ifdef KNX_BUSMON_REFUSE_WHEN_TUNNELS_OPEN
     // 03_08_04 2.2.4 p.8 fixes the state WHILE the busmonitor runs ("may not support any other KNXnet/IP
     // services"), not what happens to connections that are already open. Default keeps the eviction below;
