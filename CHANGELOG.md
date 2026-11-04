@@ -11,6 +11,9 @@ Four busmonitor fixes on top of the previous beta.
 * Fix: the loss baseline at monitor entry includes discarded octets, so the first `L_Busmon.ind` of a session carries no Lost bit without a loss
 * Fix: a connect while the previous session ends is refused for at most 250 ms with `E_NO_MORE_CONNECTIONS`
 
+**Build**
+* Change: the optimize pragma in `tp_frame.h` stayed active for the rest of every source that includes `knx_facade.h`, so the module and product code was built with O3. It is gone: `TpFrame` has no user anymore, `tpuart_data_link_layer.cpp` and the TPUart sources with their own pragma keep O3, the rest takes the default of the target. The firmware of the measured targets is 170 to 190 KB smaller
+
 
 ## ec/v2.6.0-beta.2 - 2026-10-31
 
