@@ -393,7 +393,7 @@ void IpTunnelServer::loop()
     }
 
     // Bounded, non-blocking exit recovery: wait for the CHIP to confirm the reset with a U_Reset.ind.
-    // 250 ms is generous -- the driver's own blocking wait for that indication is 50 ms.
+    // 400 ms: the driver's exit window holds the indication back until the telegram on the wire ended, 360 ms at most.
     // Armed only inside `if (_hwBusMon)` at the single arming site, and the pointer is never set back to
     // null -- so pending implies non-null and the dereferences below need no guard. A guard here would
     // also be wrong: it would have to clear the poll, which reads as "the chip answered".
@@ -410,7 +410,7 @@ void IpTunnelServer::loop()
             // the old version slander a healthy chip.
             _busMonExitPending = false;
         }
-        else if (millis() - _busMonExitStart > 250)
+        else if (millis() - _busMonExitStart > 400)
         {
             _busMonExitPending = false;
             // Retry regardless: with a desynced receiver the reset IS the therapy -- it clears the
