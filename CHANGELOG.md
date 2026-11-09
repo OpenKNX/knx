@@ -1,9 +1,9 @@
 # Changelog
 
 
-## ec/v2.6.0-beta.3 - 2026-11-03
+## ec/v2.6.0-beta.3 - 2026-11-09
 
-Four busmonitor fixes on top of the previous beta.
+Four busmonitor fixes, routing flow control on the router and a group object fix on top of the previous beta.
 
 **Busmonitor**
 * Fix: a monitor refused because the line is down answers `E_KNX_CONNECTION` instead of `E_NO_MORE_CONNECTIONS` (03_08_04 5.4.3.3.3 p.30)
