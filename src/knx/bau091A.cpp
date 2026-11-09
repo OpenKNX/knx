@@ -202,17 +202,26 @@ void Bau091A::updateDeviceState()
 #endif
 }
 
-// A tunnelled frame for IP is queued while it fits, also in a ROUTING_BUSY pause (03_08_05 3.7.1 p.13). An individual frame kept
-// off TP by KNX_TUNNELING_STRICT_TOPOLOGY is refused while tunnelIndicationFits() is false; not lost, not counted.
-bool Bau091A::isRoutingToIpHeld(uint16_t address, bool isGrpAddr)
+// A tunnelled frame for IP is queued while it fits, also in a ROUTING_BUSY pause (03_08_05 3.7.1 p.13). An individual frame only
+// IP carries (kept off TP by KNX_TUNNELING_STRICT_TOPOLOGY, not for a tunnel) is refused when it does not fit; not counted in PID 72.
+bool Bau091A::refuseTunnelFrameToIp(CemiFrame& frame)
 {
 #if defined(KNX_TUNNELING) && defined(KNX_TUNNELING_STRICT_TOPOLOGY)
-    if (isGrpAddr || _dlLayerPrimary.tunnelIndicationFits() || !_dlLayerSecondary.isRoutedPA(address))
+    const uint16_t destination = frame.destinationAddress();
+    if (frame.addressType() == GroupAddress || frame.hopCount() == 0 || !_dlLayerSecondary.isRoutedPA(destination)
+        || _dlLayerSecondary.isTunnelingPA(destination) || _appProgram.applicationStopped()
+        || _dlLayerPrimary.indicationFits(_dlLayerSecondary.isTunnelingPA(frame.sourceAddress())))
         return false;
-    return true;
+    // Same decision as NetworkLayerCoupler::routeDataIndividual() for a frame from TP.
+    uint8_t lcconfig = LCCONFIG::PHYS_FRAME_ROUT;
+    Property* prop_lcconfig = _routerObj.property(PID_SUB_LCCONFIG);
+    if (prop_lcconfig)
+        prop_lcconfig->read(lcconfig);
+    const uint8_t physFrame = lcconfig & LCCONFIG::PHYS_FRAME;
+    return physFrame == LCCONFIG::PHYS_FRAME_UNLOCK
+        || (physFrame != LCCONFIG::PHYS_FRAME_LOCK && _netLayer.isRoutedIndividualAddress(destination, 1));
 #else
-    (void)address;
-    (void)isGrpAddr;
+    (void)frame;
     return false;
 #endif
 }

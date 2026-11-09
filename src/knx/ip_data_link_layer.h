@@ -61,8 +61,8 @@ class IpDataLinkLayer : public DataLinkLayer
     void loopRoutingBusy(uint16_t txQueueFill);
     /** @brief True while a received ROUTING_BUSY holds back ROUTING_INDICATIONs; the TP side then acknowledges routed frames with BUSY. */
     bool routingPaused() const { return _busyHold && (int32_t)(millis() - _busyUntil) < 0; }
-    /** @brief True while sendFrame() takes one more frame from a tunnel. */
-    bool tunnelIndicationFits() const { return _enabled && _txCount < kTxQueueSize && _txTunnelCount < kTxTunnelMax; }
+    /** @brief True while sendFrame() takes one more frame; one from a tunnel also needs room in the tunnel share. */
+    bool indicationFits(bool fromTunnel) const { return _enabled && _txCount < kTxQueueSize && (!fromTunnel || _txTunnelCount < kTxTunnelMax); }
 #endif
 
   private:

@@ -359,7 +359,7 @@ bool TpUartDataLinkLayer::isMonitoring()
 // taken at all, so a client that sends it again creates no duplicate.
 bool TpUartDataLinkLayer::refusedFromTunnel(CemiFrame& frame)
 {
-    return _cb.isRoutingToIpHeld(frame.destinationAddress(), frame.addressType() == GroupAddress);
+    return _cb.refuseTunnelFrameToIp(frame);
 }
 
 TPUart::AcknowledgeType TpUartDataLinkLayer::checkAcknowledge(unsigned short destination, bool isGroupAddress)

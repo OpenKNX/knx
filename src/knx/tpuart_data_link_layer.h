@@ -22,8 +22,8 @@ class ITpUartCallBacks
   public:
     virtual ~ITpUartCallBacks() = default;
     virtual TPAckType isAckRequired(uint16_t address, bool isGrpAddr) = 0;
-    /** @brief A tunnelled frame for this destination cannot be taken for IP now: refuse it with a negative L_Data.con. */
-    virtual bool isRoutingToIpHeld(uint16_t address, bool isGrpAddr) { (void)address; (void)isGrpAddr; return false; }
+    /** @brief True refuses a tunnelled frame with a negative L_Data.con before it is processed or forwarded. */
+    virtual bool refuseTunnelFrameToIp(CemiFrame& frame) { (void)frame; return false; }
 };
 
 class TpUartDataLinkLayer : public DataLinkLayer

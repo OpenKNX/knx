@@ -70,8 +70,7 @@ bool IpDataLinkLayer::sendFrame(CemiFrame& frame)
 #else
     const bool fromTunnel = false;
 #endif
-    const bool fits = fromTunnel ? tunnelIndicationFits() : (_enabled && _txCount < kTxQueueSize);
-    uint8_t* copy = fits ? new (std::nothrow) uint8_t[packet.totalLength()] : nullptr;
+    uint8_t* copy = indicationFits(fromTunnel) ? new (std::nothrow) uint8_t[packet.totalLength()] : nullptr;
     if (copy == nullptr)
     {
         if (_counters != nullptr)

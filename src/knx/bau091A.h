@@ -54,7 +54,7 @@ class Bau091A : public BauSystemBCoupler, public ITpUartCallBacks, public DataLi
 
     // For TP1 only
     TPAckType isAckRequired(uint16_t address, bool isGrpAddr) override;
-    bool isRoutingToIpHeld(uint16_t address, bool isGrpAddr) override;
+    bool refuseTunnelFrameToIp(CemiFrame& frame) override;
 
     void doMasterReset(EraseCode eraseCode, uint8_t channel) override;
   private:
