@@ -195,6 +195,8 @@ void BauSystemBDevice::groupValueWriteLocalConfirm(AckType ack, uint16_t asap, P
     if (asap == 0 || asap > _groupObjTable.entryCount()) return;
 
     GroupObject& go = _groupObjTable.get(asap);
+    if (go.commFlag() == WriteRequest || go.commFlag() == ReadRequest)
+        return; // a newer request is pending: its own confirmation reports the result
     if (status)
         go.commFlag(Ok);
     else
@@ -208,6 +210,8 @@ void BauSystemBDevice::groupValueReadLocalConfirm(AckType ack, uint16_t asap, Pr
     if (asap == 0 || asap > _groupObjTable.entryCount()) return;
 
     GroupObject& go = _groupObjTable.get(asap);
+    if (go.commFlag() == WriteRequest || go.commFlag() == ReadRequest)
+        return; // a newer request is pending: its own confirmation reports the result
     if (status)
         go.commFlag(Ok);
     else
