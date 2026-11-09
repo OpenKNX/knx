@@ -355,8 +355,8 @@ bool TpUartDataLinkLayer::isMonitoring()
     return _tpuart.isMonitoring();
 }
 
-// A tunnel client sits on the TP side of a router: a frame a TP sender would get BUSY for gets a negative L_Data.con
-// and is not taken at all, so a client that sends it again creates no duplicate.
+// A tunnel client sits on the TP side of a router: a frame the router refuses gets a negative L_Data.con and is not
+// taken at all, so a client that sends it again creates no duplicate.
 bool TpUartDataLinkLayer::refusedFromTunnel(CemiFrame& frame)
 {
     return _cb.isRoutingToIpHeld(frame.destinationAddress(), frame.addressType() == GroupAddress);

@@ -61,6 +61,8 @@ class IpDataLinkLayer : public DataLinkLayer
     void loopRoutingBusy(uint16_t txQueueFill);
     /** @brief True while a received ROUTING_BUSY holds back ROUTING_INDICATIONs; the TP side then acknowledges routed frames with BUSY. */
     bool routingPaused() const { return _busyHold && (int32_t)(millis() - _busyUntil) < 0; }
+    /** @brief True while sendFrame() takes one more frame from a tunnel. */
+    bool tunnelIndicationFits() const { return _enabled && _txCount < kTxQueueSize && _txTunnelCount < kTxTunnelMax; }
 #endif
 
   private:
@@ -104,6 +106,10 @@ class IpDataLinkLayer : public DataLinkLayer
     uint16_t _txLen[kTxQueueSize] = {0};
     uint8_t _txHead = 0;
     uint8_t _txCount = 0;
+    static_assert(KNX_IP_TX_QUEUE_TUNNEL_MAX >= 1 && KNX_IP_TX_QUEUE_TUNNEL_MAX <= KNX_IP_TX_QUEUE_SIZE, "tunnel share within the queue");
+    static constexpr uint8_t kTxTunnelMax = KNX_IP_TX_QUEUE_TUNNEL_MAX;
+    bool _txFromTunnel[kTxQueueSize] = {false}; // entry was sent by a tunnel client
+    uint8_t _txTunnelCount = 0;                 // entries with _txFromTunnel set
     volatile bool _busyHold = false;  // a ROUTING_BUSY wait is running; cleared once it expired
     volatile uint32_t _busyUntil = 0; // no ROUTING_INDICATION before this time (tw + trandom); read by the TP ACK decision
     uint32_t _busyWaitEnd = 0;        // end of tw alone, for the "higher remaining time" rule

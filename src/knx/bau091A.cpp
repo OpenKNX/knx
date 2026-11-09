@@ -202,15 +202,24 @@ void Bau091A::updateDeviceState()
 #endif
 }
 
+// A tunnelled frame for IP is queued while it fits, also in a ROUTING_BUSY pause (03_08_05 3.7.1 p.13). An individual frame kept
+// off TP by KNX_TUNNELING_STRICT_TOPOLOGY is refused while tunnelIndicationFits() is false; not lost, not counted.
 bool Bau091A::isRoutingToIpHeld(uint16_t address, bool isGrpAddr)
 {
-    // The pause first: without a ROUTING_BUSY no routing decision is taken here.
-    return _dlLayerPrimary.routingPaused() && isAckRequired(address, isGrpAddr) == TPAckType::AckReqBusy;
+#if defined(KNX_TUNNELING) && defined(KNX_TUNNELING_STRICT_TOPOLOGY)
+    if (isGrpAddr || _dlLayerPrimary.tunnelIndicationFits() || !_dlLayerSecondary.isRoutedPA(address))
+        return false;
+    return true;
+#else
+    (void)address;
+    (void)isGrpAddr;
+    return false;
+#endif
 }
 
 TPAckType Bau091A::isAckRequired(uint16_t address, bool isGrpAddr)
 {
-    // called from TpUartDataLinkLayer and from isRoutingToIpHeld()
+    // called from TpUartDataLinkLayer
     TPAckType ack = TPAckType::AckReqNone;
     int8_t routed = -1; // routing decision for this frame once taken, so the BUSY check below does not take it again
 

@@ -22,7 +22,7 @@ class ITpUartCallBacks
   public:
     virtual ~ITpUartCallBacks() = default;
     virtual TPAckType isAckRequired(uint16_t address, bool isGrpAddr) = 0;
-    /** @brief A frame for this destination would be answered BUSY on TP now (routing to IP held by a ROUTING_BUSY). */
+    /** @brief A tunnelled frame for this destination cannot be taken for IP now: refuse it with a negative L_Data.con. */
     virtual bool isRoutingToIpHeld(uint16_t address, bool isGrpAddr) { (void)address; (void)isGrpAddr; return false; }
 };
 

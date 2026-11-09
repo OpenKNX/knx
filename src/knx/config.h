@@ -203,6 +203,11 @@
 #define KNX_IP_TX_QUEUE_SIZE 30
 #endif
 
+// KNX_IP_TX_QUEUE_TUNNEL_MAX - entries of that queue frames from a tunnel may hold (1..KNX_IP_TX_QUEUE_SIZE).
+#ifndef KNX_IP_TX_QUEUE_TUNNEL_MAX
+#define KNX_IP_TX_QUEUE_TUNNEL_MAX (KNX_IP_TX_QUEUE_SIZE - KNX_IP_TX_QUEUE_SIZE / 3)
+#endif
+
 // KNX_ROUTING_BUSY_TP_FILL / _RX_BACKLOG - frames queued for TP / datagrams unread that send ROUTING_BUSY (03_08_05 2.3.5 SHOULD: ten).
 #ifndef KNX_ROUTING_BUSY_TP_FILL
 #define KNX_ROUTING_BUSY_TP_FILL 10

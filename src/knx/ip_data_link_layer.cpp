@@ -64,8 +64,14 @@ bool IpDataLinkLayer::sendFrame(CemiFrame& frame)
             return result == RiSent;
         }
     }
-    // Refused at once without an endpoint (03_08_05 3.7.2 p.13), with a full queue or without memory.
-    uint8_t* copy = (_enabled && _txCount < kTxQueueSize) ? new (std::nothrow) uint8_t[packet.totalLength()] : nullptr;
+    // Refused at once without an endpoint (03_08_05 3.7.2 p.13), with a full queue or tunnel share, or without memory.
+#ifdef KNX_TUNNELING
+    const bool fromTunnel = isTunnelingPA(frame.sourceAddress());
+#else
+    const bool fromTunnel = false;
+#endif
+    const bool fits = fromTunnel ? tunnelIndicationFits() : (_enabled && _txCount < kTxQueueSize);
+    uint8_t* copy = fits ? new (std::nothrow) uint8_t[packet.totalLength()] : nullptr;
     if (copy == nullptr)
     {
         if (_counters != nullptr)
@@ -77,6 +83,8 @@ bool IpDataLinkLayer::sendFrame(CemiFrame& frame)
     const uint8_t tail = (uint8_t)((_txHead + _txCount) % kTxQueueSize);
     _txQueue[tail] = copy;
     _txLen[tail] = packet.totalLength();
+    _txFromTunnel[tail] = fromTunnel;
+    _txTunnelCount += fromTunnel ? 1 : 0;
     _txCount++;
     return true; // the L_Data.con follows when the datagram leaves or is discarded (confirmQueued())
 #else
@@ -172,6 +180,7 @@ void IpDataLinkLayer::confirmQueued(bool success)
     uint8_t* const datagram = _txQueue[_txHead];
     const uint16_t len = _txLen[_txHead];
     _txQueue[_txHead] = nullptr;
+    _txTunnelCount -= _txFromTunnel[_txHead] ? 1 : 0;
     _txHead = (uint8_t)((_txHead + 1) % kTxQueueSize);
     _txCount--;
     CemiFrame frame(datagram + LEN_KNXIP_HEADER, len - LEN_KNXIP_HEADER);
