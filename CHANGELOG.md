@@ -11,6 +11,14 @@ Four busmonitor fixes on top of the previous beta.
 * Fix: the loss baseline at monitor entry includes discarded octets, so the first `L_Busmon.ind` of a session carries no Lost bit without a loss
 * Fix: a busmonitor connect while the previous session ends is refused for at most 400 ms with `E_NO_MORE_CONNECTIONS`
 
+**Routing flow control (router)**
+* Fix: a tunnelled frame for IP is queued during a `ROUTING_BUSY` pause and sent at the resume (03_08_05 3.7.1 p.13); it was refused with a negative `L_Data.con`, also its TP and local part
+* Change: tunnelled frames may hold `KNX_IP_TX_QUEUE_TUNNEL_MAX` entries of the queue to IP (default 20 of 30), the rest stays free for frames from TP and the router; an individual frame only IP carries (kept off TP by `KNX_TUNNELING_STRICT_TOPOLOGY`, routed to IP by the coupler, not for a tunnel) is refused with a negative `L_Data.con` and not counted when it does not fit, the IP copy of other tunnelled frames is discarded and counted in PID 72
+
+**Group objects**
+* Fix: a value written to a group object while its previous telegram waits for the `L_Data.con` is sent; the confirmation set the object to Ok or Error and the new value never reached the bus (TP devices, 03_05_01 4.8.1.1.6 Table 33)
+* Change: on IP-only (57B0) and RF devices an object with the C and W flags no longer gets a second update callback for its own telegram, as on TP
+
 **Build**
 * Change: the optimize pragma in `tp_frame.h` stayed active for the rest of every source that includes `knx_facade.h`, so the module and product code was built with O3. It is gone: `TpFrame` has no user anymore, `tpuart_data_link_layer.cpp` and the TPUart sources with their own pragma keep O3, the rest takes the default of the target. The firmware of the measured targets is 170 to 190 KB smaller
 
