@@ -326,7 +326,10 @@ void ApplicationLayer::dataIndividualIndication(HopCountType hopType, Priority p
     const ApduType type = apdu.type();
     if (type == ADCRead || (type & 0x3F8) == ADCResponse)
         return;
+    const int32_t outer = _rxIndividualTsap;
+    _rxIndividualTsap = tsap;
     individualIndication(hopType, priority, tsap, apdu, secCtrl);
+    _rxIndividualTsap = outer;
 }
 
 void ApplicationLayer::dataIndividualConfirm(AckType ack, HopCountType hopType, Priority priority, uint16_t tsap, APDU& apdu, bool status)
@@ -381,7 +384,10 @@ void ApplicationLayer::dataConnectedIndication(Priority priority, uint16_t tsap,
 
 void ApplicationLayer::dataConnectedIndication(Priority priority, uint16_t tsap, APDU& apdu, const SecurityControl& secCtrl)
 {
+    const int32_t outer = _rxIndividualTsap;
+    _rxIndividualTsap = -1;
     individualIndication(NetworkLayerParameter, priority, tsap, apdu, secCtrl);
+    _rxIndividualTsap = outer;
 }
 
 void ApplicationLayer::dataConnectedConfirm(uint16_t tsap)
@@ -622,9 +628,8 @@ void ApplicationLayer::restartResponse(AckType ack, Priority priority, HopCountT
     data[2] = processTime >> 8;
     data[3] = processTime & 0xFF;
 
-    // The response goes to the requester; _connectedTsap is -1 without a connection and truncates to
-    // 0xFFFF here. individualSend() still picks connection-oriented when asap is the connected tsap
-    // (03_03_07 3.4.2.2 p.52).
+    // The response goes to the requester (asap); individualSend() picks connection-oriented when the request
+    // came over the connection (03_03_07 3.4.2.2 p.52, 1.2 p.6).
     individualSend(ack, hopType, priority, asap, apdu, secCtrl);
 }
 
@@ -1682,8 +1687,9 @@ void ApplicationLayer::individualConfirm(AckType ack, HopCountType hopType, Prio
 void ApplicationLayer::individualSend(AckType ack, HopCountType hopType, Priority priority, uint16_t asap, APDU& apdu, const SecurityControl& secCtrl)
 {
     // The one place that decides connection-oriented vs connectionless; six callers used to carry a
-    // byte-identical copy of this.
-    if (asap == _connectedTsap)
+    // byte-identical copy of this. A response answers in the mode of its request (03_03_07 1.2 p.6),
+    // also while a connection to the same partner is open.
+    if (asap == _connectedTsap && asap != _rxIndividualTsap)
         dataConnectedRequest(asap, priority, apdu, secCtrl);
     else
         dataIndividualRequest(ack, hopType, priority, asap, apdu, secCtrl);
