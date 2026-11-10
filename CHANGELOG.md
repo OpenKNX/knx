@@ -1,6 +1,11 @@
 # Changelog
 
 
+## ec/v2.6.0-beta.4 - not released
+
+* Fix: a response uses the transport service of its request (03_03_07 1.2 p.6). A connectionless request from a client with an open transport connection was answered over that connection, and the client dropped the answer; the answer to a request over the connection stays connection-oriented
+
+
 ## ec/v2.6.0-beta.3 - 2026-11-09
 
 Four busmonitor fixes, routing flow control on the router and a group object fix on top of the previous beta.
