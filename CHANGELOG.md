@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.5.0 - 2026-11-13
+
+- Update TPUart dependency to version 2.0.0 and use its new API directly (no `KOMPAT` layer): `TpUartDataLinkLayer` calls `begin(BcuType)`, `loop()`, `registerFrameCallback()`, `isBusMonitor()` and `pushTransmitQueue(const uint8_t*, size_t)`; the acknowledge callback returns `TPUart::AckType`
+- Change: `TPUart::DataLinkLayer` is created on first access (`getTPUart()`, `enabled()`), because it needs its interface at construction. The interface must be set on the platform before the first access (before `getTPUart()` / `enabled()`, i.e. before `knx.start()`)
+- Fix: telegrams flagged invalid by TPUart (CRC error, truncated) are no longer passed to the stack, and a TX confirmation is only positive without BCU NACK
+
 ## v2.4.0 - 2026-08-14
 
 - Update TPUart dependency to version 1.1.0

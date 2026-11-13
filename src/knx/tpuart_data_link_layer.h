@@ -8,7 +8,6 @@
 #include "tp_frame.h"
 #include <stdint.h>
 #include <functional>
-#include "TPUart.h"
 #ifdef ARDUINO_ARCH_ESP32
 #include "TPUart/Interface/ESP32.h"
 #endif
@@ -37,6 +36,7 @@ class TpUartDataLinkLayer : public DataLinkLayer
                         IpTunnelServer& ipTunnelServer,
 #endif
                         ITpUartCallBacks& cb, DataLinkLayerCallbacks* dllcb = nullptr);
+    ~TpUartDataLinkLayer();
 
     void loop();
     void enabled(bool value);
@@ -58,16 +58,16 @@ class TpUartDataLinkLayer : public DataLinkLayer
 
     void powerControl(bool state);
 
-    TPUart::DataLinkLayer& getTPUart()
-    {
-        return _tpuart;
-    }
+    // The TPUart layer needs its interface at construction, but the interface is set on the platform
+    // after the BAU was created. So the layer is created on first access - the interface must be set before.
+    TPUart::DataLinkLayer& getTPUart();
 
   private:
-    TPUart::Interface::Abstract* _tpuartInterface = nullptr;
-    TPUart::DataLinkLayer _tpuart;
+    TPUart::DataLinkLayer* _tpuart = nullptr;
+    // nullptr as long as no interface is set on the platform
+    TPUart::DataLinkLayer* tpuart();
     void initialize();
-    TPUart::AcknowledgeType checkAcknowledge(unsigned short destination, bool isGroupAddress);
+    TPUart::AckType checkAcknowledge(unsigned short destination, bool isGroupAddress);
    
     volatile bool _stopped = false;
     volatile bool _connected = false;

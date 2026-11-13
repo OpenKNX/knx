@@ -9,38 +9,71 @@
 #include "platform.h"
 #include "tpuart_data_link_layer.h"
 
+TPUart::DataLinkLayer* TpUartDataLinkLayer::tpuart()
+{
+    if (_tpuart == nullptr && _platform.interface() != nullptr)
+    {
+        _tpuart = new TPUart::DataLinkLayer(*_platform.interface());
+        _tpuart->registerFrameCallback(std::bind(&TpUartDataLinkLayer::processRxFrame, this, std::placeholders::_1));
+        _tpuart->registerMessage(std::bind(&TpUartDataLinkLayer::printMessage, this, std::placeholders::_1, std::placeholders::_2));
+        // called from the tick (timer context): must stay short, non-blocking and without heap
+        _tpuart->registerCheckAcknowledge(std::bind(&TpUartDataLinkLayer::checkAcknowledge, this, std::placeholders::_1, std::placeholders::_2));
+    }
+
+    return _tpuart;
+}
+
+TPUart::DataLinkLayer& TpUartDataLinkLayer::getTPUart()
+{
+    TPUart::DataLinkLayer* tpuart = this->tpuart();
+    if (tpuart == nullptr)
+    {
+        println("TPUart interface is not set on the platform");
+        _platform.fatalError();
+    }
+
+    return *tpuart;
+}
+
+TpUartDataLinkLayer::~TpUartDataLinkLayer()
+{
+    delete _tpuart;
+}
+
 void TpUartDataLinkLayer::setRepetitions(uint8_t nack, uint8_t busy)
 {
-    _tpuart.setRepetitions(nack, busy);
+    if (_tpuart)
+        _tpuart->setRepetitions(nack, busy);
 }
 
 bool TpUartDataLinkLayer::sendFrame(CemiFrame &cemiFrame)
 {
-    uint8_t *tpData = (uint8_t *)malloc(cemiFrame.telegramLengthtTP());
+    // when not connected or in monitoring mode, discard the frame - silently
+    if (!isConnected() || isMonitoring())
+    {
+        dataConReceived(cemiFrame, false);
+        return false;
+    }
+
+    const uint16_t length = cemiFrame.telegramLengthtTP();
+    uint8_t tpData[TPUart::TPUART_BUFFER_SIZE];
+    if (length > sizeof(tpData))
+    {
+        printMessage("Ignore frame because it is too long!", true);
+        dataConReceived(cemiFrame, false);
+        return false;
+    }
+
     cemiFrame.fillTelegramTP(tpData);
 
-    TPUart::Frame *tpFrame = new TPUart::Frame((char *)tpData, cemiFrame.telegramLengthtTP());
-
-    // when not connected or in monitoring mode, discard the frame - silently
-    if (!_tpuart.isConnected() || _tpuart.isMonitoring())
+    // when frame not enqueued, discard the frame with a message (the reason is reported by TPUart itself)
+    if (!_tpuart->pushTransmitQueue(tpData, length))
     {
-        free(tpData);
-        delete tpFrame;
+        printMessage("Ignore frame because it was not accepted by the transmit queue!", true);
         dataConReceived(cemiFrame, false);
         return false;
     }
 
-    // when frame not enqueued, discard the frame with a message
-    if (!_tpuart.pushTransmitQueue(tpFrame))
-    {
-        free(tpData);
-        delete tpFrame;
-        printMessage("Ignore frame because transmit queue is full!", true);
-        dataConReceived(cemiFrame, false);
-        return false;
-    }
-
-    free(tpData);
     // printHex("  CEMI>: ", cemiFrame.data(), cemiFrame.dataLength());
     return true;
 }
@@ -57,7 +90,8 @@ void TpUartDataLinkLayer::connected(bool state /* = true */)
 
 void TpUartDataLinkLayer::reset()
 {
-    _tpuart.reset();
+    if (_tpuart)
+        _tpuart->reset();
 }
 
 void TpUartDataLinkLayer::stop(bool state)
@@ -65,12 +99,15 @@ void TpUartDataLinkLayer::stop(bool state)
     if (!_initialized)
         return;
 
-    _tpuart.stopMode(state);
+    _tpuart->stopMode(state);
 }
 
 void TpUartDataLinkLayer::requestBusy(bool state)
 {
-    _tpuart.busyMode(state);
+    if (!_initialized)
+        return;
+
+    _tpuart->busyMode(state);
 }
 
 void TpUartDataLinkLayer::monitor()
@@ -78,7 +115,7 @@ void TpUartDataLinkLayer::monitor()
     if (!_initialized)
         return;
 
-    _tpuart.startMonitoring();
+    _tpuart->startMonitoring();
 }
 
 void TpUartDataLinkLayer::initialize()
@@ -86,19 +123,16 @@ void TpUartDataLinkLayer::initialize()
     if (_initialized)
         return;
 
-    // After an unusual device restart, perform a reset, as the TPUart may still be in an incorrect state.
-    if (!_initialized && _platform.interface() != nullptr)
-    {
-        _tpuart.registerReceivedFrame(std::bind(&TpUartDataLinkLayer::processRxFrame, this, std::placeholders::_1));
-        _tpuart.registerMessage(std::bind(&TpUartDataLinkLayer::printMessage, this, std::placeholders::_1, std::placeholders::_2));
-        _tpuart.registerCheckAcknowledge(std::bind(&TpUartDataLinkLayer::checkAcknowledge, this, std::placeholders::_1, std::placeholders::_2));
+    TPUart::DataLinkLayer* tpuart = this->tpuart();
+    if (tpuart == nullptr)
+        return;
+
 #ifdef NCN5120
-        _tpuart.begin(TPUart::BcuType::BCU_NCN5120, _platform.interface());
+    tpuart->begin(TPUart::BcuType::Ncn5120);
 #else
-        _tpuart.begin(TPUart::BcuType::BCU_TPUART2, _platform.interface());
+    tpuart->begin(TPUart::BcuType::Tpuart2);
 #endif
-        _initialized = true;
-    }
+    _initialized = true;
 }
 
 void TpUartDataLinkLayer::enabled(bool value)
@@ -110,7 +144,7 @@ void TpUartDataLinkLayer::enabled(bool value)
 
 bool TpUartDataLinkLayer::enabled() const
 {
-    return _initialized && _tpuart.isConnected();
+    return _initialized && _tpuart->isConnected();
 }
 
 void TpUartDataLinkLayer::loop()
@@ -122,10 +156,10 @@ void TpUartDataLinkLayer::loop()
     if (individualAddress > 0 && _individualAddress != individualAddress)
     {
         _individualAddress = individualAddress;
-        _tpuart.setOwnAddress(_individualAddress);
+        _tpuart->setOwnAddress(_individualAddress);
     }
 
-    _tpuart.process();
+    _tpuart->loop();
 }
 
 DptMedium TpUartDataLinkLayer::mediumType() const
@@ -135,7 +169,10 @@ DptMedium TpUartDataLinkLayer::mediumType() const
 
 void TpUartDataLinkLayer::powerControl(bool state)
 {
-    _tpuart.powerControl(state);
+    if (!_initialized)
+        return;
+
+    _tpuart->powerControl(state);
 }
 
 TpUartDataLinkLayer::TpUartDataLinkLayer(DeviceObject &devObj,
@@ -159,7 +196,7 @@ TpUartDataLinkLayer::TpUartDataLinkLayer(DeviceObject &devObj,
 
 bool TpUartDataLinkLayer::isConnected()
 {
-    return _tpuart.isConnected();
+    return _tpuart && _tpuart->isConnected();
 }
 
 bool TpUartDataLinkLayer::isStopped()
@@ -174,23 +211,23 @@ bool TpUartDataLinkLayer::isBusy()
 
 bool TpUartDataLinkLayer::isMonitoring()
 {
-    return _tpuart.isMonitoring();
+    return _tpuart && _tpuart->isBusMonitor();
 }
 
-TPUart::AcknowledgeType TpUartDataLinkLayer::checkAcknowledge(unsigned short destination, bool isGroupAddress)
+TPUart::AckType TpUartDataLinkLayer::checkAcknowledge(unsigned short destination, bool isGroupAddress)
 {
     TPAckType ack = _cb.isAckRequired(destination, isGroupAddress);
 
     if (ack == TPAckType::AckReqAck)
-        return TPUart::AcknowledgeType::ACK_Addressed;
+        return TPUart::AckType::Addressed;
 
     if (ack == TPAckType::AckReqBusy)
-        return TPUart::AcknowledgeType::ACK_Busy;
+        return TPUart::AckType::Busy;
 
     if (ack == TPAckType::AckReqNack)
-        return TPUart::AcknowledgeType::ACK_Nack;
+        return TPUart::AckType::Nack;
 
-    return TPUart::AcknowledgeType::ACK_None;
+    return TPUart::AckType::None;
 }
 
 void TpUartDataLinkLayer::processRxFrame(TPUart::Frame &tpFrame)
@@ -205,16 +242,25 @@ void TpUartDataLinkLayer::processRxFrame(TPUart::Frame &tpFrame)
         return;
 #endif
 
-    uint8_t *cemiData = (uint8_t *)tpFrame.cemiData();
+    // broken telegrams are delivered as well (CRC error, truncated, ...), they must not reach the stack
+    if (tpFrame.isInvalid())
+        return;
+
+    uint8_t *cemiData = tpFrame.cemiData();
+    if (cemiData == nullptr)
+        return;
+
     CemiFrame cemiFrame(cemiData, tpFrame.cemiSize());
 
-    if (tpFrame.isTransmitted()) {
-        dataConReceived(cemiFrame, tpFrame.isAck());
-        delete cemiData;
+    if (tpFrame.isTransmitted())
+    {
+        // own telegram: positive only when the BCU confirmed it and the bus did not NACK it
+        dataConReceived(cemiFrame, tpFrame.isDataCon() && !tpFrame.isNack());
+        free(cemiData);
         return;
     }
 
-    // printHex("  TP<: ", (const uint8_t *)tpFrame.data(), tpFrame.size());
+    // printHex("  TP<: ", (const uint8_t *)tpFrame.data(), tpFrame.length());
     // printHex("  CEMI<: ", cemiFrame.data(), cemiFrame.dataLength());
 
 #ifdef KNX_ACTIVITYCALLBACK
@@ -223,7 +269,7 @@ void TpUartDataLinkLayer::processRxFrame(TPUart::Frame &tpFrame)
 #endif
 
     frameReceived(cemiFrame);
-    delete cemiData;
+    free(cemiData);
 }
 
 void TpUartDataLinkLayer::printMessage(const char *message, bool error)
