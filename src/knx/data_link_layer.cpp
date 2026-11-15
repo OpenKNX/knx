@@ -159,6 +159,16 @@ void DataLinkLayer::dataConReceived(CemiFrame& frame, bool success)
             _cemiServer->dataConfirmationToTunnel(frame);
         return;
     }
+#ifdef KNX_IS_INTERFACE
+    // The device's layers send with its current own address (NetworkLayerDevice). Another source is a tunnel closed since
+    // its request, a client with a self-chosen source, or a frame of the device from before a PA change: all dropped.
+    // The coupler needs these cons for routed frames, hence the interface only.
+    if (source != _deviceObject.individualAddress())
+    {
+        frame.messageCode(backupMsgCode);
+        return;
+    }
+#endif
 #endif
 
     if (addrType == GroupAddress && destination == 0)
