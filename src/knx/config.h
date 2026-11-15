@@ -162,7 +162,8 @@
 // behaviour costs a small product the least it can. Raise it where the RAM is there -- the device's
 // connection-oriented layer is window-1 and a client acks in milliseconds, so 2-3 is margin for bursts, and
 // only a depth > 1 makes the overflow policy meaningful (a connection-oriented frame evicts the oldest
-// queued GROUP frame instead of tearing the download down). A stuck client that overruns it is disconnected.
+// queued GROUP frame instead of tearing the download down). A stuck client that overruns it is disconnected,
+// except where KNX_TUNNEL_SPILL (below) is on, where the overflow waits in a spill list instead.
 #ifndef KNX_TUNNEL_RESEND_DEPTH
 #define KNX_TUNNEL_RESEND_DEPTH 1
 #endif
@@ -171,6 +172,37 @@
 // The client repeats after 1 s and disconnects if the repeat is unanswered too. Default leaves 3 slots (con, T_ACK, answer); below a depth of 4 off (DEPTH + 1).
 #ifndef KNX_TUNNEL_BACKPRESSURE
 #define KNX_TUNNEL_BACKPRESSURE (KNX_TUNNEL_RESEND_DEPTH >= 4 ? KNX_TUNNEL_RESEND_DEPTH - 2 : KNX_TUNNEL_RESEND_DEPTH + 1)
+#endif
+
+// KNX_TUNNEL_SPILL_MAX / KNX_TUNNEL_SPILL_BYTES - undroppable frames kept on the heap while their tunnel FIFO is full,
+// as an entry cap (0..255) and an octet budget over node headers (12 B) + cEMI (<= 65535). A TP reset confirms the whole
+// TX queue in one pass: TPUART_TX_QUEUE_SIZE + the frame in flight. That define counts here only when given as -D;
+// without it the cap is 51, the TPUart default of 50 + 1.
+#ifndef KNX_TUNNEL_SPILL_MAX
+#ifdef TPUART_TX_QUEUE_SIZE
+#define KNX_TUNNEL_SPILL_MAX (TPUART_TX_QUEUE_SIZE + 1)
+#else
+#define KNX_TUNNEL_SPILL_MAX 51
+#endif
+#endif
+#ifndef KNX_TUNNEL_SPILL_BYTES
+#define KNX_TUNNEL_SPILL_BYTES 2048
+#endif
+// KNX_TUNNEL_SPILL_PER_TUNNEL - entries one tunnel may hold (its octet share is 2/3 of the budget). Applies only while
+// another tunnel holds spilled frames, so one slow client cannot take the pool from the others; else the whole pool.
+#ifndef KNX_TUNNEL_SPILL_PER_TUNNEL
+#define KNX_TUNNEL_SPILL_PER_TUNNEL (KNX_TUNNEL_SPILL_MAX * 2 / 3)
+#endif
+// KNX_TUNNEL_SPILL_TTL_MS - a spilled frame older than this is dropped: 3 s is the cEMI client's recommended
+// request-to-confirmation timeout (03_06_03 4.1.5.1 p.74), after which its con is of no use. 1..65534.
+// It applies to every spilled frame type; for M_* the client timeout is 1 s (03_06_03 4.1.7.2 p.105), so 3 s covers it.
+#ifndef KNX_TUNNEL_SPILL_TTL_MS
+#define KNX_TUNNEL_SPILL_TTL_MS 3000
+#endif
+// KNX_TUNNEL_SPILL - the spill list above, and a full tunnel FIFO never disconnects. On by default on the IP-Interface;
+// another target (e.g. the 091A router) opts in with -D KNX_TUNNEL_SPILL, every other one keeps evict-or-disconnect.
+#if defined(KNX_IS_INTERFACE) && defined(KNX_TUNNEL_RESEND) && !defined(KNX_TUNNEL_SPILL)
+#define KNX_TUNNEL_SPILL
 #endif
 
 // KNX_BUSMON_CONNECTIONS — how many KNXnet/IP busmonitor connections the tunnel server serves at once.

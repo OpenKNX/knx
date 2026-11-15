@@ -41,4 +41,8 @@ void KnxIpTunnelConnection::Reset()
     _headSent = false;
     _retries = 0;
 #endif
+#ifdef KNX_TUNNEL_SPILL
+    _spilled = 0; // Gen stays: a node left behind must not match the next session
+    _spillBytes = 0;
+#endif
 }

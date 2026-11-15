@@ -7,6 +7,12 @@
 #ifndef KNX_TUNNELING_DEVMGMT
     #error "KNX_TUNNELING_DEVMGMT must be defined (config.h, or by a NO_KNX_CONFIG build)"
 #endif
+#if defined(KNX_TUNNEL_SPILL) && !defined(KNX_TUNNEL_RESEND)
+    #error "KNX_TUNNEL_SPILL needs KNX_TUNNEL_RESEND: it holds frames for the send FIFO"
+#endif
+#if defined(KNX_TUNNEL_SPILL) && KNX_TUNNEL_BACKPRESSURE <= KNX_TUNNEL_RESEND_DEPTH
+    #error "KNX_TUNNEL_SPILL needs KNX_TUNNEL_BACKPRESSURE off (KNX_TUNNEL_RESEND_DEPTH + 1): while frames wait the FIFO stays full, so a withheld ACK makes the client disconnect itself"
+#endif
 
 #include <stdint.h>
 #include <atomic>
@@ -100,6 +106,12 @@ class IpTunnelServer
      * underflows whenever the stamp is read after the counter has moved on.
      */
     uint32_t secondsSince(uint32_t startS) const { const uint32_t u = _uptimeS; return u >= startS ? u - startS : 0; }
+#ifdef KNX_TUNNEL_SPILL
+    /** @brief Undroppable frames waiting for a free FIFO slot, over all tunnels. */
+    uint8_t spillCount() const { return _spillCount; }
+    /** @brief Spilled frames freed without a session to deliver them to. */
+    uint16_t spillOrphans() const { return _spillOrphans; }
+#endif
     /** @brief Connectable data-tunnel count (spec/config maximum). */
     uint8_t tunnelMax() const { return KNX_TUNNELING; }
     /** @brief Currently open data tunnels (ChannelId != 0). */
@@ -127,7 +139,7 @@ class IpTunnelServer
         END_BUSMON = 3,   // closed so a busmonitor can own the bus alone (03_08_04 2.2.4)
         END_EVICTED = 4,  // the slot was handed to the client it is reserved for
         END_NOACK = 5,    // no ACK after the last repeat (03_08_04 2.6.1)
-        END_OVERFLOW = 6, // send queue overflowed with a frame that must not be dropped
+        END_OVERFLOW = 6, // send queue overflowed with a frame that must not be dropped (not with KNX_TUNNEL_SPILL: it spills)
         END_LOCAL = 7,       // closed on the device's own request (web / console / before a restart)
         END_BUSMON_LOST = 8, // HW monitor mode ended underneath the connection -- nobody asked for it
         END_VERSION = 9,     // the protocol version changed mid-stream on this channel (03_08_02 6.2)
@@ -268,6 +280,29 @@ class IpTunnelServer
     void disconnectTunnel(KnxIpTunnelConnection *t, uint8_t reason); // server-initiated teardown + reap
     void handleTunnelAck(uint8_t *buffer, uint16_t length, uint32_t src_addr); // pop the acked head + pump the next
 #endif
+#ifdef KNX_TUNNEL_SPILL
+    void enqueueTunnelFrame(KnxIpTunnelConnection *t, const uint8_t *cemi, uint16_t cemiLen, bool isGroup); // FIFO end + pump
+
+    /**
+     * @brief Heap node of an undroppable frame that found its tunnel FIFO full; the cEMI octets follow the node.
+     * @details A TP reset confirms the whole TX queue in one pass. The frame waits here instead of costing the connection.
+     */
+    struct TunnelSpill
+    {
+        TunnelSpill *next;
+        uint16_t len;   // cEMI octets after the node
+        uint16_t stamp; // millis() & 0xFFFF when spilled; ages are taken wrap-safe in 16 bits
+        uint8_t slot;  // index in tunnels[]
+        uint8_t gen;   // KnxIpTunnelConnection::Gen when spilled
+        bool isGroup;  // _txIsGroup of the FIFO slot it moves into
+    };
+    void spillFrame(KnxIpTunnelConnection *t, const uint8_t *cemi, uint16_t cemiLen, bool isGroup); // append, or drop
+    void drainSpill(KnxIpTunnelConnection *t); // move t's waiting frames into its free FIFO slots, oldest first
+    uint8_t dropSpill(const KnxIpTunnelConnection *conn); // teardown: free its nodes, returns how many were its own
+    void unlinkSpill(TunnelSpill *prev, TunnelSpill *n); // take n out of the list and free it
+    void expireSpill(); // drop the nodes older than KNX_TUNNEL_SPILL_TTL_MS, oldest first
+    bool displaceSpill(const KnxIpTunnelConnection *t, uint32_t need); // room from the tunnel above its share; false = none
+#endif
     void HandleConnectRequest(uint8_t* buffer, uint16_t length, uint32_t& src_addr, uint16_t& src_port);
     // src_addr/src_port: the UDP sender, needed to resolve a route-back control HPAI (03_08_02 8.6.2.2).
     void HandleConnectionStateRequest(uint8_t* buffer, uint16_t length, uint32_t src_addr, uint16_t src_port);
@@ -279,6 +314,12 @@ class IpTunnelServer
 
     KnxIpTunnelConnection tunnels[KNX_TUNNELING+KNX_TUNNELING_DEVMGMT];
     uint8_t _lastChannelId = 0;
+#ifdef KNX_TUNNEL_SPILL
+    uint8_t _spillCount = 0;           // nodes in the spill list, over all tunnels
+    uint16_t _spillBytes = 0;          // node headers + cEMI of all nodes, held to KNX_TUNNEL_SPILL_BYTES
+    TunnelSpill* _spillHead = nullptr; // oldest first; only allocated while a frame waits
+    TunnelSpill* _spillTail = nullptr;
+#endif
 
     // Rolling connect/disconnect history (newest overwrites oldest).
     // 32 = 16 tunnels each connecting + disconnecting once, so a full round is retained.
@@ -289,6 +330,9 @@ class IpTunnelServer
     TunnelEvent _history[TUNNEL_HISTORY_SIZE];
     uint8_t _historyHead = 0;  // next write slot
     uint8_t _historyCount = 0;
+#ifdef KNX_TUNNEL_SPILL
+    uint16_t _spillOrphans = 0; // spill nodes freed because their session had ended without taking them along
+#endif
 
     // Uptime in seconds, accumulated in loop() from millis() deltas so it is immune to the 49.7-day wrap.
     uint32_t _uptimeS = 0;

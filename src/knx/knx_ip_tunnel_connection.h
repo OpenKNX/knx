@@ -16,6 +16,9 @@ class KnxIpTunnelConnection
     uint32_t IpConnSrc = 0; // UDP source of the CONNECT_REQUEST; a control request from it also counts as the client's
     uint8_t SequenceCounter_S = 0;
     uint8_t SequenceCounter_R = 255;
+#ifdef KNX_TUNNEL_SPILL
+    uint16_t _spillBytes = 0; // octets of this connection's spill nodes (sits in the padding before lastHeartbeat)
+#endif
     unsigned long lastHeartbeat = 0;
     unsigned long connectStart = 0; // millis() when this connection was established (wall-clock stamp)
     uint32_t ConnectUptimeS = 0;    // uptime seconds at connect; the duration is derived from this
@@ -24,6 +27,10 @@ class KnxIpTunnelConnection
     // here because only the connect knows it: the reservation is matched against the UDP source, and only
     // when both HPAIs point at that source or are 0.
     uint8_t ReservedSlot = 0xFF;
+#ifdef KNX_TUNNEL_SPILL
+    uint8_t Gen = 0;       // bumped on every connect, kept by Reset(): binds a spilled frame to its session
+    uint8_t _spilled = 0;  // frames of this connection waiting in the server's spill list
+#endif
 
     // Per-session counters for the diagnostics UI. Kept for the whole session and copied into the
     // history on disconnect. StatFromClient is what was ACCEPTED from the client, not what reached TP:

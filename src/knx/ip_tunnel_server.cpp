@@ -20,6 +20,9 @@
 #if defined(OPENKNX_HW_BUSMON) || defined(KNX_TUNNEL_RESEND)
 #include <string.h>
 #endif
+#ifdef KNX_TUNNEL_SPILL
+#include <stdlib.h> // malloc/free of the spill list
+#endif
 
 // FIFO slots per tunnel, so the UI can print "1 / 3" without a constant of its own. 0 = this build
 // has no send FIFO, which is also why resend/queue stay 0 there. KNX_TUNNEL_RESEND_DEPTH comes from
@@ -27,6 +30,27 @@
 #ifdef KNX_TUNNEL_RESEND
 static const uint8_t TUNNEL_QUEUE_DEPTH = KNX_TUNNEL_RESEND_DEPTH;
 static_assert(KNX_TUNNEL_BACKPRESSURE >= 1 && KNX_TUNNEL_BACKPRESSURE <= KNX_TUNNEL_RESEND_DEPTH + 1, "KNX_TUNNEL_BACKPRESSURE must lie in 1..KNX_TUNNEL_RESEND_DEPTH + 1 (off)");
+#ifdef KNX_TUNNEL_SPILL
+#ifndef KNX_TUNNEL_SPILL_MAX
+#define KNX_TUNNEL_SPILL_MAX 51 // NO_KNX_CONFIG builds; config.h carries the documented defaults
+#endif
+#ifndef KNX_TUNNEL_SPILL_BYTES
+#define KNX_TUNNEL_SPILL_BYTES 2048
+#endif
+static_assert(KNX_TUNNEL_SPILL_MAX >= 0 && KNX_TUNNEL_SPILL_MAX <= 255, "KNX_TUNNEL_SPILL_MAX must lie in 0..255 (8-bit counters)");
+static_assert(KNX_TUNNEL_SPILL_BYTES >= 0 && KNX_TUNNEL_SPILL_BYTES <= 65535, "KNX_TUNNEL_SPILL_BYTES must fit the 16-bit sum");
+static_assert(KNX_TUNNELING + KNX_TUNNELING_DEVMGMT <= 255, "TunnelSpill::slot is 8 bits");
+#ifndef KNX_TUNNEL_SPILL_PER_TUNNEL
+#define KNX_TUNNEL_SPILL_PER_TUNNEL (KNX_TUNNEL_SPILL_MAX * 2 / 3)
+#endif
+#ifndef KNX_TUNNEL_SPILL_TTL_MS
+#define KNX_TUNNEL_SPILL_TTL_MS 3000
+#endif
+static const uint32_t SPILL_TUNNEL_BYTES = (uint32_t)KNX_TUNNEL_SPILL_BYTES * 2 / 3; // one tunnel's share
+static_assert(KNX_TUNNEL_SPILL_PER_TUNNEL >= 0 && KNX_TUNNEL_SPILL_PER_TUNNEL <= KNX_TUNNEL_SPILL_MAX, "KNX_TUNNEL_SPILL_PER_TUNNEL must lie in 0..KNX_TUNNEL_SPILL_MAX");
+// The 16-bit stamp is unambiguous for 65535 ms; loop() checks far more often than 65535 - TTL ms.
+static_assert(KNX_TUNNEL_SPILL_TTL_MS > 0 && KNX_TUNNEL_SPILL_TTL_MS < 65535, "KNX_TUNNEL_SPILL_TTL_MS must lie in 1..65534");
+#endif
 #else
 static const uint8_t TUNNEL_QUEUE_DEPTH = 0;
 #endif
@@ -207,7 +231,12 @@ void IpTunnelServer::recordTunnelSession(uint32_t ip, uint16_t pa, uint8_t type,
         // PID 72: an armed head that never left counts; frames queued behind a tunnel head go to txDrop.
         if (conn->_armed && !conn->_headSent)
             countTunnelLoss(*conn);
+#ifdef KNX_TUNNEL_SPILL
+        // Frames still spilled for this session are freed here and lost with the queue.
+        const uint16_t queued = (uint16_t)(conn->_txCount - (headOut ? 1 : 0)) + dropSpill(conn);
+#else
         const uint8_t queued = conn->_txCount - (headOut ? 1 : 0);
+#endif
         e.txDrop = (e.txDrop > (uint16_t)(0xFFFF - queued)) ? (uint16_t)0xFFFF : (uint16_t)(e.txDrop + queued);
 #endif
     }
@@ -348,6 +377,9 @@ void IpTunnelServer::loop()
             // slot (which would leave dead tunnels in later slots unreaped -> slot exhaustion).
         }
     }
+#ifdef KNX_TUNNEL_SPILL
+    expireSpill(); // one null test while nothing waits, one age test while nothing has expired
+#endif
 
 #ifdef KNX_CEMI_TRANSPORT_LAYER
     // 03_08_03 2.6.1.2 p.18 / 2.6.1.6 p.19: the cEMI Transport Layer mode lasts exactly as long as a device
@@ -551,7 +583,9 @@ void IpTunnelServer::sendFrameToTunnel(KnxIpTunnelConnection* tunnel, CemiFrame&
     // The service is decided by the CONNECTION, not the cEMI message code: device management speaks
     // DEVICE_CONFIGURATION_REQUEST (03_08_03 2.2), tunnelling speaks TUNNELLING_REQUEST (03_08_04 2.2).
     // Choosing by message code put a config frame on a tunnel, which the client never acknowledges.
+#ifndef KNX_TUNNEL_SPILL // with the spill list the datagram is built in enqueueTunnelFrame()
     const uint16_t svc = tunnel->IsConfig ? DeviceConfigurationRequest : TunnelingRequest;
+#endif
 
     // What may be dropped when the queue overflows is a best-effort GROUP TELEGRAM. That used to be
     // spelled "svc == TunnelingRequest", which was the same thing only as long as the service was picked
@@ -579,6 +613,33 @@ void IpTunnelServer::sendFrameToTunnel(KnxIpTunnelConnection* tunnel, CemiFrame&
         countTunnelLoss(*tunnel);
         return;
     }
+#ifdef KNX_TUNNEL_SPILL
+    // Only a group L_Data.ind is best-effort: on a full FIFO it is dropped. Everything else -- every L_Data.con (each
+    // L_Data.req gets one, 03_03_02 2.2.1 p.8), individual and broadcast frames, M_* frames -- takes the place of the
+    // oldest queued group L_Data.ind, else waits in the spill list. Behind spilled frames it waits too, so the order per
+    // tunnel holds. A full FIFO never disconnects; the 03_08_04 2.6.1 acknowledge timer is the only authority for that.
+    const bool droppable = isGroupTelegram && frame.messageCode() != L_data_con;
+    if (droppable)
+    {
+        if (tunnel->_txCount == KNX_TUNNEL_RESEND_DEPTH)
+        {
+            bumpTo(tunnel->StatGrpDrop); // best-effort by design: the connection is worth more than the frame
+            countTunnelLoss(*tunnel);
+            return;
+        }
+    }
+    else if (tunnel->_spilled != 0 || tunnel->_txCount == KNX_TUNNEL_RESEND_DEPTH)
+    {
+        if (tunnel->_spilled != 0 || !evictOldestGroupFrame(tunnel, true))
+        {
+            spillFrame(tunnel, frame.data(), cemiLen, isGroupTelegram);
+            return;
+        }
+        bumpTo(tunnel->StatGrpDrop); // the evicted indication
+        countTunnelLoss(*tunnel);
+    }
+    enqueueTunnelFrame(tunnel, frame.data(), cemiLen, isGroupTelegram);
+#else
     if (tunnel->_txCount == KNX_TUNNEL_RESEND_DEPTH)
     {
         // FIFO full: drop a best-effort group telegram and keep the connection (the 1 s ACK-timeout in loop()
@@ -633,6 +694,7 @@ void IpTunnelServer::sendFrameToTunnel(KnxIpTunnelConnection* tunnel, CemiFrame&
     tunnel->_txCount++;
     if (tunnel->_txCount > tunnel->StatQueuePeak) tunnel->StatQueuePeak = tunnel->_txCount;
     pumpTunnel(tunnel);
+#endif // KNX_TUNNEL_SPILL
 #else
     KnxIpTunnelingRequest req(frame);
     req.connectionHeader().length(LEN_CH);
@@ -745,7 +807,7 @@ uint8_t IpTunnelServer::closeAllTunnels(uint8_t reason, bool withBusMon, uint8_t
 // indicationOnly, an L_Data.con, which only takes the place of an L_Data.ind) can be queued. The head is skipped
 // while armed: it is already on the wire with a stamped sequence number, and 03_08_04 2.6.1 requires a repeat to
 // be verbatim. Returns false when nothing evictable is queued; the caller then disconnects (connection-oriented
-// frame) or drops the con.
+// frame) or drops the con. With KNX_TUNNEL_SPILL the caller always asks indicationOnly and spills instead.
 bool IpTunnelServer::evictOldestGroupFrame(KnxIpTunnelConnection* t, bool indicationOnly)
 {
     const uint8_t firstEvictable = t->_armed ? 1 : 0;
@@ -774,6 +836,230 @@ bool IpTunnelServer::evictOldestGroupFrame(KnxIpTunnelConnection* t, bool indica
     }
     return false;
 }
+
+#ifdef KNX_TUNNEL_SPILL
+// Build the datagram DIRECTLY into the FIFO tail slot (caller checked that one is free) and pump.
+void IpTunnelServer::enqueueTunnelFrame(KnxIpTunnelConnection* t, const uint8_t* cemi, uint16_t cemiLen, bool isGroup)
+{
+    // The service is decided by the CONNECTION, not the cEMI message code: device management speaks
+    // DEVICE_CONFIGURATION_REQUEST (03_08_03 2.2), tunnelling speaks TUNNELLING_REQUEST (03_08_04 2.2).
+    // Choosing by message code put a config frame on a tunnel, which the client never acknowledges.
+    const uint16_t svc = t->IsConfig ? DeviceConfigurationRequest : TunnelingRequest;
+    const uint16_t totalLen = cemiLen + LEN_CH + LEN_KNXIP_HEADER;
+
+    // No per-frame new[] and no intermediate copy (was: KnxIpTunnelingRequest new[] then memcpy into the slot).
+    // Fixed KNXnet/IP layout: 6-byte header + 4-byte connection header + cEMI. Built by hand (not via
+    // KnxIpTunnelingRequest) so no CemiFrame view is placed over the still-uninitialized slot -- the view ctor
+    // reads data[1] to compute its offsets. seqCounter (offset 8) is stamped in pumpTunnel; status (offset 9)
+    // is reserved 0 on a request.
+    uint8_t* buf = t->_txBuf[t->_txTail];
+    buf[0] = LEN_KNXIP_HEADER;    // KNXnet/IP header length (6)
+    buf[1] = KnxIp1_0;            // protocol version (0x10)
+    pushWord(svc, buf + 2);       // service type identifier
+    pushWord(totalLen, buf + 4);  // total datagram length
+    buf[6] = LEN_CH;              // connection header structure length (4)
+    buf[7] = t->ChannelId;        // channel id
+    buf[8] = 0;                   // sequence counter (set in pumpTunnel)
+    buf[9] = 0;                   // status / reserved
+    memcpy(buf + LEN_KNXIP_HEADER + LEN_CH, cemi, cemiLen);
+
+    t->_txLen[t->_txTail] = totalLen;
+    t->_txIsGroup[t->_txTail] = isGroup;
+    t->_txTail = (t->_txTail + 1) % KNX_TUNNEL_RESEND_DEPTH;
+    t->_txCount++;
+    if (t->_txCount > t->StatQueuePeak) t->StatQueuePeak = t->_txCount;
+    pumpTunnel(t);
+}
+
+// Append a copy of the frame to the spill list. Entry cap or octet budget reached (in total, or this tunnel's share),
+// heap empty, or a connection outside tunnels[]: the frame is dropped and counted, the connection stays.
+// malloc, not new: new aborts on an empty ESP32 heap.
+void IpTunnelServer::spillFrame(KnxIpTunnelConnection* t, const uint8_t* cemi, uint16_t cemiLen, bool isGroup)
+{
+    const uintptr_t off = (uintptr_t)t - (uintptr_t)tunnels;
+    const uint32_t need = sizeof(TunnelSpill) + cemiLen;
+    TunnelSpill* n = nullptr;
+    const bool withinShare = t->_spilled < KNX_TUNNEL_SPILL_PER_TUNNEL && t->_spillBytes + need <= SPILL_TUNNEL_BYTES;
+    // A tunnel within its share that the pool refuses takes room from the one above its share, if that suffices.
+    if (off < sizeof(tunnels) && withinShare && (_spillCount >= KNX_TUNNEL_SPILL_MAX || _spillBytes + need > KNX_TUNNEL_SPILL_BYTES))
+        displaceSpill(t, need);
+    // The share binds only while another tunnel holds spilled frames. Every node (>= 12 B) counts in both totals and,
+    // for its own session, in that tunnel's count and octets: equal counts mean equal octets.
+    if (off < sizeof(tunnels) && _spillCount < KNX_TUNNEL_SPILL_MAX && _spillBytes + need <= KNX_TUNNEL_SPILL_BYTES
+        && (withinShare || _spillCount == t->_spilled))
+        n = (TunnelSpill*)malloc(need);
+    if (n == nullptr)
+    {
+        bumpTo(t->StatTxDrop);
+        countTunnelLoss(*t);
+        return;
+    }
+    n->next = nullptr;
+    n->len = cemiLen;
+    n->stamp = (uint16_t)millis();
+    n->slot = (uint8_t)(off / sizeof(KnxIpTunnelConnection));
+    n->gen = t->Gen;
+    n->isGroup = isGroup;
+    memcpy(n + 1, cemi, cemiLen);
+    if (_spillTail != nullptr)
+        _spillTail->next = n;
+    else
+        _spillHead = n;
+    _spillTail = n;
+    _spillCount++;
+    _spillBytes += (uint16_t)need;
+    t->_spilled++;
+    t->_spillBytes += (uint16_t)need;
+}
+
+// Make room in the pool for need octets by dropping the newest nodes of the tunnel above its share (not t). Only one
+// tunnel can be above it: it grows past it only while nobody else holds a node. Planned first: the nodes it may lose
+// while still above its share must free enough entries and octets, else nothing is removed. Newest first keeps its
+// order. Rare path, O(cap^2) worst case.
+bool IpTunnelServer::displaceSpill(const KnxIpTunnelConnection* t, uint32_t need)
+{
+    KnxIpTunnelConnection* v = nullptr;
+    for (TunnelSpill* n = _spillHead; n != nullptr && v == nullptr; n = n->next)
+    {
+        KnxIpTunnelConnection& o = tunnels[n->slot];
+        if (&o != t && o.ChannelId != 0 && o.Gen == n->gen
+            && (o._spilled > KNX_TUNNEL_SPILL_PER_TUNNEL || o._spillBytes > SPILL_TUNNEL_BYTES))
+            v = &o;
+    }
+    if (v == nullptr)
+        return false;
+    const uint8_t vslot = (uint8_t)(v - tunnels);
+
+    uint8_t k = 0;
+    uint32_t vc = v->_spilled, vb = v->_spillBytes, gc = _spillCount, gb = _spillBytes;
+    while (gc >= KNX_TUNNEL_SPILL_MAX || gb + need > KNX_TUNNEL_SPILL_BYTES)
+    {
+        if (k >= v->_spilled || (vc <= KNX_TUNNEL_SPILL_PER_TUNNEL && vb <= SPILL_TUNNEL_BYTES))
+            return false;
+        const uint8_t target = (uint8_t)(v->_spilled - 1 - k); // index of v's (k+1)-th newest node, oldest = 0
+        uint8_t seen = 0;
+        uint32_t size = 0;
+        for (TunnelSpill* n = _spillHead; n != nullptr; n = n->next)
+            if (n->slot == vslot && n->gen == v->Gen && seen++ == target)
+            {
+                size = sizeof(TunnelSpill) + n->len;
+                break;
+            }
+        vc--;
+        vb -= size;
+        gc--;
+        gb -= size;
+        k++;
+    }
+
+    for (; k != 0; k--)
+    {
+        TunnelSpill* last = nullptr;
+        TunnelSpill* lastPrev = nullptr;
+        TunnelSpill* prev = nullptr;
+        for (TunnelSpill* n = _spillHead; n != nullptr; prev = n, n = n->next)
+            if (n->slot == vslot && n->gen == v->Gen)
+            {
+                last = n;
+                lastPrev = prev;
+            }
+        if (last == nullptr)
+            break; // cannot happen while _spilled matches the list
+        bumpTo(v->StatTxDrop);
+        countTunnelLoss(*v);
+        unlinkSpill(lastPrev, last);
+    }
+    return true;
+}
+
+// Take n out of the list, release its octets from the totals and from its session (if that still runs), free it.
+void IpTunnelServer::unlinkSpill(TunnelSpill* prev, TunnelSpill* n)
+{
+    if (prev != nullptr)
+        prev->next = n->next;
+    else
+        _spillHead = n->next;
+    if (_spillTail == n)
+        _spillTail = prev;
+    const uint16_t bytes = (uint16_t)(sizeof(TunnelSpill) + n->len);
+    _spillCount--;
+    _spillBytes -= bytes;
+    KnxIpTunnelConnection& t = tunnels[n->slot];
+    if (t.ChannelId != 0 && t.Gen == n->gen)
+    {
+        t._spilled--;
+        t._spillBytes -= bytes;
+    }
+    else
+        bumpTo(_spillOrphans);
+    free(n);
+}
+
+// Drop every node older than KNX_TUNNEL_SPILL_TTL_MS, counted like a cap drop. Nodes are appended in time order, so the
+// expired ones are a prefix of the list and the oldest of their tunnel: the order of the others holds. O(1) if none.
+void IpTunnelServer::expireSpill()
+{
+    if (_spillHead == nullptr)
+        return;
+    const uint16_t now = (uint16_t)millis();
+    while (_spillHead != nullptr && (uint16_t)(now - _spillHead->stamp) > KNX_TUNNEL_SPILL_TTL_MS)
+    {
+        KnxIpTunnelConnection& t = tunnels[_spillHead->slot];
+        if (t.ChannelId != 0 && t.Gen == _spillHead->gen)
+        {
+            bumpTo(t.StatTxDrop);
+            countTunnelLoss(t);
+        }
+        unlinkSpill(nullptr, _spillHead);
+    }
+}
+
+// Move t's oldest spilled frames to its FIFO end while a slot is free. Runs only where a slot frees (the acknowledge):
+// a frame is spilled only into a full FIFO or behind spilled ones, so while any wait the FIFO is full otherwise.
+void IpTunnelServer::drainSpill(KnxIpTunnelConnection* t)
+{
+    expireSpill(); // a frame the client has stopped waiting for must not take the slot
+    const uint8_t slot = (uint8_t)(t - tunnels);
+    TunnelSpill* prev = nullptr;
+    TunnelSpill* n = _spillHead;
+    while (n != nullptr && t->_spilled != 0 && t->_txCount < KNX_TUNNEL_RESEND_DEPTH)
+    {
+        TunnelSpill* const next = n->next;
+        if (n->slot != slot)
+        {
+            prev = n;
+            n = next;
+            continue;
+        }
+        if (n->gen == t->Gen)
+            enqueueTunnelFrame(t, (const uint8_t*)(n + 1), n->len, n->isGroup);
+        unlinkSpill(prev, n);
+        n = next;
+    }
+}
+
+// Teardown of conn: free every node of its slot. Returns the nodes of this session; older ones count as orphans.
+uint8_t IpTunnelServer::dropSpill(const KnxIpTunnelConnection* conn)
+{
+    const uintptr_t off = (uintptr_t)conn - (uintptr_t)tunnels;
+    if (off >= sizeof(tunnels) || _spillHead == nullptr)
+        return 0;
+    const uint8_t slot = (uint8_t)(off / sizeof(KnxIpTunnelConnection));
+    const uint8_t own = conn->_spilled;
+    TunnelSpill* prev = nullptr;
+    TunnelSpill* n = _spillHead;
+    while (n != nullptr)
+    {
+        TunnelSpill* const next = n->next;
+        if (n->slot == slot)
+            unlinkSpill(prev, n);
+        else
+            prev = n;
+        n = next;
+    }
+    return own;
+}
+#endif // KNX_TUNNEL_SPILL
 
 // Send the head of a tunnel's FIFO if nothing is in flight. Exactly one unacked TUNNELLING_REQUEST per
 // tunnel; the sequence counter is stamped into the connection header here (KNX 03_08_04 Tunnelling §2.6.1).
@@ -851,6 +1137,10 @@ void IpTunnelServer::handleTunnelAck(uint8_t* buffer, uint16_t length, uint32_t 
                 tunnels[i]._txHead = (tunnels[i]._txHead + 1) % KNX_TUNNEL_RESEND_DEPTH;
                 tunnels[i]._txCount--;
                 tunnels[i]._armed = false;
+#ifdef KNX_TUNNEL_SPILL
+                if (tunnels[i]._spilled != 0)
+                    drainSpill(&tunnels[i]); // into the freed slot, behind what is queued
+#endif
                 pumpTunnel(&tunnels[i]); // send the next queued frame, if any
             }
             else
@@ -1632,6 +1922,9 @@ void IpTunnelServer::HandleConnectRequest(uint8_t* buffer, uint16_t length, uint
     // Published LAST: a non-zero ChannelId is what makes the slot visible to activeTunnels(), which a
     // web request reads from another task. Written first, a reader saw a valid channel beside an address
     // and a start stamp that were still zero. Not _lastChannelId -- that one has already been rearmed.
+#ifdef KNX_TUNNEL_SPILL
+    tun->Gen++; // a frame spilled for the previous session of this slot no longer matches
+#endif
     tun->ChannelId = chanId;
 
     print("New Tunnel-Connection[");
