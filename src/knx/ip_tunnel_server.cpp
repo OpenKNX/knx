@@ -582,26 +582,32 @@ void IpTunnelServer::sendFrameToTunnel(KnxIpTunnelConnection* tunnel, CemiFrame&
     if (tunnel->_txCount == KNX_TUNNEL_RESEND_DEPTH)
     {
         // FIFO full: drop a best-effort group telegram and keep the connection (the 1 s ACK-timeout in loop()
-        // is the disconnect authority, 03_08_04 §2.6.1). A non-group (CO/mgmt) overflow still disconnects.
+        // is the disconnect authority, 03_08_04 §2.6.1); a group L_Data.con evicts an indication first.
+        // A non-group (CO/mgmt) overflow still disconnects.
         if (isGroupTelegram)
         {
             bumpTo(tunnel->StatGrpDrop); // best-effort by design: the connection is worth more than the frame
             countTunnelLoss(*tunnel);
-            return;
+            // An L_Data.con answers the client's own L_Data.req (03_06_03 4.1.5.3.4 p.80): it takes the place of the
+            // oldest queued indication, which is the frame counted above; without one it is dropped. It never disconnects.
+            if (frame.messageCode() != L_data_con || !evictOldestGroupFrame(tunnel, true))
+                return;
         }
-
-        // Non-group = connection-oriented / management, i.e. the traffic of a running download. Dropping it
-        // breaks the transfer, and the queue is usually full of UNRELATED group telegrams from the bus -- so
-        // sacrifice the oldest of those instead of the connection. Disconnect only when nothing is evictable.
-        if (!evictOldestGroupFrame(tunnel))
+        else
         {
-            bumpTo(tunnel->StatTxDrop); // the frame that overflowed is lost as well, not just the connection
-            countTunnelLoss(*tunnel);     // frames queued behind a tunnel head go to txDrop at the teardown
-            disconnectTunnel(tunnel, END_OVERFLOW);
-            return;
+            // Non-group = connection-oriented / management, i.e. the traffic of a running download. Dropping it
+            // breaks the transfer, and the queue is usually full of UNRELATED group telegrams from the bus -- so
+            // sacrifice the oldest of those instead of the connection. Disconnect only when nothing is evictable.
+            if (!evictOldestGroupFrame(tunnel))
+            {
+                bumpTo(tunnel->StatTxDrop); // the frame that overflowed is lost as well, not just the connection
+                countTunnelLoss(*tunnel);     // frames queued behind a tunnel head go to txDrop at the teardown
+                disconnectTunnel(tunnel, END_OVERFLOW);
+                return;
+            }
+            bumpTo(tunnel->StatGrpDrop); // counted where every other group drop is counted
+            countTunnelLoss(*tunnel);    // the evicted frame
         }
-        bumpTo(tunnel->StatGrpDrop); // counted where every other group drop is counted
-        countTunnelLoss(*tunnel);    // the evicted frame
     }
     // Build the datagram DIRECTLY into the FIFO slot -> no per-frame new[] and no intermediate copy (was:
     // KnxIpTunnelingRequest new[] then memcpy into the slot). Fixed KNXnet/IP layout: 6-byte header + 4-byte
@@ -735,14 +741,12 @@ uint8_t IpTunnelServer::closeAllTunnels(uint8_t reason, bool withBusMon, uint8_t
 }
 
 #ifdef KNX_TUNNEL_RESEND
-// Send the head of a tunnel's FIFO if nothing is in flight. Exactly one unacked TUNNELLING_REQUEST per
-// tunnel; the sequence counter is stamped into the connection header here (KNX 03_08_04 Tunnelling §2.6.1).
-// Free one FIFO slot by dropping the OLDEST queued group telegram, so a connection-oriented frame can be
-// queued instead of the connection being torn down. The head is skipped while armed: it is already on the
-// wire with a stamped sequence number, and 03_08_04 2.6.1 requires a repeat to be verbatim. Returns false
-// when the queue holds nothing but connection-oriented frames -- a genuine jam, where disconnecting is the
-// honest answer.
-bool IpTunnelServer::evictOldestGroupFrame(KnxIpTunnelConnection* t)
+// Free one FIFO slot by dropping the OLDEST queued group telegram, so a connection-oriented frame (or, with
+// indicationOnly, an L_Data.con, which only takes the place of an L_Data.ind) can be queued. The head is skipped
+// while armed: it is already on the wire with a stamped sequence number, and 03_08_04 2.6.1 requires a repeat to
+// be verbatim. Returns false when nothing evictable is queued; the caller then disconnects (connection-oriented
+// frame) or drops the con.
+bool IpTunnelServer::evictOldestGroupFrame(KnxIpTunnelConnection* t, bool indicationOnly)
 {
     const uint8_t firstEvictable = t->_armed ? 1 : 0;
 
@@ -750,6 +754,8 @@ bool IpTunnelServer::evictOldestGroupFrame(KnxIpTunnelConnection* t)
     {
         const uint8_t slot = (uint8_t)((t->_txHead + j) % KNX_TUNNEL_RESEND_DEPTH);
         if (!t->_txIsGroup[slot])
+            continue;
+        if (indicationOnly && t->_txBuf[slot][LEN_KNXIP_HEADER + LEN_CH] != L_data_ind) // cEMI message code
             continue;
 
         // Close the gap: shift every later entry one position towards the head, so the FIFO order of the
@@ -769,6 +775,8 @@ bool IpTunnelServer::evictOldestGroupFrame(KnxIpTunnelConnection* t)
     return false;
 }
 
+// Send the head of a tunnel's FIFO if nothing is in flight. Exactly one unacked TUNNELLING_REQUEST per
+// tunnel; the sequence counter is stamped into the connection header here (KNX 03_08_04 Tunnelling §2.6.1).
 void IpTunnelServer::pumpTunnel(KnxIpTunnelConnection* t)
 {
     if (t->_armed || t->_txCount == 0) return;

@@ -261,8 +261,9 @@ class IpTunnelServer
     bool sendDisconnectRequest(KnxIpTunnelConnection *t); // tell the client; false = datagram never left
 #ifdef KNX_TUNNEL_RESEND
     void pumpTunnel(KnxIpTunnelConnection *t);                 // send the FIFO head if nothing is in flight
-    bool evictOldestGroupFrame(KnxIpTunnelConnection *t);     // free one slot by dropping the oldest queued
-                                                              // group telegram; false = nothing evictable
+    bool evictOldestGroupFrame(KnxIpTunnelConnection *t, bool indicationOnly = false); // free one slot by dropping
+                                                              // the oldest queued group telegram (only an L_Data.ind
+                                                              // with indicationOnly); false = nothing evictable
     void repeatOrDisconnect(KnxIpTunnelConnection *t);         // repeat the head once, then tear down
     void disconnectTunnel(KnxIpTunnelConnection *t, uint8_t reason); // server-initiated teardown + reap
     void handleTunnelAck(uint8_t *buffer, uint16_t length, uint32_t src_addr); // pop the acked head + pump the next
