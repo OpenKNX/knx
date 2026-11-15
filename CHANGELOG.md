@@ -4,6 +4,9 @@
 ## ec/v2.6.0-beta.4 - not released
 
 * Fix: a response uses the transport service of its request (03_03_07 1.2 p.6). A connectionless request from a client with an open transport connection was answered over that connection, and the client dropped the answer; the answer to a request over the connection stays connection-oriented
+* Fix: a group `L_Data.con` that finds the tunnel queue full takes the place of the oldest queued group `L_Data.ind` instead of being dropped (03_06_03 4.1.5.3.4 p.80); without a queued indication it is dropped as before, the connection stays
+* Fix (IP interface): an `L_Data.con` whose source is neither an open tunnel nor the own individual address is dropped. A chip reset confirms the whole TX queue at once; the cons of a tunnel closed in the meantime went into the device's own layers, where a `GroupValueRead` con ended the wait of an own read. The router keeps them for its routed frames
+* Fix: `KNX_TUNNEL_SPILL` - a full tunnel queue no longer disconnects. A group `L_Data.ind` is dropped as before; every other frame (each `L_Data.con`, individual and broadcast frames, `M_*`) takes the place of the oldest queued group `L_Data.ind` or waits in a heap list until the client acknowledges, in order per tunnel: at most `KNX_TUNNEL_SPILL_MAX` frames (`TPUART_TX_QUEUE_SIZE` + 1, default 51) and `KNX_TUNNEL_SPILL_BYTES` (2048) octets, each for `KNX_TUNNEL_SPILL_TTL_MS` (3000, 03_06_03 4.1.5.1 p.74); while another tunnel waits, one tunnel keeps `KNX_TUNNEL_SPILL_PER_TUNNEL` (34) frames and 2/3 of the octets. On by default on the IP interface, opt-in elsewhere with `-D KNX_TUNNEL_SPILL`; it needs `KNX_TUNNEL_BACKPRESSURE` off (`KNX_TUNNEL_RESEND_DEPTH` + 1), the build stops otherwise. After a chip reset with 65 waiting telegrams the client gets 65 of 65 confirmations instead of 22-24 and a disconnect (IP interface on ESP32 and RP2350, router on RP2040)
 
 
 ## ec/v2.6.0-beta.3 - 2026-11-09
