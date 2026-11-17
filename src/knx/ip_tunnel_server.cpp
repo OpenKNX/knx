@@ -447,11 +447,13 @@ void IpTunnelServer::loop()
             _busMonExitPending = false;
             // Retry regardless: with a desynced receiver the reset IS the therapy -- it clears the
             // desync, which otherwise blocks TX until the 20 s watchdog notices.
-            const bool retried = _hwBusMon->hwBusMonExit();
             // A missing indication only PROVES a latch while the receiver stayed in sync. Desynced, the
             // parser discards a genuine U_Reset.ind, and leaving monitor mode is exactly when a leftover
-            // raw bus octet desyncs it -- so claim a latch only when the evidence was intact.
-            if (retried && !_hwBusMon->hwBusMonRxDesynced())
+            // raw bus octet desyncs it -- so claim a latch only when the receiver is in sync. Sampled
+            // before the retry, whose reset clears the flag; a desync that healed inside the window is not seen.
+            const bool desynced = _hwBusMon->hwBusMonRxDesynced();
+            const bool retried = _hwBusMon->hwBusMonExit();
+            if (retried && !desynced)
                 println("HW-Busmon: no U_Reset.ind after leaving monitor mode (possible NCN latch)");
         }
     }
