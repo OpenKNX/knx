@@ -40,6 +40,7 @@ class BauSystemBDevice : public BauSystemB
     void updateGroupObject(GroupObject& go, uint8_t* data, uint8_t length);
 
     void doMasterReset(EraseCode eraseCode, uint8_t channel) override;
+    bool securityModeEnabled() override;
 
     AddressTableObject _addrTable;
     AssociationTableObject _assocTable;

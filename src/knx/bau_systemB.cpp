@@ -13,6 +13,7 @@ enum NmReadSerialNumberType
 
 static constexpr auto kFunctionPropertyResultBufferMaxSize = 0xFF;
 static constexpr auto kRestartProcessTime = 3;
+static constexpr uint8_t kRestartErrorAccessDenied = 0x01; // A_Restart_Response error code "access denied"
 
 BauSystemB::BauSystemB(Platform &platform)
     : _memory(platform, _deviceObj),
@@ -45,6 +46,41 @@ ApplicationProgramObject &BauSystemB::parameters()
 DeviceObject &BauSystemB::deviceObject()
 {
     return _deviceObj;
+}
+
+bool BauSystemB::securityModeEnabled()
+{
+    return false;
+}
+
+bool BauSystemB::memoryAccessPermitted(const SecurityControl& secCtrl, AccessType type)
+{
+    // All standard memory areas (address table, association table, group object table,
+    // application program, parameters) have the Access Policy 3FF/0CC (AN193 2.2.4.6).
+    if (isPermitted(Policy::Default, securityModeEnabled(), secCtrl, type))
+        return true;
+
+    println(type == AccessType::Write ? "Memory write denied by access policy" : "Memory read denied by access policy");
+    return false;
+}
+
+bool BauSystemB::propertyAccessPermitted(InterfaceObject* obj, uint8_t propertyId, const SecurityControl& secCtrl, AccessType type)
+{
+    // Non-existing objects or properties are handled by the normal error handling
+    if (obj == nullptr)
+        return true;
+
+    Property* prop = obj->property((PropertyID)propertyId);
+    if (prop == nullptr)
+        return true;
+
+    if (isPermitted(prop->policy(), securityModeEnabled(), secCtrl, type))
+        return true;
+
+    print("Property access denied by access policy. PID: ");
+    print(propertyId);
+    println(type == AccessType::Write ? " (write)" : " (read)");
+    return false;
 }
 
 uint8_t BauSystemB::checkmasterResetValidity(EraseCode eraseCode, uint8_t channel)
@@ -153,7 +189,8 @@ void BauSystemB::memoryRoutingTableWriteIndication(Priority priority, HopCountTy
 void BauSystemB::memoryWriteIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, uint8_t number,
                                        uint16_t memoryAddress, uint8_t *data)
 {
-    _memory.writeMemory(memoryAddress, number, data);
+    if (memoryAccessPermitted(secCtrl, AccessType::Write))
+        _memory.writeMemory(memoryAddress, number, data);
     if (_deviceObj.verifyMode())
         memoryReadIndication(priority, hopType, asap, secCtrl, number, memoryAddress, data);
 }
@@ -161,18 +198,25 @@ void BauSystemB::memoryWriteIndication(Priority priority, HopCountType hopType, 
 void BauSystemB::memoryReadIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, uint8_t number,
                                       uint16_t memoryAddress, uint8_t *data)
 {
+    if (!memoryAccessPermitted(secCtrl, AccessType::Read))
+        number = 0; // standard error handling: response without data
     applicationLayer().memoryReadResponse(AckRequested, priority, hopType, asap, secCtrl, number, memoryAddress, data);
 }
 
 void BauSystemB::memoryReadIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, uint8_t number,
                                       uint16_t memoryAddress)
 {
-    applicationLayer().memoryReadResponse(AckRequested, priority, hopType, asap, secCtrl, number, memoryAddress,
-                                          _memory.toAbsolute(memoryAddress));
+    memoryReadIndication(priority, hopType, asap, secCtrl, number, memoryAddress, _memory.toAbsolute(memoryAddress));
 }
 
 void BauSystemB::memoryExtWriteIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, uint8_t number, uint32_t memoryAddress, uint8_t *data)
 {
+    if (!memoryAccessPermitted(secCtrl, AccessType::Write))
+    {
+        applicationLayer().memoryExtWriteResponse(AckRequested, priority, hopType, asap, secCtrl, ReturnCodes::AccessDenied, number, memoryAddress, _memory.toAbsolute(memoryAddress));
+        return;
+    }
+
     _memory.writeMemory(memoryAddress, number, data);
 
     applicationLayer().memoryExtWriteResponse(AckRequested, priority, hopType, asap, secCtrl, ReturnCodes::Success, number, memoryAddress, _memory.toAbsolute(memoryAddress));
@@ -180,6 +224,12 @@ void BauSystemB::memoryExtWriteIndication(Priority priority, HopCountType hopTyp
 
 void BauSystemB::memoryExtReadIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, uint8_t number, uint32_t memoryAddress)
 {
+    if (!memoryAccessPermitted(secCtrl, AccessType::Read))
+    {
+        applicationLayer().memoryExtReadResponse(AckRequested, priority, hopType, asap, secCtrl, ReturnCodes::AccessDenied, 0, memoryAddress, _memory.toAbsolute(memoryAddress));
+        return;
+    }
+
     applicationLayer().memoryExtReadResponse(AckRequested, priority, hopType, asap, secCtrl, ReturnCodes::Success, number, memoryAddress, _memory.toAbsolute(memoryAddress));
 }
 
@@ -191,6 +241,16 @@ void BauSystemB::doMasterReset(EraseCode eraseCode, uint8_t channel)
 
 void BauSystemB::restartRequestIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, RestartType restartType, EraseCode eraseCode, uint8_t channel)
 {
+    // Access Policy for A_Restart is defined per restart type and erase code (AN193 2.2.4.3)
+    if (!isPermitted(restartPolicy(restartType, eraseCode), securityModeEnabled(), secCtrl, AccessType::Write))
+    {
+        println("Restart denied by access policy");
+        // A basic restart has no response; a master reset is answered with "access denied"
+        if (restartType == RestartType::MasterReset)
+            applicationLayer().restartResponse(AckRequested, priority, hopType, secCtrl, kRestartErrorAccessDenied, 0);
+        return;
+    }
+
     if (restartType == RestartType::BasicRestart)
     {
         println("Basic restart requested");
@@ -226,13 +286,16 @@ void BauSystemB::authorizeIndication(Priority priority, HopCountType hopType, ui
 
 void BauSystemB::userMemoryReadIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, uint8_t number, uint32_t memoryAddress)
 {
+    if (!memoryAccessPermitted(secCtrl, AccessType::Read))
+        number = 0; // standard error handling: response without data
     applicationLayer().userMemoryReadResponse(AckRequested, priority, hopType, asap, secCtrl, number, memoryAddress,
                                               _memory.toAbsolute(memoryAddress));
 }
 
 void BauSystemB::userMemoryWriteIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, uint8_t number, uint32_t memoryAddress, uint8_t *data)
 {
-    _memory.writeMemory(memoryAddress, number, data);
+    if (memoryAccessPermitted(secCtrl, AccessType::Write))
+        _memory.writeMemory(memoryAddress, number, data);
 
     if (_deviceObj.verifyMode())
         userMemoryReadIndication(priority, hopType, asap, secCtrl, number, memoryAddress);
@@ -285,8 +348,9 @@ void BauSystemB::propertyValueWriteIndication(Priority priority, HopCountType ho
                                               uint8_t propertyId, uint8_t numberOfElements, uint16_t startIndex, uint8_t *data, uint8_t length)
 {
     InterfaceObject *obj = getInterfaceObject(objectIndex);
-    if (obj)
+    if (obj && propertyAccessPermitted(obj, propertyId, secCtrl, AccessType::Write))
         obj->writeProperty((PropertyID)propertyId, startIndex, data, numberOfElements);
+    // Read back. If reading is not permitted (e.g. PID_TOOL_KEY, 008/008), the response contains no data (AN193 2.2.2).
     propertyValueReadIndication(priority, hopType, asap, secCtrl, objectIndex, propertyId, numberOfElements, startIndex);
 }
 
@@ -296,10 +360,12 @@ void BauSystemB::propertyValueExtWriteIndication(Priority priority, HopCountType
     uint8_t returnCode = ReturnCodes::Success;
 
     InterfaceObject *obj = getInterfaceObject(objectType, objectInstance);
-    if (obj)
-        obj->writeProperty((PropertyID)propertyId, startIndex, data, numberOfElements);
-    else
+    if (!obj)
         returnCode = ReturnCodes::AddressVoid;
+    else if (!propertyAccessPermitted(obj, propertyId, secCtrl, AccessType::Write))
+        returnCode = ReturnCodes::AccessDenied;
+    else
+        obj->writeProperty((PropertyID)propertyId, startIndex, data, numberOfElements);
 
     if (confirmed)
     {
@@ -324,6 +390,8 @@ void BauSystemB::propertyValueReadIndication(Priority priority, HopCountType hop
 #endif
 
     InterfaceObject* obj = getInterfaceObject(objectIndex);
+    if (obj && !propertyAccessPermitted(obj, propertyId, secCtrl, AccessType::Read))
+        obj = nullptr; // standard error handling: response with nr_of_elem = 0
     if (obj)
     {
         uint8_t elementSize = obj->propertySize((PropertyID)propertyId);
@@ -352,6 +420,8 @@ void BauSystemB::propertyValueExtReadIndication(Priority priority, HopCountType 
     uint8_t size = 0;
     uint8_t elementCount = numberOfElements;
     InterfaceObject *obj = getInterfaceObject(objectType, objectInstance);
+    if (obj && !propertyAccessPermitted(obj, propertyId, secCtrl, AccessType::Read))
+        obj = nullptr; // standard error handling: response with nr_of_elem = 0
     if (obj)
     {
         uint8_t elementSize = obj->propertySize((PropertyID)propertyId);
@@ -387,7 +457,13 @@ void BauSystemB::functionPropertyCommandIndication(Priority priority, HopCountTy
     {
         if (obj->property((PropertyID)propertyId)->Type() == PDT_FUNCTION)
         {
-            obj->command((PropertyID)propertyId, data, length, resultData, resultLength);
+            if (propertyAccessPermitted(obj, propertyId, secCtrl, AccessType::Write))
+                obj->command((PropertyID)propertyId, data, length, resultData, resultLength);
+            else
+            {
+                resultData[0] = ReturnCodes::AccessDenied;
+                resultLength = 1;
+            }
             handled = true;
         }
         else
@@ -422,7 +498,13 @@ void BauSystemB::functionPropertyStateIndication(Priority priority, HopCountType
     {
         if (obj->property((PropertyID)propertyId)->Type() == PDT_FUNCTION)
         {
-            obj->state((PropertyID)propertyId, data, length, resultData, resultLength);
+            if (propertyAccessPermitted(obj, propertyId, secCtrl, AccessType::Read))
+                obj->state((PropertyID)propertyId, data, length, resultData, resultLength);
+            else
+            {
+                resultData[0] = ReturnCodes::AccessDenied;
+                resultLength = 1;
+            }
             handled = true;
         }
         else
@@ -455,7 +537,12 @@ void BauSystemB::functionPropertyExtCommandIndication(Priority priority, HopCoun
     {
         PropertyDataType propType = obj->property((PropertyID)propertyId)->Type();
 
-        if (propType == PDT_FUNCTION)
+        if (!propertyAccessPermitted(obj, propertyId, secCtrl, AccessType::Write))
+        {
+            resultData[0] = ReturnCodes::AccessDenied;
+            resultLength = 1;
+        }
+        else if (propType == PDT_FUNCTION)
         {
             // The first byte is reserved and 0 for PDT_FUNCTION
             uint8_t reservedByte = data[0];
@@ -511,7 +598,12 @@ void BauSystemB::functionPropertyExtStateIndication(Priority priority, HopCountT
     {
         PropertyDataType propType = obj->property((PropertyID)propertyId)->Type();
 
-        if (propType == PDT_FUNCTION)
+        if (!propertyAccessPermitted(obj, propertyId, secCtrl, AccessType::Read))
+        {
+            resultData[0] = ReturnCodes::AccessDenied;
+            resultLength = 1;
+        }
+        else if (propType == PDT_FUNCTION)
         {
             // The first byte is reserved and 0 for PDT_FUNCTION
             uint8_t reservedByte = data[0];

@@ -28,6 +28,16 @@ uint8_t Property::Access() const
     return _access;
 }
 
+const AccessPolicy& Property::policy() const
+{
+    return _policy;
+}
+
+void Property::policy(const AccessPolicy& policy)
+{
+    _policy = policy;
+}
+
 uint8_t Property::ElementSize() const
 {
     switch (_type)

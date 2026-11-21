@@ -25,6 +25,7 @@ class BauSystemBCoupler : public BauSystemB
     ApplicationLayer& applicationLayer() override;
 
     void doMasterReset(EraseCode eraseCode, uint8_t channel) override;
+    bool securityModeEnabled() override;
 
     Platform& _platform;
 

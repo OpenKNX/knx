@@ -173,6 +173,15 @@ void BauSystemBDevice::doMasterReset(EraseCode eraseCode, uint8_t channel)
 #endif
 }
 
+bool BauSystemBDevice::securityModeEnabled()
+{
+#ifdef USE_DATASECURE
+    return _secIfObj.isSecurityModeEnabled();
+#else
+    return false;
+#endif
+}
+
 void BauSystemBDevice::groupValueWriteLocalConfirm(AckType ack, uint16_t asap, Priority priority, HopCountType hopType, const SecurityControl& secCtrl, uint8_t* data, uint8_t dataLength, bool status)
 {
     GroupObject& go = _groupObjTable.get(asap);

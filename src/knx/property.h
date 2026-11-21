@@ -10,6 +10,7 @@
 #pragma once
 
 #include <stdint.h>
+#include "access_policy.h"
 #include "save_restore.h"
 
 /** The data type of a property. */
@@ -269,6 +270,8 @@ class Property : public SaveRestore
     PropertyDataType Type() const;
     uint16_t MaxElements() const;
     uint8_t Access() const;
+    const AccessPolicy& policy() const;
+    void policy(const AccessPolicy& policy);
     uint8_t ElementSize() const;
     virtual uint8_t read(uint16_t start, uint8_t count, uint8_t* data) const = 0;
     virtual uint8_t write(uint16_t start, uint8_t count, const uint8_t* data) = 0;
@@ -289,4 +292,5 @@ class Property : public SaveRestore
     PropertyDataType _type;
     uint16_t _maxElements;
     uint8_t _access;
+    AccessPolicy _policy = Policy::Default;
 };

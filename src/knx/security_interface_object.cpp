@@ -161,6 +161,23 @@ SecurityInterfaceObject::SecurityInterfaceObject()
         new DataProperty( PID_TOOL_SEQUENCE_NUMBER_SENDING, true, PDT_GENERIC_06, 1, ReadLv3 | WriteLv0 ) // Updated by our device accordingly (non-standardized!)
     };
     initializeProperties(sizeof(properties), properties);
+
+    // Access Policies according to KNX 3/5/1 clause 6.3 and AN193.
+    // All other properties keep the default policy 3FF/0CC.
+    property(PID_LOAD_STATE_CONTROL)->policy(Policy::SecCtrl);
+    property(PID_SECURITY_MODE)->policy(Policy::SecCtrl);
+    property(PID_P2P_KEY_TABLE)->policy(Policy::ToolOnly);
+    property(PID_GRP_KEY_TABLE)->policy(Policy::ToolOnly);
+    property(PID_SECURITY_INDIVIDUAL_ADDRESS_TABLE)->policy(Policy::ToolOnly);
+    property(PID_SECURITY_FAILURES_LOG)->policy(Policy::Log);
+    property(PID_TOOL_KEY)->policy(Policy::ToolWrite);
+    property(PID_SECURITY_REPORT)->policy(Policy::Log);
+    property(PID_SECURITY_REPORT_CONTROL)->policy(Policy::ToolOnly);
+    property(PID_SEQUENCE_NUMBER_SENDING)->policy(Policy::ToolOnly);
+    property(PID_ZONE_KEY_TABLE)->policy(Policy::ToolOnly);
+    property(PID_GO_SECURITY_FLAGS)->policy(Policy::ToolOnly);
+    property(PID_ROLE_TABLE)->policy(Policy::ToolOnly);                   // not listed in 3/5/1, treated like the key tables
+    property(PID_TOOL_SEQUENCE_NUMBER_SENDING)->policy(Policy::ToolOnly); // non-standardized, treated like PID_SEQUENCE_NUMBER_SENDING
 }
 
 uint8_t* SecurityInterfaceObject::save(uint8_t* buffer)

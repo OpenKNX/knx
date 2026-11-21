@@ -58,3 +58,12 @@ void BauSystemBCoupler::doMasterReset(EraseCode eraseCode, uint8_t channel)
     _secIfObj.masterReset(eraseCode, channel);
 #endif
 }
+
+bool BauSystemBCoupler::securityModeEnabled()
+{
+#ifdef USE_DATASECURE
+    return _secIfObj.isSecurityModeEnabled();
+#else
+    return false;
+#endif
+}

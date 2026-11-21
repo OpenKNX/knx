@@ -112,6 +112,11 @@ class BauSystemB : protected BusAccessUnit
     void nextRestartState();
     virtual void doMasterReset(EraseCode eraseCode, uint8_t channel);
 
+    // Access Policies (AN193): returns true if KNX Data Security is enabled (PID_SECURITY_MODE)
+    virtual bool securityModeEnabled();
+    bool memoryAccessPermitted(const SecurityControl& secCtrl, AccessType type);
+    bool propertyAccessPermitted(InterfaceObject* obj, uint8_t propertyId, const SecurityControl& secCtrl, AccessType type);
+
     enum RestartState
     {
         Idle,
