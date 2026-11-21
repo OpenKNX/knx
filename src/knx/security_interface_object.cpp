@@ -23,7 +23,13 @@ SecurityInterfaceObject::SecurityInterfaceObject()
             // ReadCallback of PID_LOAD_STATE_CONTROL
             [](SecurityInterfaceObject* obj, uint16_t start, uint8_t count, uint8_t* data) -> uint8_t {
                 if (start == 0)
+                {
+                    // 03_03_07 3.4.4.1: element index 0 answers with the current number of elements (two octets).
+                    // Returning 1 without writing it sent whatever the response buffer happened to hold.
+                    uint16_t currentNoOfElements = 1;
+                    pushWord(currentNoOfElements, data);
                     return 1;
+                }
 
                 data[0] = obj->_state;
                 return 1;
