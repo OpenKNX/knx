@@ -202,10 +202,13 @@ void BauSystemBDevice::groupValueReadLocalConfirm(AckType ack, uint16_t asap, Pr
 
 void BauSystemBDevice::groupValueReadIndication(uint16_t asap, Priority priority, HopCountType hopType, const SecurityControl& secCtrl)
 {
+    if (asap == 0 || asap > _groupObjTable.entryCount()) return;
+
 #ifdef USE_DATASECURE
     DataSecurity requiredGoSecurity;
 
-    // Get security flags from Security Interface Object for this group object
+    // Below the bounds check, on purpose: getGroupObjectSecurity() reads PID_GO_SECURITY_FLAGS into a buffer
+    // sized by its element size (1). At index 0 a property read answers with the element count (2 octets).
     requiredGoSecurity = _secIfObj.getGroupObjectSecurity(asap);
 
     if (secCtrl.dataSecurity != requiredGoSecurity)
@@ -227,6 +230,18 @@ void BauSystemBDevice::groupValueReadIndication(uint16_t asap, Priority priority
 void BauSystemBDevice::groupValueReadAppLayerConfirm(uint16_t asap, Priority priority, HopCountType hopType, const SecurityControl& secCtrl, uint8_t* data,
                                                      uint8_t dataLength)
 {
+    if (asap == 0 || asap > _groupObjTable.entryCount()) return;
+
+#ifdef USE_DATASECURE
+    // A received A_GroupValue_Response updates the object exactly as a write does, so it has to meet the
+    // same security requirement. Otherwise an unsecured response reaches a secured group object.
+    if (secCtrl.dataSecurity != _secIfObj.getGroupObjectSecurity(asap))
+    {
+        println("GroupValueResponse: access denied due to wrong security flags");
+        return;
+    }
+#endif
+
     GroupObject& go = _groupObjTable.get(asap);
 
     if (!go.communicationEnable() || !go.responseUpdateEnable())
@@ -237,10 +252,12 @@ void BauSystemBDevice::groupValueReadAppLayerConfirm(uint16_t asap, Priority pri
 
 void BauSystemBDevice::groupValueWriteIndication(uint16_t asap, Priority priority, HopCountType hopType, const SecurityControl& secCtrl, uint8_t* data, uint8_t dataLength)
 {
+    if (asap == 0 || asap > _groupObjTable.entryCount()) return;
+
 #ifdef USE_DATASECURE
     DataSecurity requiredGoSecurity;
 
-    // Get security flags from Security Interface Object for this group object
+    // Below the bounds check, on purpose (see groupValueReadIndication)
     requiredGoSecurity = _secIfObj.getGroupObjectSecurity(asap);
 
     if (secCtrl.dataSecurity != requiredGoSecurity)
