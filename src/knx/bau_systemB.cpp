@@ -274,6 +274,23 @@ void BauSystemB::restartRequestIndication(Priority priority, HopCountType hopTyp
         _platform.fatalError();
     }
 
+    // Do not restart here: the TL ack and the A_Restart_Response were only queued so far. Restarting
+    // immediately (e.g. ESP.restart() on ESP32) drops them and the tool never gets a response.
+    // The restart is done in processPendingRestart() once the frames had time to be sent.
+    _restartPending = true;
+    _restartPendingSince = millis();
+}
+
+void BauSystemB::processPendingRestart()
+{
+    if (!_restartPending)
+        return;
+
+    if (millis() - _restartPendingSince < kRestartDeferTime)
+        return;
+
+    _restartPending = false;
+
     // Flush the EEPROM before resetting
     _memory.writeMemory();
     _platform.restart();
@@ -704,6 +721,8 @@ void BauSystemB::connectConfirm(uint16_t tsap)
 
 void BauSystemB::nextRestartState()
 {
+    processPendingRestart();
+
     switch (_restartState)
     {
         case Idle:
