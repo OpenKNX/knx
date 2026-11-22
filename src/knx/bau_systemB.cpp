@@ -14,6 +14,9 @@ enum NmReadSerialNumberType
 static constexpr auto kFunctionPropertyResultBufferMaxSize = 0xFF;
 static constexpr auto kRestartProcessTime = 3;
 static constexpr uint8_t kRestartErrorAccessDenied = 0x01; // A_Restart_Response error code "access denied"
+// Time between accepting an A_Restart and actually restarting. The stack keeps running in this time, so the
+// TL ack and the A_Restart_Response (master reset) are sent on the bus before the device restarts.
+static constexpr uint32_t kRestartDeferTime = 500;
 
 BauSystemB::BauSystemB(Platform &platform)
     : _memory(platform, _deviceObj),
@@ -134,6 +137,18 @@ uint8_t BauSystemB::checkmasterResetValidity(EraseCode eraseCode, uint8_t channe
 
 void BauSystemB::deviceDescriptorReadIndication(Priority priority, HopCountType hopType, uint16_t asap, const SecurityControl &secCtrl, uint8_t descriptorType)
 {
+    // Access Policy for A_DeviceDescriptor_Read is 3FF/0CC (AN193 2.2.4.5). Without permission
+    // the device does not answer with an error, but tells the tool that it has to use security:
+    // - descriptor type 0: respond with type 0 and value FFFFh
+    // - other descriptor types: respond with type 3Fh (error) without data
+    if (!isPermitted(Policy::Default, securityModeEnabled(), secCtrl, AccessType::Read))
+    {
+        println("DeviceDescriptorRead denied by access policy");
+        uint8_t data[2] = {0xFF, 0xFF};
+        applicationLayer().deviceDescriptorReadResponse(AckRequested, priority, hopType, asap, secCtrl, descriptorType == 0 ? 0 : 0x3f, data);
+        return;
+    }
+
     if (descriptorType != 0)
         descriptorType = 0x3f;
 
