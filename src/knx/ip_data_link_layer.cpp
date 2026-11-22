@@ -12,6 +12,8 @@
 #include "knx_ip_search_response.h"
 #include "knx_ip_search_request_extended.h"
 #include "knx_ip_search_response_extended.h"
+#include "knx_ip_description_request.h"
+#include "knx_ip_description_response.h"
 #include "knx_facade.h"
 
 #include <new>
@@ -454,6 +456,24 @@ bool IpDataLinkLayer::loopReceive()
                 _dllcb->activity((_netIndex << KNX_ACTIVITYCALLBACK_NET) | (KNX_ACTIVITYCALLBACK_DIR_SEND << KNX_ACTIVITYCALLBACK_DIR) | (KNX_ACTIVITYCALLBACK_IPUNICAST));
 #endif
             sendControlUniCast(hpai.ipAddress(), hpai.ipPortNumber(), searchResponse.data(), searchResponse.totalLength());
+            break;
+        }
+        case DescriptionRequest:
+        {
+            // 03_08_02 Core 4.3 p.11: every KNXnet/IP implementation answers DESCRIPTION_REQUEST, with or without a
+            // tunnelling server. The reply goes to the control HPAI; a zero address or port falls back to the sender.
+            if (len < KNXIP_HEADER_LEN + LEN_IPHPAI)
+                break;
+
+            KnxIpDescriptionRequest descReq(buffer, len);
+            KnxIpDescriptionResponse descRes(_ipParameters, _deviceObject);
+            const uint32_t addr = descReq.hpaiCtrl().ipAddress() ? descReq.hpaiCtrl().ipAddress() : remoteAddr;
+            const uint16_t port = descReq.hpaiCtrl().ipPortNumber() ? descReq.hpaiCtrl().ipPortNumber() : remotePort;
+#ifdef KNX_ACTIVITYCALLBACK
+            if(_dllcb)
+                _dllcb->activity((_netIndex << KNX_ACTIVITYCALLBACK_NET) | (KNX_ACTIVITYCALLBACK_DIR_SEND << KNX_ACTIVITYCALLBACK_DIR) | (KNX_ACTIVITYCALLBACK_IPUNICAST));
+#endif
+            sendControlUniCast(addr, port, descRes.data(), descRes.totalLength());
             break;
         }
         case SearchRequestExt:
