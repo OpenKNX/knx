@@ -110,6 +110,7 @@ class BauSystemB : protected BusAccessUnit
     void connectConfirm(uint16_t tsap) override;
 
     void nextRestartState();
+    void processPendingRestart();
     virtual void doMasterReset(EraseCode eraseCode, uint8_t channel);
 
     // Access Policies (AN193): returns true if KNX Data Security is enabled (PID_SECURITY_MODE)
@@ -132,6 +133,8 @@ class BauSystemB : protected BusAccessUnit
     RestartState _restartState = Idle;
     SecurityControl _restartSecurity;
     uint32_t _restartDelay = 0;
+    bool _restartPending = false;
+    uint32_t _restartPendingSince = 0;
     BeforeRestartCallback _beforeRestart = 0;
     FunctionPropertyCallback _functionProperty = 0;
     FunctionPropertyCallback _functionPropertyState = 0;

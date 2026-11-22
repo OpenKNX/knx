@@ -93,6 +93,12 @@ DeviceObject::DeviceObject()
 #endif
     };
     initializeProperties(sizeof(properties), properties);
+
+    // Access Policies according to AN193 2.2.4.6 (Object Type 0: Device Object).
+    // All other properties keep the default policy 3FF/0CC.
+    property(PID_MAX_APDU_LENGTH)->policy(Policy::Info);    // 3FF/1FF: readable in plain also in Security Mode
+    property(PID_SUBNET_ADDR)->policy(Policy::ToolOnSec);   // 3FF/00C
+    property(PID_DEVICE_ADDR)->policy(Policy::ToolOnSec);   // 3FF/00C
 }
 
 uint8_t* DeviceObject::save(uint8_t* buffer)
