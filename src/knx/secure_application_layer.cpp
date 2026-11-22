@@ -835,7 +835,7 @@ bool SecureApplicationLayer::decrypt(uint8_t* plainApdu, uint16_t plainApduLengt
                 print("security failure: received seqNum: ");
                 print(receivedSeqNumber, HEX);
                 print(" < expected seqNum: ");
-                print(expectedSeqNumber, HEX);
+                println(expectedSeqNumber, HEX);
                 return false;
             }
         }
@@ -845,13 +845,21 @@ bool SecureApplicationLayer::decrypt(uint8_t* plainApdu, uint16_t plainApduLengt
         pBuf = popByteArray(knxSerialNumber, 6, pBuf);
         remainingPlainApduLength -= 6;
 
-        // ignore sync.reqs not addressed to us
-        if (!memcmp(knxSerialNumber, _deviceObj.propertyData(PID_SERIAL_NUMBER), 6))
-        {
-            uint8_t emptySerialNumber[6] = {0};
-            if (systemBcast || dstAddr != _deviceObj.individualAddress() || !memcmp(knxSerialNumber, emptySerialNumber, 6))
-                return false;
-        }
+        // ignore sync.reqs not addressed to us (03_03_07 Application Layer, S-A_Sync.req, step 2)
+        // Note: memcmp() returns 0 on equality, so the result must be compared against 0.
+        uint8_t emptySerialNumber[6] = {0};
+        bool serialIsEmpty = memcmp(knxSerialNumber, emptySerialNumber, 6) == 0;
+        bool serialIsOurs = memcmp(knxSerialNumber, _deviceObj.propertyData(PID_SERIAL_NUMBER), 6) == 0;
+        // On TP1 there is no SBC bit in the frame, so a system broadcast arrives as broadcast.
+        bool receivedOnBroadcast = systemBcast || (dstAddrIsGroupAddr && dstAddr == 0);
+
+        // (system) broadcast: the serial number must be set (and therefore must be ours)
+        if (receivedOnBroadcast && serialIsEmpty)
+            return false;
+
+        // only process further if the serial number is ours or 0 (point-to-point)
+        if (!serialIsOurs && !serialIsEmpty)
+            return false;
 
         // if responded to another request within the last 1 second, ignore
         if ((millis() - _lastSyncRes) < 1000)
@@ -978,7 +986,9 @@ bool SecureApplicationLayer::decrypt(uint8_t* plainApdu, uint16_t plainApduLengt
         if (syncReq)
         {
             uint64_t challenge = sixBytesToUInt64(&plainApdu[0]);
-            receivedSyncRequest(srcAddr, dstAddr, dstAddrIsGroupAddr, secCtrl, seqNum, challenge, systemBcast);
+            // The sync.res has to use the same comm_mode as the sync.req. On TP1 the frame cannot carry the
+            // system broadcast flag, so take the SBC flag from the (authenticated) SCF of the request as well.
+            receivedSyncRequest(srcAddr, dstAddr, dstAddrIsGroupAddr, secCtrl, seqNum, challenge, systemBcast || systemBroadcast);
             return false;
         }
         else if (syncRes)
