@@ -679,6 +679,14 @@ void BauSystemB::individualAddressReadIndication(HopCountType hopType, const Sec
 
 void BauSystemB::individualAddressWriteIndication(HopCountType hopType, const SecurityControl &secCtrl, uint16_t newaddress)
 {
+    // Access Policy for A_IndividualAddress_Write is 3FF/00C (AN193 2.2.3), checked at service level:
+    // without permission the telegram is silently discarded.
+    if (!isPermitted(Policy::ToolOnSec, securityModeEnabled(), secCtrl, AccessType::Write))
+    {
+        println("IndividualAddressWrite denied by access policy");
+        return;
+    }
+
     if (_deviceObj.progMode())
         _deviceObj.individualAddress(newaddress);
 }
@@ -686,6 +694,14 @@ void BauSystemB::individualAddressWriteIndication(HopCountType hopType, const Se
 void BauSystemB::individualAddressSerialNumberWriteIndication(Priority priority, HopCountType hopType, const SecurityControl &secCtrl, uint16_t newIndividualAddress,
                                                               uint8_t *knxSerialNumber)
 {
+    // Access Policy for A_IndividualAddress_SerialNumber_Write is 3FF/00C (AN193 2.2.3), checked at service level:
+    // without permission the telegram is silently discarded.
+    if (!isPermitted(Policy::ToolOnSec, securityModeEnabled(), secCtrl, AccessType::Write))
+    {
+        println("IndividualAddressSerialNumberWrite denied by access policy");
+        return;
+    }
+
     // If the received serial number matches our serial number
     // then store the received new individual address in the device object
     if (!memcmp(knxSerialNumber, _deviceObj.propertyData(PID_SERIAL_NUMBER), 6))

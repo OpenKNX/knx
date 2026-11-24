@@ -11,6 +11,12 @@
 
 // Our FDSK. It is never changed from ETS. This is the permanent default tool key that is restored on every factory reset of the device.
 const uint8_t SecurityInterfaceObject::_fdsk[] = {0xFF, 0xEE, 0xDD, 0xCC, 0xBB, 0xAA, 0x99, 0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11, 0x00};
+
+const uint8_t* SecurityInterfaceObject::fdsk()
+{
+    return _fdsk;
+}
+
 uint8_t SecurityInterfaceObject::_secReport[] = { 0x00, 0x00, 0x00 };
 uint8_t SecurityInterfaceObject::_secReportCtrl[] = { 0x00, 0x00, 0x00 };
 
@@ -184,7 +190,7 @@ SecurityInterfaceObject::SecurityInterfaceObject()
     property(PID_SEQUENCE_NUMBER_SENDING)->policy(Policy::ToolOnly);
     property(PID_ZONE_KEY_TABLE)->policy(Policy::ToolOnly);
     property(PID_GO_SECURITY_FLAGS)->policy(Policy::ToolOnly);
-    property(PID_ROLE_TABLE)->policy(Policy::ToolOnly);                   // not listed in 3/5/1, treated like the key tables
+    property(PID_ROLE_TABLE)->policy(Policy::SecCtrl);                    // 15F/04C (AN193 2.2.4.6)
     property(PID_TOOL_SEQUENCE_NUMBER_SENDING)->policy(Policy::ToolOnly); // non-standardized, treated like PID_SEQUENCE_NUMBER_SENDING
 }
 

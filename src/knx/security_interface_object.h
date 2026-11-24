@@ -17,6 +17,7 @@ public:
 
   bool isLoaded();
 
+  static const uint8_t* fdsk();                       // returns the factory default setup key (FDSK)
   const uint8_t* toolKey();                           // returns single tool key (ETS)
   const uint8_t* p2pKey(uint16_t addressIndex);       // returns p2p key for IA index
   const uint8_t* groupKey(uint16_t addressIndex);     // returns group key for group address index
